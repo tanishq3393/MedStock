@@ -9,10 +9,11 @@ import {
   CheckCircle2, 
   Clock, 
   Building2, 
-  HelpCircle,
-  Pill,
   Search,
-  ExternalLink
+  Check,
+  ChevronRight,
+  Sparkles,
+  ShieldCheck
 } from 'lucide-react';
 import { fetchOutgoingRequests, payForRequest } from '../../store/slices/requestSlice';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -29,6 +30,7 @@ export const MyRequests = () => {
   const [activePaymentReq, setActivePaymentReq] = useState(null);
   const [rejectReasonModal, setRejectReasonModal] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilter, setActiveFilter] = useState('all');
 
   useEffect(() => {
     dispatch(fetchOutgoingRequests(user?.id || 'hosp-1'));
@@ -39,11 +41,40 @@ export const MyRequests = () => {
     return result.payload;
   };
 
-  const filtered = outgoingRequests.filter((r) =>
-    r.medicineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.toHospitalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    r.transactionId?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const stages = [
+    { key: 'requested', label: 'REQUESTED' },
+    { key: 'reviewing', label: 'REVIEWING' },
+    { key: 'accepted', label: 'APPROVED' },
+    { key: 'packed', label: 'PACKED' },
+    { key: 'paid', label: 'IN TRANSIT' },
+    { key: 'delivered', label: 'DELIVERED' }
+  ];
+
+  const getStageIndex = (status) => {
+    const map = {
+      pending: 0,
+      reviewing: 1,
+      accepted: 2,
+      packed: 3,
+      paid: 4,
+      'in transit': 4,
+      delivered: 5,
+      rejected: -1
+    };
+    return map[status.toLowerCase()] ?? 0;
+  };
+
+  const filtered = outgoingRequests.filter((r) => {
+    const matchesSearch = r.medicineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.toHospitalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.transactionId?.toLowerCase().includes(searchTerm.toLowerCase());
+    
+    if (activeFilter === 'all') return matchesSearch;
+    if (activeFilter === 'pending') return matchesSearch && (r.status === 'pending' || r.status === 'reviewing');
+    if (activeFilter === 'actionable') return matchesSearch && r.status === 'accepted';
+    if (activeFilter === 'transit') return matchesSearch && (r.status === 'paid' || r.status === 'in transit');
+    return matchesSearch;
+  });
 
   return (
     <div className="space-y-6">
@@ -51,139 +82,198 @@ export const MyRequests = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-secondary-900 tracking-tight">My Outgoing Exchange Requests</h1>
-          <p className="text-xs text-slate-500">
-            Track requisition statuses submitted to partner hospital pharmacies and proceed to escrow payment.
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-extrabold text-secondary-900 tracking-tight">
+              Outgoing Medicine Requisitions
+            </h1>
+            <span className="px-2 py-0.5 text-[10px] font-mono font-bold text-primary-700 bg-primary-50 border border-primary-200 rounded">
+              PIPELINE TRACKER
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Track stage milestones of pharmaceutical procurements submitted to partner healthcare facilities.
           </p>
         </div>
 
         <Link
           to="/hospital/marketplace"
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-500/20 transition-all"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02]"
         >
           <Send className="w-3.5 h-3.5" />
           <span>New Requisition</span>
         </Link>
       </div>
 
-      {/* Search Input */}
-      <div className="bg-white p-3.5 rounded-2xl border border-slate-200 shadow-sm max-w-md">
-        <div className="relative">
+      {/* Filter and Search Bar */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+        <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search by medicine, providing hospital, or TXN..."
+            placeholder="Search by Medicine, Hospital, or TXN..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
           />
+        </div>
+
+        <div className="flex items-center gap-1.5 text-xs font-bold w-full sm:w-auto">
+          {[
+            { id: 'all', label: 'All Orders' },
+            { id: 'actionable', label: 'Ready for Escrow' },
+            { id: 'transit', label: 'In Transit' },
+            { id: 'pending', label: 'Awaiting Approval' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-xl transition-all ${
+                activeFilter === tab.id
+                  ? 'bg-slate-900 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Requests Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
-        {isLoading && outgoingRequests.length === 0 ? (
-          <LoadingSpinner text="Fetching outgoing requests..." />
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="px-5 py-3.5 text-left">Requisition Info</th>
-                  <th className="px-4 py-3.5 text-left">Providing Hospital</th>
-                  <th className="px-4 py-3.5 text-center">Quantity</th>
-                  <th className="px-4 py-3.5 text-right">Settlement Total</th>
-                  <th className="px-4 py-3.5 text-left">Request Date</th>
-                  <th className="px-4 py-3.5 text-center">Status</th>
-                  <th className="px-5 py-3.5 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {filtered.length > 0 ? (
-                  filtered.map((req) => (
-                    <tr key={req.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-5 py-4">
-                        <div className="font-bold text-slate-900">{req.medicineName}</div>
-                        <div className="text-[10px] font-mono text-slate-400 mt-0.5">
-                          TXN: {req.transactionId || 'TXN-000000'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                          <Building2 className="w-3.5 h-3.5 text-primary-600" />
-                          <span>{req.toHospitalName}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <span className="font-bold text-slate-900">{req.quantity}</span>
-                        <span className="text-[10px] text-slate-400 block">units</span>
-                      </td>
-                      <td className="px-4 py-4 text-right font-bold text-slate-900">
+      {/* Visual Pipeline Requisition Cards */}
+      {isLoading && outgoingRequests.length === 0 ? (
+        <LoadingSpinner text="Querying active requisition pipeline..." />
+      ) : filtered.length > 0 ? (
+        <div className="space-y-4">
+          {filtered.map((req) => {
+            const currentStageIdx = getStageIndex(req.status);
+            const isRejected = req.status === 'rejected';
+
+            return (
+              <div
+                key={req.id}
+                className="bg-white rounded-2xl border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all p-5 space-y-4"
+              >
+                {/* Top Row: Medicine Info & Action Buttons */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-extrabold text-slate-900">
+                        {req.medicineName}
+                      </h3>
+                      <StatusBadge status={req.status} />
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-mono">
+                      <span>TXN: <strong className="text-slate-800">{req.transactionId || 'TXN-000000'}</strong></span>
+                      <span>•</span>
+                      <span>Providing Hospital: <strong className="text-primary-700">{req.toHospitalName}</strong></span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Settlement</span>
+                      <span className="text-lg font-mono font-extrabold text-slate-900">
                         ₹{(req.totalAmount || 0).toLocaleString()}
-                      </td>
-                      <td className="px-4 py-4 text-slate-500">
-                        {new Date(req.requestDate).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-4 text-center">
-                        <StatusBadge status={req.status} />
-                      </td>
-                      <td className="px-5 py-4 text-center">
-                        {req.status === 'accepted' && (
-                          <button
-                            onClick={() => setActivePaymentReq(req)}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-500/20 transition-all hover:scale-105"
-                          >
-                            <CreditCard className="w-3.5 h-3.5" />
-                            <span>Pay Now (Escrow)</span>
-                          </button>
-                        )}
+                      </span>
+                    </div>
 
-                        {req.status === 'paid' && (
-                          <Link
-                            to={`/hospital/track?txn=${req.transactionId}`}
-                            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-primary-50 text-primary-700 hover:bg-primary-100 border border-primary-200 font-semibold text-xs transition-colors"
-                          >
-                            <Truck className="w-3.5 h-3.5 text-primary-600" />
-                            <span>Track Transit</span>
-                          </Link>
-                        )}
+                    {req.status === 'accepted' && (
+                      <button
+                        onClick={() => setActivePaymentReq(req)}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-105"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>Pay Escrow</span>
+                      </button>
+                    )}
 
-                        {req.status === 'rejected' && (
-                          <button
-                            onClick={() => setRejectReasonModal(req)}
-                            className="inline-flex items-center gap-1 text-xs text-rose-600 hover:underline font-semibold"
-                          >
-                            <AlertCircle className="w-3.5 h-3.5" />
-                            <span>View Reason</span>
-                          </button>
-                        )}
-
-                        {req.status === 'pending' && (
-                          <span className="text-[11px] text-slate-400 italic">
-                            Awaiting Hospital Approval
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
-                      <Send className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                      <p className="font-semibold">No outgoing requests found</p>
-                      <Link to="/hospital/marketplace" className="text-xs font-bold text-primary-600 underline mt-1 block">
-                        Browse marketplace to create a request
+                    {(req.status === 'paid' || req.status === 'in transit') && (
+                      <Link
+                        to={`/hospital/track?txn=${req.transactionId}`}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/20 transition-all"
+                      >
+                        <Truck className="w-3.5 h-3.5" />
+                        <span>Track Live Telemetry</span>
                       </Link>
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    )}
 
-      {/* Razorpay Mock Modal */}
+                    {isRejected && (
+                      <button
+                        onClick={() => setRejectReasonModal(req)}
+                        className="inline-flex items-center gap-1 text-xs text-rose-600 hover:underline font-bold"
+                      >
+                        <AlertCircle className="w-3.5 h-3.5" />
+                        <span>View Rejection Reason</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Workflow Stepper Pipeline */}
+                {!isRejected ? (
+                  <div className="pt-2">
+                    <div className="grid grid-cols-6 gap-1 sm:gap-2">
+                      {stages.map((stg, sIdx) => {
+                        const isCompleted = sIdx <= currentStageIdx;
+                        const isCurrent = sIdx === currentStageIdx;
+
+                        return (
+                          <div key={stg.key} className="space-y-1.5 text-center">
+                            <div className="relative">
+                              <div
+                                className={`h-2 rounded-full transition-colors ${
+                                  isCompleted
+                                    ? isCurrent
+                                      ? 'bg-primary-500 animate-pulse'
+                                      : 'bg-emerald-500'
+                                    : 'bg-slate-200'
+                                }`}
+                              />
+                            </div>
+                            <span className={`text-[10px] font-mono font-bold block truncate ${
+                              isCompleted ? 'text-slate-900' : 'text-slate-400'
+                            }`}>
+                              {stg.label}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
+                    <span>Requisition declined by supplying facility. Funds are fully unlocked.</span>
+                    <button
+                      onClick={() => setRejectReasonModal(req)}
+                      className="text-xs font-bold underline"
+                    >
+                      Audit Details
+                    </button>
+                  </div>
+                )}
+
+                {/* Meta details strip */}
+                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-500 font-mono">
+                  <span>Requisition Date: <strong className="text-slate-700">{new Date(req.requestDate).toLocaleDateString()}</strong></span>
+                  <span>Quantity: <strong className="text-slate-900 font-bold">{req.quantity} units</strong></span>
+                  <span>Logistics SLA: <strong className="text-emerald-700 font-bold">Cold Chain 2°C - 8°C Verified</strong></span>
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400">
+          <Send className="w-10 h-10 mx-auto mb-2 opacity-40" />
+          <p className="font-bold text-sm text-slate-700">No outgoing requisitions found</p>
+          <Link to="/hospital/marketplace" className="text-xs font-bold text-primary-600 underline mt-1 block">
+            Explore the marketplace to initiate a requisition
+          </Link>
+        </div>
+      )}
+
+      {/* Razorpay Escrow Modal */}
       {activePaymentReq && (
         <RazorpayMockModal
           isOpen={!!activePaymentReq}
@@ -198,13 +288,15 @@ export const MyRequests = () => {
         <Modal
           isOpen={!!rejectReasonModal}
           onClose={() => setRejectReasonModal(null)}
-          title="Exchange Request Declined"
-          subtitle={`Notice from ${rejectReasonModal.toHospitalName}`}
+          title="Requisition Formally Declined"
+          subtitle={`Notice recorded by ${rejectReasonModal.toHospitalName}`}
           maxWidth="max-w-md"
         >
           <div className="space-y-4 pt-1">
             <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 space-y-1">
-              <span className="text-[10px] font-bold uppercase text-rose-700 tracking-wider">Stated Reason:</span>
+              <span className="text-[10px] font-mono font-bold uppercase text-rose-700 tracking-wider">
+                Audited Reason:
+              </span>
               <p className="text-xs text-rose-800 font-medium leading-relaxed">
                 {rejectReasonModal.rejectReason || 'Declined due to internal surgical ward quota priority.'}
               </p>
@@ -213,9 +305,9 @@ export const MyRequests = () => {
               <button
                 type="button"
                 onClick={() => setRejectReasonModal(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-lg"
               >
-                Close
+                Close Audit Dossier
               </button>
             </div>
           </div>

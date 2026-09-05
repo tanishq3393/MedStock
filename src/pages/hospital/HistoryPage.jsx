@@ -9,7 +9,9 @@ import {
   Search, 
   Filter,
   FileSpreadsheet,
-  Building2
+  Building2,
+  ShieldCheck,
+  CheckCircle2
 } from 'lucide-react';
 import { fetchSalesHistory, fetchPurchasesHistory } from '../../store/slices/hospitalSlice';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -45,10 +47,9 @@ export const HistoryPage = () => {
     return matchesSearch && matchesStart && matchesEnd;
   });
 
-  // Export to CSV generator
   const handleExportCSV = () => {
     if (filteredData.length === 0) {
-      toast.error('No records available to export');
+      toast.error('No ledger entries available to export');
       return;
     }
 
@@ -67,13 +68,15 @@ export const HistoryPage = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `SmartMediShare_${activeTab}_History_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `SmartMediShare_${activeTab}_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
 
-    toast.success(`Exported ${filteredData.length} records to CSV successfully!`);
+    toast.success(`Exported ${filteredData.length} ledger rows to CSV`);
   };
+
+  const totalValue = filteredData.reduce((acc, curr) => acc + (curr.amount || 0), 0);
 
   return (
     <div className="space-y-6">
@@ -81,23 +84,30 @@ export const HistoryPage = () => {
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-secondary-900 tracking-tight">Trade History & Ledger</h1>
-          <p className="text-xs text-slate-500">
-            Comprehensive audit log of medicine sales and procurements across partner health facilities.
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-extrabold text-secondary-900 tracking-tight">
+              Trade History & Ledger
+            </h1>
+            <span className="px-2 py-0.5 text-[10px] font-mono font-bold text-slate-700 bg-slate-100 border border-slate-200 rounded">
+              CRYPTOGRAPHIC AUDIT TRAIL
+            </span>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Comprehensive audit record of medicine sales and procurements across partner health facilities.
           </p>
         </div>
 
         <button
           onClick={handleExportCSV}
-          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-all"
+          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-md transition-all hover:scale-[1.02]"
         >
           <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
-          <span>Export to CSV</span>
+          <span>Export Ledger CSV</span>
         </button>
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 space-y-4">
+      {/* Tabs & Range Filters */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm p-4 sm:p-5 space-y-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           
           <div className="flex items-center gap-2">
@@ -105,29 +115,29 @@ export const HistoryPage = () => {
               onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'sales'
-                  ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
+                  ? 'bg-primary-600 text-white shadow-md shadow-primary-600/20'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               <TrendingUp className="w-4 h-4" />
-              <span>My Sales ({salesHistory.length})</span>
+              <span>Surplus Sales ({salesHistory.length})</span>
             </button>
 
             <button
               onClick={() => setActiveTab('purchases')}
               className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'purchases'
-                  ? 'bg-secondary-800 text-white shadow-md'
+                  ? 'bg-secondary-900 text-white shadow-md'
                   : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
-              <span>My Purchases ({purchasesHistory.length})</span>
+              <span>Procurement Inflows ({purchasesHistory.length})</span>
             </button>
           </div>
 
           {/* Date Range Filter */}
-          <div className="flex flex-wrap items-center gap-2 text-xs">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-mono">
             <div className="flex items-center gap-1 text-slate-500">
               <Calendar className="w-3.5 h-3.5" />
               <span>From:</span>
@@ -151,27 +161,33 @@ export const HistoryPage = () => {
 
         </div>
 
-        {/* Search */}
-        <div className="relative max-w-md">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search by medicine, hospital name or transaction ID..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500"
-          />
+        {/* Search & Cumulative Bar */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by Medicine, Hospital, or TXN..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-1.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
+            />
+          </div>
+
+          <div className="text-xs font-mono text-slate-600">
+            Cumulative Volume: <strong className="text-slate-900 font-extrabold text-sm">₹{totalValue.toLocaleString()}</strong> ({filteredData.length} records)
+          </div>
         </div>
       </div>
 
-      {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+      {/* Ledger Table */}
+      <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
         {isLoading ? (
-          <LoadingSpinner text="Fetching trade ledger..." />
+          <LoadingSpinner text="Fetching verified ledger records..." />
         ) : (
           <div className="overflow-x-auto">
             <table className="min-w-full divide-y divide-slate-200 text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+              <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="px-5 py-3.5 text-left">Transaction ID</th>
                   <th className="px-4 py-3.5 text-left">Medicine Formulation</th>
@@ -179,9 +195,10 @@ export const HistoryPage = () => {
                   <th className="px-4 py-3.5 text-center">Quantity</th>
                   <th className="px-4 py-3.5 text-right">Settled Amount</th>
                   <th className="px-4 py-3.5 text-left">Date</th>
-                  <th className="px-5 py-3.5 text-center">Milestone</th>
+                  <th className="px-5 py-3.5 text-center">Milestone Status</th>
                 </tr>
               </thead>
+
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {filteredData.length > 0 ? (
                   filteredData.map((row) => (
@@ -198,13 +215,13 @@ export const HistoryPage = () => {
                           <span>{row.partnerHospital}</span>
                         </div>
                       </td>
-                      <td className="px-4 py-4 text-center font-bold text-slate-900">
+                      <td className="px-4 py-4 text-center font-mono font-bold text-slate-900">
                         {row.quantity} units
                       </td>
-                      <td className="px-4 py-4 text-right font-extrabold text-primary-700">
+                      <td className="px-4 py-4 text-right font-mono font-extrabold text-primary-800">
                         ₹{row.amount.toLocaleString()}
                       </td>
-                      <td className="px-4 py-4 text-slate-500">
+                      <td className="px-4 py-4 text-slate-500 font-mono">
                         {row.date}
                       </td>
                       <td className="px-5 py-4 text-center">
@@ -215,8 +232,8 @@ export const HistoryPage = () => {
                 ) : (
                   <tr>
                     <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
-                      <History className="w-8 h-8 mx-auto mb-2 opacity-40" />
-                      <p className="font-semibold">No trade history records found in this range</p>
+                      <History className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p className="font-bold text-sm text-slate-700">No trade ledger records found in this range</p>
                     </td>
                   </tr>
                 )}

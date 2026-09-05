@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   AlertCircle,
   Loader2,
-  Pill
+  Pill,
+  Sparkles
 } from 'lucide-react';
 import { signupHospitalUser } from '../../store/slices/authSlice';
 import toast from 'react-hot-toast';
@@ -37,9 +38,9 @@ export const HospitalSignupPage = () => {
     // Step 3 (Documents)
     documents: [
       { name: 'Hospital_Establishment_Reg.pdf', size: '3.4 MB', type: 'Registration Certificate', verified: false },
-      { name: 'Pharmacy_Drug_License_Form20.pdf', size: '2.8 MB', type: 'Drug License', verified: false },
-      { name: 'GSTIN_Registration_Doc.pdf', size: '1.5 MB', type: 'GST Certificate', verified: false },
-      { name: 'Board_Authorization_Letter.pdf', size: '1.1 MB', type: 'Authorization Letter', verified: false },
+      { name: 'Pharmacy_Drug_License_Form20.pdf', size: '2.8 MB', type: 'Drug License Form 20B/21B', verified: false },
+      { name: 'GSTIN_Registration_Doc.pdf', size: '1.5 MB', type: 'GSTIN Certificate', verified: false },
+      { name: 'Board_Authorization_Letter.pdf', size: '1.1 MB', type: 'Board Resolution Letter', verified: false },
     ],
     // Step 4
     password: '',
@@ -55,14 +56,14 @@ export const HospitalSignupPage = () => {
     const newDocs = acceptedFiles.map((file) => ({
       name: file.name,
       size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      type: file.name.toLowerCase().includes('gst') ? 'GST Certificate' : 'Compliance Document',
+      type: file.name.toLowerCase().includes('gst') ? 'GSTIN Certificate' : 'Statutory Drug License',
       verified: false,
     }));
     setFormData((prev) => ({
       ...prev,
       documents: [...prev.documents, ...newDocs],
     }));
-    toast.success(`Uploaded ${acceptedFiles.length} file(s) for verification review`);
+    toast.success(`Attached ${acceptedFiles.length} file(s) for compliance review`);
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -75,12 +76,12 @@ export const HospitalSignupPage = () => {
     e.preventDefault();
     if (step === 1) {
       if (!formData.name || !formData.registrationNo || !formData.email || !formData.phone) {
-        toast.error('Please complete all Hospital identity fields');
+        toast.error('Please complete all hospital identity fields');
         return;
       }
     } else if (step === 2) {
       if (!formData.address || !formData.city || !formData.state || !formData.pincode) {
-        toast.error('Please complete all physical location details');
+        toast.error('Please complete all physical campus location details');
         return;
       }
     } else if (step === 3) {
@@ -110,7 +111,7 @@ export const HospitalSignupPage = () => {
     try {
       const resultAction = await dispatch(signupHospitalUser(formData));
       if (signupHospitalUser.fulfilled.match(resultAction)) {
-        toast.success('Hospital Registration submitted! Awaiting Admin compliance verification.');
+        toast.success('Hospital Registration submitted! Awaiting State Admin verification.');
         navigate('/hospital/dashboard', { replace: true });
       } else {
         toast.error(resultAction.payload || 'Signup failed');
@@ -125,57 +126,92 @@ export const HospitalSignupPage = () => {
       <div className="max-w-2xl w-full space-y-6">
         
         {/* Header */}
-        <div className="text-center space-y-1">
+        <div className="text-center space-y-1.5">
           <Link to="/" className="inline-flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-primary-600 text-white flex items-center justify-center font-bold">
-              <Pill className="w-4 h-4 rotate-45" />
+            <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
+              <Pill className="w-5 h-5 rotate-45" />
             </div>
-            <span className="text-xl font-extrabold text-secondary-900">
-              Smart<span className="text-primary-500">MediShare</span>
+            <span className="text-2xl font-black text-slate-900 tracking-tight">
+              Smart<span className="text-teal-600">MediShare</span>
             </span>
           </Link>
-          <h2 className="text-xl font-bold text-slate-900">Hospital Institutional Onboarding</h2>
-          <p className="text-xs text-slate-500">4-step compliance registration for inter-hospital medicine exchange</p>
+          <h2 className="text-xl font-black text-slate-900">Hospital Institutional Onboarding</h2>
+          <p className="text-xs text-slate-500 max-w-md mx-auto">
+            4-step statutory compliance registration for inter-hospital medicine exchange & cold-chain access.
+          </p>
         </div>
 
-        {/* 4-Step Progress Bar */}
-        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
-          <div className="flex items-center justify-between text-xs font-bold mb-2">
-            <span className={step >= 1 ? 'text-primary-700' : 'text-slate-400'}>1. Identity</span>
-            <span className={step >= 2 ? 'text-primary-700' : 'text-slate-400'}>2. Location</span>
-            <span className={step >= 3 ? 'text-primary-700' : 'text-slate-400'}>3. Documents</span>
-            <span className={step >= 4 ? 'text-primary-700' : 'text-slate-400'}>4. Security</span>
-          </div>
-          <div className="w-full bg-slate-100 rounded-full h-2.5 overflow-hidden">
-            <div
-              className="bg-primary-600 h-2.5 rounded-full transition-all duration-300"
-              style={{ width: `${(step / 4) * 100}%` }}
-            />
+        {/* 4-Step Progress Indicator */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm">
+          <div className="grid grid-cols-4 text-center text-xs font-bold gap-2">
+            <div className={`flex items-center justify-center gap-1.5 pb-2 border-b-2 transition-all ${
+              step >= 1 ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400'
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                step >= 1 ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>1</span>
+              <span className="hidden sm:inline">Identity</span>
+            </div>
+
+            <div className={`flex items-center justify-center gap-1.5 pb-2 border-b-2 transition-all ${
+              step >= 2 ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400'
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                step >= 2 ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>2</span>
+              <span className="hidden sm:inline">Campus</span>
+            </div>
+
+            <div className={`flex items-center justify-center gap-1.5 pb-2 border-b-2 transition-all ${
+              step >= 3 ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400'
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                step >= 3 ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>3</span>
+              <span className="hidden sm:inline">Statutory Audit</span>
+            </div>
+
+            <div className={`flex items-center justify-center gap-1.5 pb-2 border-b-2 transition-all ${
+              step >= 4 ? 'border-teal-600 text-teal-700' : 'border-transparent text-slate-400'
+            }`}>
+              <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                step >= 4 ? 'bg-teal-600 text-white' : 'bg-slate-200 text-slate-600'
+              }`}>4</span>
+              <span className="hidden sm:inline">Security</span>
+            </div>
           </div>
         </div>
 
         {/* Card Form */}
-        <div className="bg-white rounded-2xl shadow-xl shadow-slate-200/60 border border-slate-200 p-6 sm:p-8">
+        <div className="bg-white rounded-3xl shadow-xl shadow-slate-200/60 border border-slate-200/80 p-6 sm:p-8">
           
           {/* STEP 1: Hospital Identity */}
           {step === 1 && (
             <form onSubmit={handleNext} className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Building2 className="w-5 h-5 text-primary-600" />
-                <h3 className="text-sm font-bold text-slate-800">Step 1: Hospital & Authority Details</h3>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700">
+                    <Building2 className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Step 1: Hospital & Authority Registration</h3>
+                    <p className="text-[10px] text-slate-400">Institutional entity verification</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono text-slate-400">1 of 4</span>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Hospital Name (Registered Institution) <span className="text-rose-500">*</span>
+                  Registered Hospital / Healthcare Institution <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Apollo Hospital, Max Healthcare"
+                  placeholder="e.g. Apollo Hospital, Max Super Speciality"
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-semibold"
                 />
               </div>
 
@@ -190,12 +226,12 @@ export const HospitalSignupPage = () => {
                     placeholder="e.g. MH-MUM-2023-8812"
                     value={formData.registrationNo}
                     onChange={(e) => setFormData({ ...formData, registrationNo: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-mono"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Authorized Signatory / Pharmacist <span className="text-rose-500">*</span>
+                    Chief Pharmacist / Medical Director <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="text"
@@ -203,7 +239,7 @@ export const HospitalSignupPage = () => {
                     placeholder="Dr. Full Name & Designation"
                     value={formData.authorizedPerson}
                     onChange={(e) => setFormData({ ...formData, authorizedPerson: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all"
                   />
                 </div>
               </div>
@@ -219,12 +255,12 @@ export const HospitalSignupPage = () => {
                     placeholder="pharmacy@hospital.org"
                     value={formData.email}
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all"
                   />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
-                    Phone (Indian format +91) <span className="text-rose-500">*</span>
+                    Contact Phone (+91) <span className="text-rose-500">*</span>
                   </label>
                   <input
                     type="tel"
@@ -232,7 +268,7 @@ export const HospitalSignupPage = () => {
                     placeholder="+91 98200 12345"
                     value={formData.phone}
                     onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-mono"
                   />
                 </div>
               </div>
@@ -240,9 +276,9 @@ export const HospitalSignupPage = () => {
               <div className="pt-4 flex justify-end">
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-500/25 transition-all"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/25 transition-all"
                 >
-                  <span>Next: Physical Location</span>
+                  <span>Next: Campus Location</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -252,22 +288,30 @@ export const HospitalSignupPage = () => {
           {/* STEP 2: Address & Location */}
           {step === 2 && (
             <form onSubmit={handleNext} className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <MapPin className="w-5 h-5 text-primary-600" />
-                <h3 className="text-sm font-bold text-slate-800">Step 2: Hospital Physical Address</h3>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700">
+                    <MapPin className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Step 2: Hospital Physical Campus & Intake Gate</h3>
+                    <p className="text-[10px] text-slate-400">Used for courier cold-box dispatched pickups</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono text-slate-400">2 of 4</span>
               </div>
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
-                  Street Address / Campus <span className="text-rose-500">*</span>
+                  Pharmacy Gate / Campus Street Address <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   rows="2"
                   required
-                  placeholder="Plot number, Sector, Road, Landmark"
+                  placeholder="Plot number, Sector, Central Pharmacy Intake Gate"
                   value={formData.address}
                   onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all"
                 />
               </div>
 
@@ -279,7 +323,7 @@ export const HospitalSignupPage = () => {
                     required
                     value={formData.city}
                     onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none"
                   />
                 </div>
                 <div>
@@ -289,7 +333,7 @@ export const HospitalSignupPage = () => {
                     required
                     value={formData.state}
                     onChange={(e) => setFormData({ ...formData, state: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none"
                   />
                 </div>
                 <div>
@@ -300,7 +344,7 @@ export const HospitalSignupPage = () => {
                     required
                     value={formData.pincode}
                     onChange={(e) => setFormData({ ...formData, pincode: e.target.value })}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none font-mono"
+                    className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none font-mono"
                   />
                 </div>
               </div>
@@ -309,14 +353,14 @@ export const HospitalSignupPage = () => {
                 <button
                   type="button"
                   onClick={handlePrevious}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Previous</span>
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-500/25 transition-all"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/25 transition-all"
                 >
                   <span>Next: Upload Documents</span>
                   <ArrowRight className="w-4 h-4" />
@@ -328,28 +372,32 @@ export const HospitalSignupPage = () => {
           {/* STEP 3: Document Uploads */}
           {step === 3 && (
             <form onSubmit={handleNext} className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <FileText className="w-5 h-5 text-primary-600" />
-                <h3 className="text-sm font-bold text-slate-800">Step 3: Upload Compliance Documents (PDF only, max 20MB)</h3>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Step 3: Statutory CDSCO & Drug Controller Audit</h3>
+                    <p className="text-[10px] text-slate-400">PDF documents required for hospital accreditation</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono text-slate-400">3 of 4</span>
               </div>
-
-              <p className="text-xs text-slate-500">
-                Required for statutory audit: Registration Certificate, Drug License (Form 20B/21B), GSTIN Certificate, and Authority Resolution Letter.
-              </p>
 
               {/* Drag & Drop Zone */}
               <div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-colors ${
-                  isDragActive ? 'border-primary-500 bg-primary-50/60' : 'border-slate-300 hover:border-primary-400 bg-slate-50/50'
+                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                  isDragActive ? 'border-teal-500 bg-teal-50/60' : 'border-slate-300 hover:border-teal-400 bg-slate-50/50'
                 }`}
               >
                 <input {...getInputProps()} />
-                <UploadCloud className="w-8 h-8 text-primary-500 mx-auto mb-2" />
+                <UploadCloud className="w-8 h-8 text-teal-600 mx-auto mb-2" />
                 <p className="text-xs font-bold text-slate-800">
-                  Drag & drop PDFs here, or <span className="text-primary-600 underline">browse files</span>
+                  Drag & drop compliance PDFs, or <span className="text-teal-700 underline">browse workstation</span>
                 </p>
-                <p className="text-[11px] text-slate-400 mt-1">Accepts PDF files up to 20MB per document</p>
+                <p className="text-[10px] text-slate-400 mt-1">Accepts PDF files up to 20MB per statutory document</p>
               </div>
 
               {/* Document List Preview */}
@@ -357,16 +405,16 @@ export const HospitalSignupPage = () => {
                 <p className="text-xs font-bold text-slate-700">Attached Documents ({formData.documents.length}):</p>
                 <div className="space-y-1.5">
                   {formData.documents.map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs">
-                      <div className="flex items-center gap-2">
-                        <FileCheck className="w-4 h-4 text-emerald-600" />
+                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+                      <div className="flex items-center gap-2.5">
+                        <FileCheck className="w-4 h-4 text-teal-600 shrink-0" />
                         <div>
-                          <span className="font-semibold text-slate-800">{doc.name}</span>
-                          <span className="text-slate-400 ml-2">({doc.type} • {doc.size})</span>
+                          <div className="font-bold text-slate-800">{doc.name}</div>
+                          <div className="text-[10px] text-slate-400">{doc.type} • {doc.size}</div>
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
-                        Queued for Audit
+                      <span className="text-[10px] font-bold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
+                        Audit Pending
                       </span>
                     </div>
                   ))}
@@ -377,16 +425,16 @@ export const HospitalSignupPage = () => {
                 <button
                   type="button"
                   onClick={handlePrevious}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Previous</span>
                 </button>
                 <button
                   type="submit"
-                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-500/25 transition-all"
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-md shadow-teal-600/25 transition-all"
                 >
-                  <span>Next: Account Password</span>
+                  <span>Next: Security Credentials</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </div>
@@ -396,9 +444,17 @@ export const HospitalSignupPage = () => {
           {/* STEP 4: Password & Confirmation */}
           {step === 4 && (
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                <Lock className="w-5 h-5 text-primary-600" />
-                <h3 className="text-sm font-bold text-slate-800">Step 4: Create Master Password</h3>
+              <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">Step 4: Create Master Terminal Password</h3>
+                    <p className="text-[10px] text-slate-400">Institutional authentication key</p>
+                  </div>
+                </div>
+                <span className="text-xs font-mono text-slate-400">4 of 4</span>
               </div>
 
               <div>
@@ -411,7 +467,7 @@ export const HospitalSignupPage = () => {
                   placeholder="At least 6 characters"
                   value={formData.password}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                  className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-mono"
                 />
               </div>
 
@@ -425,14 +481,17 @@ export const HospitalSignupPage = () => {
                   placeholder="Re-enter password"
                   value={formData.confirmPassword}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-                  className="w-full px-3 py-2.5 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                  className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-mono"
                 />
               </div>
 
-              <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-                <p className="font-bold text-slate-800">Compliance Confirmation:</p>
-                <p className="text-[11px] text-slate-500">
-                  By registering, the hospital affirms all pharmaceutical listings comply with CDSCO storage guidelines and schedule H/H1 safety protocols.
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1.5">
+                <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                  <ShieldCheck className="w-4 h-4 text-teal-600" />
+                  <span>Statutory Compliance Declaration</span>
+                </div>
+                <p className="text-[11px] text-slate-500 leading-relaxed">
+                  By registering, the hospital affirms all pharmaceutical listings adhere to CDSCO storage guidelines (Drugs & Cosmetics Act 1940) and Schedule H/H1 safety protocols.
                 </p>
               </div>
 
@@ -440,7 +499,7 @@ export const HospitalSignupPage = () => {
                 <button
                   type="button"
                   onClick={handlePrevious}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Previous</span>
@@ -448,17 +507,17 @@ export const HospitalSignupPage = () => {
                 <button
                   type="submit"
                   disabled={isLoading}
-                  className="inline-flex items-center gap-2 px-7 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-lg shadow-primary-500/25 transition-all disabled:opacity-75"
+                  className="inline-flex items-center gap-2 px-7 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/25 transition-all disabled:opacity-75"
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting Registration...</span>
+                      <span>Submitting Registration Dossier...</span>
                     </>
                   ) : (
                     <>
                       <ShieldCheck className="w-4 h-4" />
-                      <span>Submit Hospital Application</span>
+                      <span>Submit Hospital Dossier</span>
                     </>
                   )}
                 </button>
@@ -469,8 +528,8 @@ export const HospitalSignupPage = () => {
         </div>
 
         <div className="text-center text-xs text-slate-500">
-          Already registered?{' '}
-          <Link to="/login" className="font-bold text-primary-600 hover:underline">
+          Already registered institution?{' '}
+          <Link to="/login" className="font-bold text-teal-700 hover:underline">
             Sign In to Portal
           </Link>
         </div>

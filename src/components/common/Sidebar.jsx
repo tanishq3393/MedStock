@@ -16,8 +16,8 @@ import {
   Layers,
   Activity,
   FileCheck2,
-  Trash2,
-  ChevronRight
+  ChevronRight,
+  Sparkles
 } from 'lucide-react';
 
 export const Sidebar = ({ role = 'hospital' }) => {
@@ -27,95 +27,172 @@ export const Sidebar = ({ role = 'hospital' }) => {
   const pendingIncomingCount = incomingRequests?.filter((r) => r.status === 'pending').length || 0;
   const pendingHospitalsCount = hospitals?.filter((h) => h.status === 'pending').length || 2;
 
-  const hospitalNavItems = [
-    { to: '/hospital/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/hospital/inventory', icon: Boxes, label: 'My Inventory' },
-    { to: '/hospital/marketplace', icon: ShoppingBag, label: 'Marketplace' },
-    { to: '/hospital/my-requests', icon: Send, label: 'My Requests' },
-    { 
-      to: '/hospital/incoming-requests', 
-      icon: Inbox, 
-      label: 'Incoming Requests', 
-      badge: pendingIncomingCount > 0 ? pendingIncomingCount : null,
-      badgeColor: 'bg-amber-500'
+  // Grouped Navigation Sections for Hospital Portal
+  const hospitalNavSections = [
+    {
+      title: 'OVERVIEW',
+      items: [
+        { to: '/hospital/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      ]
     },
-    { to: '/hospital/history', icon: History, label: 'Trade History' },
-    { to: '/hospital/track', icon: Truck, label: 'Live Tracking' },
-    { to: '/hospital/payment-history', icon: CreditCard, label: 'Payment History' },
-    { to: '/hospital/feedback', icon: MessageSquare, label: 'Feedback' },
+    {
+      title: 'INVENTORY',
+      items: [
+        { to: '/hospital/inventory', icon: Boxes, label: 'My Inventory' },
+        { to: '/hospital/marketplace', icon: ShoppingBag, label: 'Marketplace' },
+      ]
+    },
+    {
+      title: 'TRANSACTIONS',
+      items: [
+        { to: '/hospital/my-requests', icon: Send, label: 'My Requests' },
+        { 
+          to: '/hospital/incoming-requests', 
+          icon: Inbox, 
+          label: 'Incoming Requests', 
+          badge: pendingIncomingCount > 0 ? pendingIncomingCount : null,
+          badgeColor: 'bg-amber-500'
+        },
+        { to: '/hospital/history', icon: History, label: 'Trade History' },
+        { to: '/hospital/payment-history', icon: CreditCard, label: 'Payment History' },
+      ]
+    },
+    {
+      title: 'LOGISTICS',
+      items: [
+        { to: '/hospital/track', icon: Truck, label: 'Live Tracking' },
+      ]
+    },
+    {
+      title: 'SYSTEM',
+      items: [
+        { to: '/hospital/feedback', icon: MessageSquare, label: 'Feedback' },
+      ]
+    }
   ];
 
-  const adminNavItems = [
-    { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Overview' },
-    { to: '/admin/medicine-data', icon: Layers, label: 'Medicine Data' },
-    { to: '/admin/hospital-details', icon: Building, label: 'Hospital Registry' },
-    { 
-      to: '/admin/verification', 
-      icon: FileCheck2, 
-      label: 'Verification Queue',
-      badge: pendingHospitalsCount > 0 ? pendingHospitalsCount : null,
-      badgeColor: 'bg-rose-500'
+  // Grouped Navigation Sections for Admin Portal
+  const adminNavSections = [
+    {
+      title: 'SUPERVISORY',
+      items: [
+        { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Overview' },
+        { to: '/admin/medicine-data', icon: Layers, label: 'Medicine Directory' },
+      ]
     },
-    { to: '/admin/management', icon: Activity, label: 'Transfers & Bio-Waste' },
-    { to: '/admin/feedback', icon: MessageSquare, label: 'Hospital Feedbacks' },
+    {
+      title: 'REGISTRATION & AUDIT',
+      items: [
+        { to: '/admin/hospital-details', icon: Building, label: 'Hospital Registry' },
+        { 
+          to: '/admin/verification', 
+          icon: FileCheck2, 
+          label: 'Verification Queue',
+          badge: pendingHospitalsCount > 0 ? pendingHospitalsCount : null,
+          badgeColor: 'bg-rose-500'
+        },
+      ]
+    },
+    {
+      title: 'LOGISTICS & BIO-HAZARD',
+      items: [
+        { to: '/admin/management', icon: Activity, label: 'Transfers & Bio-Waste' },
+        { to: '/admin/feedback', icon: MessageSquare, label: 'Hospital Feedbacks' },
+      ]
+    }
   ];
 
-  const navItems = role === 'admin' ? adminNavItems : hospitalNavItems;
+  const navSections = role === 'admin' ? adminNavSections : hospitalNavSections;
 
   return (
-    <aside className="w-64 flex-shrink-0 bg-white border-r border-slate-200 min-h-[calc(100vh-4rem)] p-4 flex flex-col justify-between">
+    <aside className="w-64 flex-shrink-0 bg-white border-r border-slate-200/90 min-h-[calc(100vh-4rem)] p-3.5 flex flex-col justify-between select-none">
       <div>
-        <div className="px-3 py-2 mb-3">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-            {role === 'admin' ? 'ADMINISTRATION PORTAL' : 'HOSPITAL PORTAL'}
-          </p>
+        
+        {/* Navigation Rail Header */}
+        <div className="px-2.5 py-1.5 mb-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono font-extrabold uppercase tracking-widest text-slate-400">
+              {role === 'admin' ? 'NATIONAL AUTHORITY RAIL' : 'HOSPITAL OPERATING RAIL'}
+            </span>
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+          </div>
         </div>
 
-        <nav className="space-y-1">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                className={({ isActive }) =>
-                  `flex items-center justify-between px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all group ${
-                    isActive
-                      ? 'bg-primary-50 text-primary-700 shadow-sm border border-primary-200/60 font-bold'
-                      : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                  }`
-                }
-              >
-                {({ isActive }) => (
-                  <>
-                    <div className="flex items-center gap-3">
-                      <Icon className={`w-4 h-4 transition-colors ${isActive ? 'text-primary-600' : 'text-slate-400 group-hover:text-slate-600'}`} />
-                      <span>{item.label}</span>
-                    </div>
+        {/* Logical Groups */}
+        <div className="space-y-4">
+          {navSections.map((section, sIdx) => (
+            <div key={sIdx} className="space-y-1">
+              <div className="px-2.5 py-1">
+                <span className="text-[9px] font-mono font-bold tracking-wider text-slate-400 uppercase">
+                  {section.title}
+                </span>
+              </div>
 
-                    {item.badge ? (
-                      <span className={`px-2 py-0.5 text-[10px] font-bold text-white rounded-full ${item.badgeColor}`}>
-                        {item.badge}
-                      </span>
-                    ) : (
-                      <ChevronRight className={`w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity ${isActive ? 'opacity-100 text-primary-500' : 'text-slate-400'}`} />
-                    )}
-                  </>
-                )}
-              </NavLink>
-            );
-          })}
-        </nav>
+              <nav className="space-y-0.5">
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <NavLink
+                      key={item.to}
+                      to={item.to}
+                      className={({ isActive }) =>
+                        `flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group relative ${
+                          isActive
+                            ? 'bg-primary-50 text-primary-800 font-bold border border-primary-200/70 shadow-sm'
+                            : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                        }`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <div className="flex items-center gap-2.5">
+                            <Icon 
+                              className={`w-4 h-4 transition-colors ${
+                                isActive 
+                                  ? 'text-primary-600' 
+                                  : 'text-slate-400 group-hover:text-slate-600'
+                              }`} 
+                            />
+                            <span>{item.label}</span>
+                          </div>
+
+                          {item.badge ? (
+                            <span className={`px-2 py-0.5 text-[9px] font-mono font-bold text-white rounded-full ${item.badgeColor}`}>
+                              {item.badge}
+                            </span>
+                          ) : (
+                            <ChevronRight 
+                              className={`w-3.5 h-3.5 transition-all ${
+                                isActive 
+                                  ? 'opacity-100 text-primary-500 translate-x-0' 
+                                  : 'opacity-0 -translate-x-1 group-hover:opacity-100 group-hover:translate-x-0 text-slate-400'
+                              }`} 
+                            />
+                          )}
+
+                          {/* Left active marker pill */}
+                          {isActive && (
+                            <span className="absolute left-0 top-1.5 bottom-1.5 w-1 bg-primary-600 rounded-r-full" />
+                          )}
+                        </>
+                      )}
+                    </NavLink>
+                  );
+                })}
+              </nav>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Safety & Compliance Badge Box */}
-      <div className="mt-6 p-3.5 rounded-xl bg-gradient-to-br from-slate-50 to-primary-50/40 border border-slate-200/80">
-        <div className="flex items-center gap-2 mb-1">
-          <ShieldCheck className="w-4 h-4 text-primary-600" />
-          <span className="text-xs font-bold text-slate-800">CDSCO Compliant</span>
+      {/* Statutory Compliance Footer Badge */}
+      <div className="mt-6 p-3 rounded-xl bg-gradient-to-br from-slate-50 to-primary-50/50 border border-slate-200/80 space-y-1">
+        <div className="flex items-center gap-1.5">
+          <ShieldCheck className="w-4 h-4 text-primary-600 flex-shrink-0" />
+          <span className="text-[11px] font-extrabold text-slate-800">CDSCO Verified Node</span>
         </div>
-        <p className="text-[11px] text-slate-500 leading-relaxed">
-          Real-time cold chain monitoring & verified inter-hospital trade.
+        <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
+          2°C - 8°C Cold Chain & Rule 65 statutory drug compliance active.
         </p>
       </div>
     </aside>

@@ -14,7 +14,10 @@ import {
   ShieldCheck,
   FileCheck,
   AlertTriangle,
-  ArrowRight
+  ArrowRight,
+  ThermometerSnowflake,
+  Flame,
+  FileCheck2
 } from 'lucide-react';
 import { 
   fetchAllTransfers, 
@@ -94,41 +97,60 @@ export const AdminManagement = () => {
     <div className="space-y-6">
       
       {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-secondary-900 tracking-tight">Logistics Telemetry & Bio-Waste Oversight</h1>
-          <p className="text-xs text-slate-500">
-            Real-time multi-state monitoring of live cold-chain medicine transfers and expired bio-hazard incineration.
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-5 rounded-2xl bg-gradient-to-r from-ocean-950 via-ocean-900 to-teal-950 text-white shadow-xl relative overflow-hidden">
+        <div className="absolute right-0 top-0 w-80 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(10,110,121,0.25),transparent_70%)] pointer-events-none" />
+        
+        <div className="relative z-10 space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-teal-500/20 text-teal-300 border border-teal-500/30">
+              <Activity className="w-3 h-3 text-teal-400" />
+              Transit & Bio-Waste Cockpit
+            </span>
+            <span className="text-xs text-slate-400 font-mono">Central Telemetry</span>
+          </div>
+          <h1 className="text-2xl font-black tracking-tight text-white">Logistics Telemetry & Bio-Waste Oversight</h1>
+          <p className="text-xs text-slate-300 max-w-xl font-normal">
+            Real-time multi-state monitoring of cold-chain medicine transfers, active thermal sensors (2°C - 8°C), and certified hazardous bio-waste incineration.
           </p>
+        </div>
+
+        <div className="relative z-10 flex items-center gap-3">
+          <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md text-right">
+            <div className="text-[10px] uppercase font-bold text-teal-400 tracking-wider">Active Consignments</div>
+            <div className="text-lg font-black text-white font-mono flex items-center justify-end gap-1.5">
+              <span>{allTransfers.length} Live Vehicles</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            </div>
+          </div>
         </div>
       </div>
 
       {/* Tabs & Search */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-2">
           
           <button
             onClick={() => setActiveTab('transfers')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'transfers'
-                ? 'bg-primary-600 text-white shadow-md shadow-primary-500/20'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
             }`}
           >
             <Truck className="w-3.5 h-3.5" />
-            <span>Transfer Tracking ({allTransfers.length})</span>
+            <span>Inter-Hospital Transfers ({allTransfers.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('disposals')}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'disposals'
-                ? 'bg-rose-700 text-white shadow-md shadow-rose-600/20'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                ? 'bg-rose-700 text-white shadow-md shadow-rose-700/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
             }`}
           >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Bio-Waste Disposal ({disposals.length})</span>
+            <Flame className="w-3.5 h-3.5" />
+            <span>Bio-Hazard Disposals ({disposals.length})</span>
           </button>
         </div>
 
@@ -136,10 +158,10 @@ export const AdminManagement = () => {
           <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
           <input
             type="text"
-            placeholder="Search consignments or facilities..."
+            placeholder="Search consignments, vehicles, or hubs..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:outline-none"
+            className="w-full pl-8 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
           />
         </div>
       </div>
@@ -148,59 +170,76 @@ export const AdminManagement = () => {
       {activeTab === 'transfers' && (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+            <table className="min-w-full divide-y divide-slate-200/80 text-xs">
+              <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="px-5 py-3.5 text-left">Consignment & TXN</th>
-                  <th className="px-4 py-3.5 text-left">Dispatch Source (Origin)</th>
-                  <th className="px-4 py-3.5 text-left">Receiving Hospital (Destination)</th>
-                  <th className="px-4 py-3.5 text-left">Live Location & Telemetry</th>
+                  <th className="px-4 py-3.5 text-left">Dispatch Origin</th>
+                  <th className="px-4 py-3.5 text-left">Receiving Hospital</th>
+                  <th className="px-4 py-3.5 text-left">Live Telemetry & Route</th>
                   <th className="px-4 py-3.5 text-center">Status</th>
-                  <th className="px-5 py-3.5 text-center">Admin Controls</th>
+                  <th className="px-5 py-3.5 text-center">Milestone Control</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {filteredTransfers.length > 0 ? (
                   filteredTransfers.map((t) => (
-                    <tr key={t.transactionId} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={t.transactionId} className="hover:bg-teal-50/20 transition-colors group">
+                      
+                      {/* Medicine */}
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-900">{t.medicineName}</div>
-                        <div className="text-[10px] font-mono text-slate-500">TXN: {t.transactionId}</div>
-                        <span className="text-[10px] text-primary-700 font-semibold">Qty: {t.quantity} units</span>
+                        <div className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors">{t.medicineName}</div>
+                        <div className="text-[10px] font-mono text-slate-400 font-semibold mt-0.5">TXN: {t.transactionId}</div>
+                        <span className="text-[10px] text-teal-800 font-semibold">Qty: {t.quantity} units</span>
                       </td>
+
+                      {/* Origin */}
                       <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
-                          <Building2 className="w-3.5 h-3.5 text-primary-600" />
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <Building2 className="w-3.5 h-3.5 text-teal-600" />
                           <span>{t.senderHospital}</span>
                         </div>
+                        <span className="text-[10px] text-slate-400">Departure Hub</span>
                       </td>
+
+                      {/* Destination */}
                       <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5 font-semibold text-slate-800">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
                           <Building2 className="w-3.5 h-3.5 text-emerald-600" />
                           <span>{t.receiverHospital}</span>
                         </div>
+                        <span className="text-[10px] text-slate-400">Intake Trauma Unit</span>
                       </td>
+
+                      {/* Live Telemetry */}
                       <td className="px-4 py-4">
-                        <div className="flex items-center gap-1.5 text-slate-800 font-semibold">
-                          <MapPin className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+                        <div className="flex items-center gap-1.5 text-slate-900 font-bold">
+                          <MapPin className="w-3.5 h-3.5 text-amber-500 shrink-0" />
                           <span>{t.currentLocation}</span>
                         </div>
-                        <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500">
-                          <span className="font-mono text-emerald-600 font-bold">Temp: {t.temperature}</span>
+                        <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-500 font-mono">
+                          <span className="text-teal-700 font-bold flex items-center gap-1">
+                            <ThermometerSnowflake className="w-3 h-3" />
+                            {t.temperature}
+                          </span>
                           <span>•</span>
                           <span>ETA: {t.eta}</span>
                         </div>
                       </td>
+
+                      {/* Status */}
                       <td className="px-4 py-4 text-center">
                         <StatusBadge status={t.status} />
                       </td>
+
+                      {/* Controls */}
                       <td className="px-5 py-4 text-center">
                         <button
                           onClick={() => {
                             setEditingTransfer(t);
                             setNewTransferStatus(t.status);
                           }}
-                          className="px-3 py-1.5 rounded-lg border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors"
+                          className="px-3 py-1.5 rounded-xl border border-slate-200 hover:border-teal-400 bg-slate-50 hover:bg-white text-slate-700 font-bold text-xs transition-all shadow-sm"
                         >
                           Modify Status
                         </button>
@@ -209,9 +248,9 @@ export const AdminManagement = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" className="px-6 py-10 text-center text-slate-400">
-                      <Truck className="w-8 h-8 mx-auto mb-1 opacity-40" />
-                      <p className="font-semibold">No transfers found matching your query</p>
+                    <td colSpan="6" className="px-6 py-14 text-center text-slate-400">
+                      <Truck className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="font-bold text-slate-700">No transfers found matching your query</p>
                     </td>
                   </tr>
                 )}
@@ -225,48 +264,63 @@ export const AdminManagement = () => {
       {activeTab === 'disposals' && (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+            <table className="min-w-full divide-y divide-slate-200/80 text-xs">
+              <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                 <tr>
                   <th className="px-5 py-3.5 text-left">Expired Medicine Lot</th>
-                  <th className="px-4 py-3.5 text-left">Origin Hospital</th>
-                  <th className="px-4 py-3.5 text-left">Certified Bio-Centre Facility</th>
-                  <th className="px-4 py-3.5 text-left">Transit Vehicle & Telemetry</th>
-                  <th className="px-4 py-3.5 text-center">Disposal Status</th>
-                  <th className="px-5 py-3.5 text-center">Compliance</th>
+                  <th className="px-4 py-3.5 text-left">Surrendering Hospital</th>
+                  <th className="px-4 py-3.5 text-left">Authorized Incinerator Facility</th>
+                  <th className="px-4 py-3.5 text-left">Hazardous Transit Vehicle</th>
+                  <th className="px-4 py-3.5 text-center">Disposal Stage</th>
+                  <th className="px-5 py-3.5 text-center">Destruction Audit</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {filteredDisposals.length > 0 ? (
                   filteredDisposals.map((disp) => (
-                    <tr key={disp.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={disp.id} className="hover:bg-rose-50/20 transition-colors group">
+                      
+                      {/* Expired Lot */}
                       <td className="px-5 py-4">
-                        <div className="font-bold text-slate-900">{disp.medicineName}</div>
+                        <div className="font-bold text-slate-900 group-hover:text-rose-700 transition-colors">{disp.medicineName}</div>
                         <div className="text-[10px] font-mono text-slate-400">Batch: {disp.batchNo} • Exp: {disp.expiryDate}</div>
-                        <span className="text-[10px] font-bold text-rose-700">{disp.quantity}</span>
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-200 mt-1 inline-block">
+                          {disp.quantity}
+                        </span>
                       </td>
-                      <td className="px-4 py-4 font-semibold text-slate-800">
+
+                      {/* Origin */}
+                      <td className="px-4 py-4 font-bold text-slate-800">
                         {disp.hospitalName}
                       </td>
+
+                      {/* Bio-Centre */}
                       <td className="px-4 py-4">
-                        <span className="font-bold text-slate-800">{disp.bioCentreName}</span>
+                        <div className="font-bold text-slate-800">{disp.bioCentreName}</div>
+                        <span className="text-[10px] text-slate-400">Pollution Board Certified</span>
                       </td>
+
+                      {/* Vehicle */}
                       <td className="px-4 py-4">
-                        <div className="font-mono text-slate-800">{disp.vehicleNo}</div>
+                        <div className="font-mono font-bold text-slate-900">{disp.vehicleNo}</div>
                         <div className="text-[10px] text-slate-500 mt-0.5">{disp.currentLocation}</div>
-                        <div className="text-[10px] text-slate-400">{disp.eta}</div>
+                        <div className="text-[10px] text-slate-400 font-mono">{disp.eta}</div>
                       </td>
+
+                      {/* Status */}
                       <td className="px-4 py-4 text-center">
                         <StatusBadge status={disp.status} />
                       </td>
+
+                      {/* Action */}
                       <td className="px-5 py-4 text-center">
-                        <div className="space-y-1">
+                        <div className="space-y-1.5">
                           <button
                             onClick={() => {
                               setEditingDisposal(disp);
                               setNewDisposalStatus(disp.status);
                             }}
-                            className="px-2.5 py-1 rounded bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors"
+                            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-colors"
                           >
                             Update Milestone
                           </button>
@@ -281,9 +335,9 @@ export const AdminManagement = () => {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="6" className="px-6 py-10 text-center text-slate-400">
-                      <Trash2 className="w-8 h-8 mx-auto mb-1 opacity-40" />
-                      <p className="font-semibold">No disposal records recorded</p>
+                    <td colSpan="6" className="px-6 py-14 text-center text-slate-400">
+                      <Trash2 className="w-8 h-8 mx-auto mb-2 opacity-40" />
+                      <p className="font-bold text-slate-700">No bio-hazard disposal records recorded</p>
                     </td>
                   </tr>
                 )}
@@ -308,12 +362,12 @@ export const AdminManagement = () => {
               <select
                 value={newTransferStatus}
                 onChange={(e) => setNewTransferStatus(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none bg-white font-medium"
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-teal-500"
               >
                 <option value="Ordered">Ordered (Awaiting Pickup)</option>
                 <option value="Dispatched">Dispatched from Dock</option>
                 <option value="In Transit">In Transit on Highway</option>
-                <option value="Delivered">Delivered & Inspected</option>
+                <option value="Delivered">Delivered & Intake Signed</option>
               </select>
             </div>
 
@@ -321,13 +375,13 @@ export const AdminManagement = () => {
               <button
                 type="button"
                 onClick={() => setEditingTransfer(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-sm"
+                className="px-5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-sm"
               >
                 Save Milestone
               </button>
@@ -351,11 +405,11 @@ export const AdminManagement = () => {
               <select
                 value={newDisposalStatus}
                 onChange={(e) => setNewDisposalStatus(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none bg-white font-medium"
+                className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-rose-500"
               >
                 <option value="Pending Pickup">Pending Bio-Centre Vehicle Pickup</option>
-                <option value="In Transit to Bio-Centre">In Transit to Bio-Centre</option>
-                <option value="Incinerated & Certified">Incinerated & Certified</option>
+                <option value="In Transit to Bio-Centre">In Transit to Incinerator Facility</option>
+                <option value="Incinerated & Certified">Incinerated & Destruction Certified</option>
               </select>
             </div>
 
@@ -363,13 +417,13 @@ export const AdminManagement = () => {
               <button
                 type="button"
                 onClick={() => setEditingDisposal(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
               >
                 Cancel
               </button>
               <button
                 type="submit"
-                className="px-5 py-2 text-xs font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-lg shadow-sm"
+                className="px-5 py-2 text-xs font-bold text-white bg-rose-700 hover:bg-rose-800 rounded-xl shadow-sm"
               >
                 Update Status
               </button>
