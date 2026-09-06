@@ -23,6 +23,7 @@ import HistoryPage from './pages/hospital/HistoryPage';
 import TrackPage from './pages/hospital/TrackPage';
 import PaymentHistory from './pages/hospital/PaymentHistory';
 import HospitalFeedback from './pages/hospital/HospitalFeedback';
+import HospitalProfilePage from './pages/hospital/HospitalProfilePage';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -93,6 +94,7 @@ export const App = () => {
           <Route path="track" element={<TrackPage />} />
           <Route path="payment-history" element={<PaymentHistory />} />
           <Route path="feedback" element={<HospitalFeedback />} />
+          <Route path="profile" element={<HospitalProfilePage />} />
         </Route>
 
         {/* Admin Portal Routes */}

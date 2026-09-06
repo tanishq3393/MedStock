@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { useNavigate } from 'react-router-dom';
 import { 
   FileCheck2, 
   Check, 
@@ -30,9 +31,10 @@ import toast from 'react-hot-toast';
 
 export const AdminVerification = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { hospitals, isLoading } = useSelector((state) => state.admin);
 
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'verified' | 'rejected'
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'verified' | 'rejected' | 'suspended'
   const [searchTerm, setSearchTerm] = useState('');
 
   const [verifyTarget, setVerifyTarget] = useState(null);
@@ -85,6 +87,7 @@ export const AdminVerification = () => {
   const pendingCount = hospitals.filter((h) => h.status === 'pending').length;
   const verifiedCount = hospitals.filter((h) => h.status === 'verified').length;
   const rejectedCount = hospitals.filter((h) => h.status === 'rejected').length;
+  const suspendedCount = hospitals.filter((h) => h.status === 'suspended').length;
 
   return (
     <div className="space-y-6">
@@ -157,6 +160,18 @@ export const AdminVerification = () => {
             <X className="w-3.5 h-3.5" />
             <span>Non-Compliant ({rejectedCount})</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('suspended')}
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'suspended'
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5" />
+            <span>Suspended ({suspendedCount})</span>
+          </button>
         </div>
 
         <div className="relative w-full sm:w-72">
@@ -193,7 +208,11 @@ export const AdminVerification = () => {
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {filteredHospitals.length > 0 ? (
                   filteredHospitals.map((hosp) => (
-                    <tr key={hosp.id} className="hover:bg-teal-50/20 transition-colors group">
+                    <tr
+                      key={hosp.id}
+                      onClick={() => navigate(`/admin/hospital-details?hospitalId=${encodeURIComponent(hosp.id)}`)}
+                      className="hover:bg-teal-50/20 transition-colors group cursor-pointer"
+                    >
                       
                       {/* Hospital Identity */}
                       <td className="px-5 py-4">
@@ -219,7 +238,7 @@ export const AdminVerification = () => {
                           {(hosp.documents || []).map((doc, idx) => (
                             <button
                               key={idx}
-                              onClick={() => setInspectDoc(doc)}
+                              onClick={(event) => { event.stopPropagation(); setInspectDoc(doc); }}
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-semibold bg-slate-100 hover:bg-teal-50 hover:text-teal-800 text-slate-700 border border-slate-200 transition-colors"
                               title="Click to view full statutory certificate"
                             >
@@ -240,14 +259,14 @@ export const AdminVerification = () => {
                         {hosp.status === 'pending' ? (
                           <div className="flex items-center justify-center gap-2">
                             <button
-                              onClick={() => setVerifyTarget(hosp)}
+                              onClick={(event) => { event.stopPropagation(); setVerifyTarget(hosp); }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all"
                             >
                               <Check className="w-3.5 h-3.5" />
                               <span>Authorize</span>
                             </button>
                             <button
-                              onClick={() => setRejectTarget(hosp)}
+                              onClick={(event) => { event.stopPropagation(); setRejectTarget(hosp); }}
                               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs transition-all"
                             >
                               <X className="w-3.5 h-3.5" />

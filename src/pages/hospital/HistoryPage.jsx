@@ -68,7 +68,7 @@ export const HistoryPage = () => {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `SmartMediShare_${activeTab}_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `SmartMediShare_${activeTab === 'sales' ? 'My_Sales' : 'My_Purchases'}_Ledger_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -93,7 +93,7 @@ export const HistoryPage = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Comprehensive audit record of medicine sales and procurements across partner health facilities.
+            Comprehensive audit record of my sales and my purchases across partner health facilities.
           </p>
         </div>
 
@@ -120,7 +120,7 @@ export const HistoryPage = () => {
               }`}
             >
               <TrendingUp className="w-4 h-4" />
-              <span>Surplus Sales ({salesHistory.length})</span>
+              <span>My Sales ({salesHistory.length})</span>
             </button>
 
             <button
@@ -132,7 +132,7 @@ export const HistoryPage = () => {
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
-              <span>Procurement Inflows ({purchasesHistory.length})</span>
+              <span>My Purchases ({purchasesHistory.length})</span>
             </button>
           </div>
 

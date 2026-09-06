@@ -14,7 +14,7 @@ export const StatusBadge = ({ status, className = '' }) => {
   } else if (['pending', 'in transit', 'dispatched', 'in transit to bio-centre', 'pending pickup'].includes(normalized)) {
     styles = 'bg-amber-50 text-amber-700 border-amber-200';
     dotColor = 'bg-amber-500';
-  } else if (['rejected', 'failed', 'cancelled'].includes(normalized)) {
+  } else if (['rejected', 'failed', 'cancelled', 'suspended'].includes(normalized)) {
     styles = 'bg-rose-50 text-rose-700 border-rose-200';
     dotColor = 'bg-rose-500';
   } else if (['ordered'].includes(normalized)) {

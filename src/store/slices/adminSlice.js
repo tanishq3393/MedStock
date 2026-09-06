@@ -33,6 +33,22 @@ export const rejectHospitalAction = createAsyncThunk('admin/rejectHospital', asy
   }
 });
 
+export const suspendHospitalAction = createAsyncThunk('admin/suspendHospital', async ({ hospitalId, reason }, { rejectWithValue }) => {
+  try {
+    return await adminService.suspendHospital(hospitalId, reason);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
+export const reactivateHospitalAction = createAsyncThunk('admin/reactivateHospital', async (hospitalId, { rejectWithValue }) => {
+  try {
+    return await adminService.reactivateHospital(hospitalId);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 export const fetchHospitalDetails = createAsyncThunk('admin/fetchHospitalDetails', async (hospitalId, { rejectWithValue }) => {
   try {
     return await adminService.getHospitalDetails(hospitalId);
@@ -155,6 +171,16 @@ const adminSlice = createSlice({
         if (state.selectedHospital?.id === action.payload.id) {
           state.selectedHospital = action.payload;
         }
+      })
+      .addCase(suspendHospitalAction.fulfilled, (state, action) => {
+        const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
+        if (index !== -1) state.hospitals[index] = action.payload;
+        if (state.selectedHospital?.id === action.payload.id) state.selectedHospital = action.payload;
+      })
+      .addCase(reactivateHospitalAction.fulfilled, (state, action) => {
+        const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
+        if (index !== -1) state.hospitals[index] = action.payload;
+        if (state.selectedHospital?.id === action.payload.id) state.selectedHospital = action.payload;
       })
 
       // Details

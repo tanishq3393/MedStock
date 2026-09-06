@@ -23,10 +23,11 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { logoutUser, setUserSession } from '../../store/slices/authSlice';
+import { getStoredItem, setStoredItem, KEYS } from '../../services/storage';
 import toast from 'react-hot-toast';
 
 export const Navbar = () => {
-  const { isAuthenticated, user, role } = useSelector((state) => state.auth);
+  const { isAuthenticated, user, role, token } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
@@ -34,6 +35,8 @@ export const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [editFormData, setEditFormData] = useState({});
 
   const notifications = [
     {
@@ -93,6 +96,37 @@ export const Navbar = () => {
     }));
     toast.success(`Switched active portal to ${hospitalName}`);
     setUserDropdownOpen(false);
+  };
+
+  const openEditProfile = () => {
+    setEditFormData({
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      registrationNo: user?.registrationNo || '',
+      city: user?.city || '',
+      state: user?.state || '',
+    });
+    setEditProfileOpen(true);
+  };
+
+  const handleProfileChange = (event) => {
+    const { name, value } = event.target;
+    setEditFormData((current) => ({ ...current, [name]: value }));
+  };
+
+  const handleSaveProfile = (event) => {
+    event.preventDefault();
+    const updatedUser = { ...user, ...editFormData };
+    dispatch(setUserSession({ user: updatedUser, token: token || 'mock-jwt-token' }));
+
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const updatedHospitals = hospitals.map((hospital) => (
+      hospital.id === user?.id ? { ...hospital, ...editFormData } : hospital
+    ));
+    setStoredItem(KEYS.HOSPITALS, updatedHospitals);
+    setEditProfileOpen(false);
+    toast.success('Hospital profile updated');
   };
 
   const dashboardPath = role === 'admin' ? '/admin/dashboard' : '/hospital/dashboard';
@@ -231,6 +265,10 @@ export const Navbar = () => {
               <div className="relative">
                 <button
                   onClick={() => {
+                    if (role === 'hospital') {
+                      navigate('/hospital/profile');
+                      return;
+                    }
                     setUserDropdownOpen(!userDropdownOpen);
                     setNotificationOpen(false);
                   }}
@@ -265,6 +303,16 @@ export const Navbar = () => {
                       <p className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">Active Workspace</p>
                       <p className="text-xs font-extrabold text-slate-900 mt-0.5">{user?.name || 'Apollo Hospital'}</p>
                       <p className="text-[10px] text-slate-500 truncate">{user?.email}</p>
+                      {role === 'hospital' && (
+                        <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2 pt-2 border-t border-slate-100 text-[10px]">
+                          <span className="text-slate-400">Registration</span>
+                          <span className="text-right font-semibold text-slate-700 truncate">{user?.registrationNo || 'Not provided'}</span>
+                          <span className="text-slate-400">Location</span>
+                          <span className="text-right font-semibold text-slate-700 truncate">{[user?.city, user?.state].filter(Boolean).join(', ') || 'Not provided'}</span>
+                          <span className="text-slate-400">Phone</span>
+                          <span className="text-right font-semibold text-slate-700 truncate">{user?.phone || 'Not provided'}</span>
+                        </div>
+                      )}
                     </div>
 
                     <div className="py-1">
@@ -286,6 +334,17 @@ export const Navbar = () => {
                           <Pill className="w-4 h-4 text-emerald-600" />
                           <span>Pharmacy Inventory</span>
                         </Link>
+                      )}
+
+                      {role === 'hospital' && (
+                        <button
+                          type="button"
+                          onClick={openEditProfile}
+                          className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-primary-600 transition-colors text-left"
+                        >
+                          <Building2 className="w-4 h-4 text-cyan-600" />
+                          <span>View & Edit Hospital Profile</span>
+                        </button>
                       )}
                     </div>
 
@@ -321,6 +380,53 @@ export const Navbar = () => {
                         <span>Sign Out of Session</span>
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {editProfileOpen && role === 'hospital' && (
+                  <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/40 p-4" onClick={() => setEditProfileOpen(false)}>
+                    <form
+                      onSubmit={handleSaveProfile}
+                      onClick={(event) => event.stopPropagation()}
+                      className="w-full max-w-lg rounded-2xl bg-white shadow-2xl border border-slate-200 overflow-hidden"
+                    >
+                      <div className="flex items-start justify-between px-5 py-4 border-b border-slate-100">
+                        <div>
+                          <p className="text-[10px] font-mono font-bold uppercase tracking-wider text-primary-600">Hospital Profile</p>
+                          <h2 className="text-lg font-extrabold text-slate-900 mt-1">Hospital Details</h2>
+                        </div>
+                        <button type="button" onClick={() => setEditProfileOpen(false)} className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close profile editor">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-5">
+                        {[
+                          ['name', 'Hospital name'],
+                          ['email', 'Email address'],
+                          ['phone', 'Phone number'],
+                          ['registrationNo', 'Registration number'],
+                          ['city', 'City'],
+                          ['state', 'State'],
+                        ].map(([field, label]) => (
+                          <label key={field} className="space-y-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+                            <input
+                              name={field}
+                              value={editFormData[field] || ''}
+                              onChange={handleProfileChange}
+                              required={field === 'name' || field === 'email'}
+                              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-primary-400 focus:bg-white focus:ring-2 focus:ring-primary-100"
+                            />
+                          </label>
+                        ))}
+                      </div>
+
+                      <div className="flex justify-end gap-2 px-5 py-4 bg-slate-50 border-t border-slate-100">
+                        <button type="button" onClick={() => setEditProfileOpen(false)} className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white text-xs font-bold text-slate-600 hover:bg-slate-100">Cancel</button>
+                        <button type="submit" className="px-3.5 py-2 rounded-xl bg-primary-600 text-xs font-bold text-white hover:bg-primary-700">Save Changes</button>
+                      </div>
+                    </form>
                   </div>
                 )}
               </div>

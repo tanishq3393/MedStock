@@ -234,6 +234,7 @@ export const AdminMedicineData = () => {
                     <th className="px-4 py-3.5 text-left">Medicine & Formulation</th>
                     <th className="px-3 py-3.5 text-left">Hospital Provider</th>
                     <th className="px-3 py-3.5 text-left">Storage Protocol</th>
+                    <th className="px-3 py-3.5 text-left">Mfg Date</th>
                     <th className="px-3 py-3.5 text-left">Expiry Date</th>
                     <th className="px-3 py-3.5 text-center">Batch Qty</th>
                     <th className="px-3 py-3.5 text-right">Price / Concession</th>
@@ -264,6 +265,11 @@ export const AdminMedicineData = () => {
                             <ThermometerSnowflake className="w-3 h-3 text-sky-600" />
                             {med.storageType}
                           </span>
+                        </td>
+
+                        {/* Mfg Date */}
+                        <td className="px-3 py-3.5 font-medium text-slate-600 font-mono">
+                          {med.mfgDate || '2023-11-15'}
                         </td>
 
                         {/* Expiry */}
@@ -301,11 +307,12 @@ export const AdminMedicineData = () => {
                             </button>
                           </div>
                         </td>
+
                       </tr>
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="7" className="px-6 py-12 text-center text-slate-400">
+                      <td colSpan="8" className="px-6 py-12 text-center text-slate-400">
                         <Boxes className="w-8 h-8 mx-auto mb-2 opacity-40" />
                         <p className="font-bold text-slate-700">No medicines recorded for this hospital</p>
                         <p className="text-xs text-slate-400 mt-1">Select a different hospital or clear search terms.</p>

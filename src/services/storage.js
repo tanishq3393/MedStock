@@ -26,8 +26,35 @@ export const initializeStorage = () => {
   if (!localStorage.getItem(KEYS.HOSPITALS)) {
     localStorage.setItem(KEYS.HOSPITALS, JSON.stringify(INITIAL_HOSPITALS));
   }
-  if (!localStorage.getItem(KEYS.MEDICINES)) {
+  const storedMedicines = localStorage.getItem(KEYS.MEDICINES);
+  if (!storedMedicines) {
     localStorage.setItem(KEYS.MEDICINES, JSON.stringify(INITIAL_MEDICINES));
+  } else {
+    try {
+      const parsed = JSON.parse(storedMedicines);
+      let modified = false;
+      const updated = parsed.map((m) => {
+        if (!m.mfgDate) {
+          modified = true;
+          const match = INITIAL_MEDICINES.find((init) => init.id === m.id);
+          if (match && match.mfgDate) {
+            return { ...m, mfgDate: match.mfgDate };
+          }
+          if (m.expiryDate) {
+            const d = new Date(m.expiryDate);
+            d.setFullYear(d.getFullYear() - 1);
+            return { ...m, mfgDate: d.toISOString().split('T')[0] };
+          }
+          return { ...m, mfgDate: '2023-11-15' };
+        }
+        return m;
+      });
+      if (modified) {
+        localStorage.setItem(KEYS.MEDICINES, JSON.stringify(updated));
+      }
+    } catch (e) {
+      console.error('Failed to migrate medicines mfgDate', e);
+    }
   }
   if (!localStorage.getItem(KEYS.REQUESTS)) {
     localStorage.setItem(KEYS.REQUESTS, JSON.stringify(INITIAL_REQUESTS));
@@ -35,8 +62,20 @@ export const initializeStorage = () => {
   if (!localStorage.getItem(KEYS.TRACKING)) {
     localStorage.setItem(KEYS.TRACKING, JSON.stringify(INITIAL_TRACKING));
   }
-  if (!localStorage.getItem(KEYS.PAYMENTS)) {
+  const storedPayments = localStorage.getItem(KEYS.PAYMENTS);
+  if (!storedPayments) {
     localStorage.setItem(KEYS.PAYMENTS, JSON.stringify(INITIAL_PAYMENTS));
+  } else {
+    try {
+      const parsedPayments = JSON.parse(storedPayments);
+      const existingPaymentIds = new Set(parsedPayments.map((payment) => payment.id));
+      const missingPayments = INITIAL_PAYMENTS.filter((payment) => !existingPaymentIds.has(payment.id));
+      if (missingPayments.length > 0) {
+        localStorage.setItem(KEYS.PAYMENTS, JSON.stringify([...parsedPayments, ...missingPayments]));
+      }
+    } catch (e) {
+      console.error('Failed to migrate payment history', e);
+    }
   }
   if (!localStorage.getItem(KEYS.DISPOSALS)) {
     localStorage.setItem(KEYS.DISPOSALS, JSON.stringify(INITIAL_DISPOSALS));
@@ -62,6 +101,11 @@ export const setStoredItem = (key, value) => {
   } catch (e) {
     console.error(`Error writing ${key} to storage:`, e);
   }
+};
+
+export const isHospitalSuspended = (hospitalId) => {
+  const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+  return hospitals.some((hospital) => hospital.id === hospitalId && hospital.status?.toLowerCase() === 'suspended');
 };
 
 export { KEYS };

@@ -21,11 +21,13 @@ import RazorpayMockModal from '../../components/common/RazorpayMockModal';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { isHospitalSuspended } from '../../services/storage';
 
 export const MyRequests = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { outgoingRequests, isLoading } = useSelector((state) => state.requests);
+  const isSuspended = isHospitalSuspended(user?.id || 'hosp-1');
 
   const [activePaymentReq, setActivePaymentReq] = useState(null);
   const [rejectReasonModal, setRejectReasonModal] = useState(null);
@@ -38,6 +40,9 @@ export const MyRequests = () => {
 
   const handlePaymentSuccess = async ({ requestId, paymentMethod }) => {
     const result = await dispatch(payForRequest({ requestId, paymentMethod }));
+    if (result.meta.requestStatus === 'rejected') {
+      throw new Error(result.payload || 'Payment could not be processed');
+    }
     return result.payload;
   };
 
@@ -179,7 +184,8 @@ export const MyRequests = () => {
 
                     {req.status === 'accepted' && (
                       <button
-                        onClick={() => setActivePaymentReq(req)}
+                        onClick={() => !isSuspended && setActivePaymentReq(req)}
+                        disabled={isSuspended}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-105"
                       >
                         <CreditCard className="w-3.5 h-3.5" />

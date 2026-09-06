@@ -22,7 +22,8 @@ export const MedicineDetailDrawer = ({
   isOpen, 
   onClose, 
   medicine, 
-  onRequestSubmit 
+  onRequestSubmit,
+  isRequestDisabled = false
 }) => {
   if (!isOpen || !medicine) return null;
 
@@ -151,7 +152,7 @@ export const MedicineDetailDrawer = ({
                   <span className="font-mono font-bold text-slate-800">{medicine.batchNo || 'LOT-2024-X'}</span>
                 </div>
 
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1 col-span-2">
                   <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Storage Protocol</span>
                   <span className={`font-mono font-bold flex items-center gap-1 ${
                     isColdChain ? 'text-primary-700' : 'text-slate-800'
@@ -159,6 +160,11 @@ export const MedicineDetailDrawer = ({
                     {isColdChain && <Thermometer className="w-3.5 h-3.5 text-cyan-600" />}
                     {medicine.storageType}
                   </span>
+                </div>
+
+                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
+                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Mfg Date</span>
+                  <span className="font-mono font-bold text-slate-700">{medicine.mfgDate || '2023-11-15'}</span>
                 </div>
 
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
@@ -268,6 +274,12 @@ export const MedicineDetailDrawer = ({
               />
             </div>
 
+            {isRequestDisabled && (
+              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
+                This hospital is suspended and cannot submit medicine exchange requests.
+              </div>
+            )}
+
             <div className="p-3 rounded-xl bg-slate-900 text-white flex items-center justify-between text-xs">
               <span className="text-slate-400">Escrow Total:</span>
               <span className="text-base font-extrabold text-cyan-300 font-mono">
@@ -277,7 +289,7 @@ export const MedicineDetailDrawer = ({
 
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isRequestDisabled}
               className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-lg shadow-primary-600/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] disabled:opacity-75"
             >
               <Send className="w-4 h-4" />

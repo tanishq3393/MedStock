@@ -10,6 +10,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     power: '',
     category: 'Critical Care / Antibiotic',
     storageType: 'Room Temperature (15°C - 25°C)',
+    mfgDate: '',
     expiryDate: '',
     batchNo: '',
     manufacturer: '',
@@ -29,6 +30,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         power: initialData.power || '',
         category: initialData.category || 'Critical Care / Antibiotic',
         storageType: initialData.storageType || 'Room Temperature (15°C - 25°C)',
+        mfgDate: initialData.mfgDate || '',
         expiryDate: initialData.expiryDate || '',
         batchNo: initialData.batchNo || '',
         manufacturer: initialData.manufacturer || '',
@@ -44,6 +46,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         power: '',
         category: 'Critical Care / Antibiotic',
         storageType: 'Room Temperature (15°C - 25°C)',
+        mfgDate: '',
         expiryDate: '',
         batchNo: 'BAT-' + Math.floor(10000 + Math.random() * 90000),
         manufacturer: '',
@@ -208,17 +211,30 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
           </div>
         </div>
 
-        {/* Row 4: Manufacturer & Expiry Date */}
+        {/* Row 4: Manufacturer */}
+        <div>
+          <label className="block text-xs font-bold text-slate-700 mb-1">
+            Manufacturer Pharma House
+          </label>
+          <input
+            type="text"
+            placeholder="e.g. Sanofi India, AstraZeneca, Cipla"
+            value={formData.manufacturer}
+            onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+          />
+        </div>
+
+        {/* Row 5: Manufacturing Date beside Expiry Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Manufacturer Pharma House
+              Manufacturing Date (MFG)
             </label>
             <input
-              type="text"
-              placeholder="e.g. Sanofi India, AstraZeneca, Cipla"
-              value={formData.manufacturer}
-              onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+              type="date"
+              value={formData.mfgDate}
+              onChange={(e) => setFormData({ ...formData, mfgDate: e.target.value })}
               className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             />
           </div>

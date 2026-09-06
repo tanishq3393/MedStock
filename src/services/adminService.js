@@ -1,6 +1,11 @@
 import { getStoredItem, setStoredItem, KEYS } from './storage';
 import { ADMIN_ANALYTICS } from './mockData';
 
+const assertAdminSession = () => {
+  const session = getStoredItem(KEYS.AUTH, null);
+  if (session?.user?.role !== 'admin') throw new Error('Admin authorization is required for this action');
+};
+
 export const adminService = {
   // 1. Dashboard
   async getDashboard() {
@@ -61,6 +66,49 @@ export const adminService = {
     hospitals[index].rejectionReason = reason || 'Documentation does not meet Ministry of Health & FW compliance guidelines.';
     hospitals[index].verifiedDate = null;
 
+    setStoredItem(KEYS.HOSPITALS, hospitals);
+    return hospitals[index];
+  },
+
+  async suspendHospital(hospitalId, reason) {
+    await new Promise((r) => setTimeout(r, 400));
+    assertAdminSession();
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) throw new Error('Suspension reason is required');
+
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const index = hospitals.findIndex((h) => h.id === hospitalId);
+    if (index === -1) throw new Error('Hospital not found');
+
+    const hospital = hospitals[index];
+    hospitals[index] = {
+      ...hospital,
+      status: 'suspended',
+      statusBeforeSuspension: hospital.status === 'suspended' ? hospital.statusBeforeSuspension || 'verified' : hospital.status,
+      suspensionReason: trimmedReason,
+      suspendedAt: new Date().toISOString(),
+    };
+    setStoredItem(KEYS.HOSPITALS, hospitals);
+    return hospitals[index];
+  },
+
+  async reactivateHospital(hospitalId) {
+    await new Promise((r) => setTimeout(r, 400));
+    assertAdminSession();
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const index = hospitals.findIndex((h) => h.id === hospitalId);
+    if (index === -1) throw new Error('Hospital not found');
+
+    const hospital = hospitals[index];
+    hospitals[index] = {
+      ...hospital,
+      status: hospital.statusBeforeSuspension && hospital.statusBeforeSuspension !== 'suspended'
+        ? hospital.statusBeforeSuspension
+        : 'verified',
+      statusBeforeSuspension: null,
+      suspensionReason: null,
+      suspendedAt: null,
+    };
     setStoredItem(KEYS.HOSPITALS, hospitals);
     return hospitals[index];
   },

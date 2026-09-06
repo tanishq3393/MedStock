@@ -25,9 +25,9 @@ export const createNewRequest = createAsyncThunk('requests/createRequest', async
   }
 });
 
-export const respondToRequest = createAsyncThunk('requests/respond', async ({ requestId, action, reason }, { rejectWithValue }) => {
+export const respondToRequest = createAsyncThunk('requests/respond', async ({ requestId, action, reason, hospitalId }, { rejectWithValue }) => {
   try {
-    return await hospitalService.handleRequest(requestId, action, reason);
+    return await hospitalService.handleRequest(requestId, action, reason, hospitalId);
   } catch (err) {
     return rejectWithValue(err.message);
   }

@@ -19,11 +19,13 @@ import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { isHospitalSuspended } from '../../services/storage';
 
 export const IncomingRequests = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { incomingRequests, isLoading } = useSelector((state) => state.requests);
+  const isSuspended = isHospitalSuspended(user?.id || 'hosp-1');
 
   const [acceptModalReq, setAcceptModalReq] = useState(null);
   const [rejectModalReq, setRejectModalReq] = useState(null);
@@ -38,7 +40,7 @@ export const IncomingRequests = () => {
   const handleConfirmAccept = async () => {
     if (!acceptModalReq) return;
     try {
-      await dispatch(respondToRequest({ requestId: acceptModalReq.id, action: 'accept' }));
+      await dispatch(respondToRequest({ requestId: acceptModalReq.id, action: 'accept', hospitalId: user?.id || 'hosp-1' })).unwrap();
       toast.success(`Accepted requisition from ${acceptModalReq.fromHospitalName}. Earmarked inventory lot.`);
       setAcceptModalReq(null);
     } catch (err) {
@@ -53,8 +55,9 @@ export const IncomingRequests = () => {
       await dispatch(respondToRequest({ 
         requestId: rejectModalReq.id, 
         action: 'reject', 
-        reason: rejectReason || 'Stock reserved for critical inpatient use.'
-      }));
+        reason: rejectReason || 'Stock reserved for critical inpatient use.',
+        hospitalId: user?.id || 'hosp-1'
+      })).unwrap();
       toast.success(`Declined requisition from ${rejectModalReq.fromHospitalName}`);
       setRejectModalReq(null);
       setRejectReason('');
@@ -189,7 +192,8 @@ export const IncomingRequests = () => {
                     {isPending ? (
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => setAcceptModalReq(req)}
+                          onClick={() => !isSuspended && setAcceptModalReq(req)}
+                          disabled={isSuspended}
                           className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-105"
                         >
                           <Check className="w-3.5 h-3.5" />
@@ -197,7 +201,8 @@ export const IncomingRequests = () => {
                         </button>
 
                         <button
-                          onClick={() => setRejectModalReq(req)}
+                          onClick={() => !isSuspended && setRejectModalReq(req)}
+                          disabled={isSuspended}
                           className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs transition-all"
                         >
                           <X className="w-3.5 h-3.5" />

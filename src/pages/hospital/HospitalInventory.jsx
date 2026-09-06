@@ -29,33 +29,56 @@ import MedicineModal from '../../components/forms/MedicineModal';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
+import { isHospitalSuspended } from '../../services/storage';
 
 export const HospitalInventory = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { inventory, isLoading } = useSelector((state) => state.hospital);
+  const isSuspended = isHospitalSuspended(user?.id || 'hosp-1');
 
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStorage, setSelectedStorage] = useState('all');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('expiry'); // 'expiry' | 'quantity' | 'name' | 'value'
+  const [sortBy, setSortBy] = useState('expiry'); // 'expiry' | 'mfg' | 'quantity' | 'name' | 'value'
   const [sortOrder, setSortOrder] = useState('asc'); // 'asc' | 'desc'
-  const [selectedIds, setSelectedIds] = useState([]);
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingMedicine, setEditingMedicine] = useState(null);
   const [deleteConfirmMed, setDeleteConfirmMed] = useState(null);
+
+  const getMfgDate = (med) => {
+    if (med.mfgDate) return med.mfgDate;
+    if (med.expiryDate) {
+      try {
+        const d = new Date(med.expiryDate);
+        d.setFullYear(d.getFullYear() - 1);
+        return d.toISOString().split('T')[0];
+      } catch {
+        return '2023-11-15';
+      }
+    }
+    return '2023-11-15';
+  };
 
   useEffect(() => {
     dispatch(fetchInventory(user?.id || 'hosp-1'));
   }, [dispatch, user]);
 
   const handleOpenAdd = () => {
+    if (isSuspended) {
+      toast.error('Your hospital account is currently suspended. You cannot perform transactions or operational activities.');
+      return;
+    }
     setEditingMedicine(null);
     setModalOpen(true);
   };
 
   const handleOpenEdit = (med) => {
+    if (isSuspended) {
+      toast.error('Your hospital account is currently suspended. You cannot perform transactions or operational activities.');
+      return;
+    }
     setEditingMedicine(med);
     setModalOpen(true);
   };
@@ -81,6 +104,10 @@ export const HospitalInventory = () => {
 
   const handleDelete = async () => {
     if (!deleteConfirmMed) return;
+    if (isSuspended) {
+      toast.error('Your hospital account is currently suspended. You cannot perform transactions or operational activities.');
+      return;
+    }
     try {
       await dispatch(deleteMedicineItem(deleteConfirmMed.id));
       toast.success(`Removed ${deleteConfirmMed.brandName} from inventory`);
@@ -136,10 +163,12 @@ export const HospitalInventory = () => {
   // Filter & Sort medicines
   const filteredMedicines = inventory
     .filter((med) => {
+      const mfg = getMfgDate(med);
       const matchesSearch = med.brandName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         med.genericName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         med.power.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (med.batchNo && med.batchNo.toLowerCase().includes(searchTerm.toLowerCase()));
+        (med.batchNo && med.batchNo.toLowerCase().includes(searchTerm.toLowerCase())) ||
+        (mfg && mfg.toLowerCase().includes(searchTerm.toLowerCase()));
       
       const matchesStorage = selectedStorage === 'all' || med.storageType.includes(selectedStorage);
       
@@ -154,6 +183,8 @@ export const HospitalInventory = () => {
         comparison = a.brandName.localeCompare(b.brandName);
       } else if (sortBy === 'quantity') {
         comparison = a.quantity - b.quantity;
+      } else if (sortBy === 'mfg') {
+        comparison = new Date(getMfgDate(a)) - new Date(getMfgDate(b));
       } else if (sortBy === 'expiry') {
         comparison = new Date(a.expiryDate) - new Date(b.expiryDate);
       } else if (sortBy === 'value') {
@@ -171,44 +202,35 @@ export const HospitalInventory = () => {
     }
   };
 
-  const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedIds(filteredMedicines.map((m) => m.id));
-    } else {
-      setSelectedIds([]);
-    }
-  };
-
-  const handleSelectRow = (id) => {
-    if (selectedIds.includes(id)) {
-      setSelectedIds(selectedIds.filter((item) => item !== id));
-    } else {
-      setSelectedIds([...selectedIds, id]);
-    }
-  };
-
-  const handleExportSelected = () => {
-    if (selectedIds.length === 0) {
-      toast.error('Select at least one medicine to export');
+  const handleExportCsv = () => {
+    const items = filteredMedicines.length > 0 ? filteredMedicines : inventory;
+    if (items.length === 0) {
+      toast.error('No medicines available to export');
       return;
     }
-    const items = inventory.filter((m) => selectedIds.includes(m.id));
-    const headers = ['Brand Name', 'Dosage', 'Batch', 'Quantity', 'Expiry Date', 'MRP', 'Concession %', 'Storage'];
-    const rows = items.map((i) => [
-      `"${i.brandName}"`,
-      `"${i.power}"`,
-      `"${i.batchNo || 'N/A'}"`,
-      i.quantity,
-      i.expiryDate,
-      i.unitOriginalPrice,
-      i.concessionPercent || 0,
-      `"${i.storageType}"`
-    ]);
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const headers = ['Brand Name', 'Dosage', 'Batch', 'Storage', 'Mfg Date', 'Expiry Date', 'Stock Qty', 'MRP', 'Concession %', 'Final Price'];
+    const rows = items.map((i) => {
+      const finalPrice = Math.round(
+        i.unitOriginalPrice * (1 - (i.concessionPercent || 0) / 100) * 100
+      ) / 100;
+      return [
+        `"${i.brandName}"`,
+        `"${i.power}"`,
+        `"${i.batchNo || 'N/A'}"`,
+        `"${i.storageType}"`,
+        `"${getMfgDate(i)}"`,
+        `"${i.expiryDate}"`,
+        i.quantity,
+        i.unitOriginalPrice,
+        i.concessionPercent || 0,
+        finalPrice
+      ];
+    });
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `SmartMediShare_Selected_Inventory_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `SmartMediShare_Hospital_Inventory_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -235,18 +257,18 @@ export const HospitalInventory = () => {
         </div>
 
         <div className="flex items-center gap-2.5">
-          {selectedIds.length > 0 && (
-            <button
-              onClick={handleExportSelected}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-sm"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span>Export {selectedIds.length} Selected</span>
-            </button>
-          )}
+          <button
+            onClick={handleExportCsv}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-sm hover:border-slate-400"
+            title="Export ledger to CSV"
+          >
+            <Download className="w-4 h-4 text-slate-500" />
+            <span>Export CSV</span>
+          </button>
 
           <button
             onClick={handleOpenAdd}
+            disabled={isSuspended}
             className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/25 transition-all hover:scale-[1.02]"
           >
             <PlusCircle className="w-4 h-4" />
@@ -315,14 +337,6 @@ export const HospitalInventory = () => {
             <table className="min-w-full divide-y divide-slate-200 text-xs">
               <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="px-4 py-3.5 text-center w-10">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.length > 0 && selectedIds.length === filteredMedicines.length}
-                      onChange={handleSelectAll}
-                      className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                    />
-                  </th>
                   <th 
                     onClick={() => toggleSort('name')}
                     className="px-4 py-3.5 text-left cursor-pointer hover:text-primary-700 select-none"
@@ -334,6 +348,15 @@ export const HospitalInventory = () => {
                   </th>
                   <th className="px-3 py-3.5 text-left">Dosage & Batch</th>
                   <th className="px-3 py-3.5 text-left">Storage SLA</th>
+                  <th 
+                    onClick={() => toggleSort('mfg')}
+                    className="px-3 py-3.5 text-left cursor-pointer hover:text-primary-700 select-none"
+                  >
+                    <div className="flex items-center gap-1">
+                      <span>Mfg Date</span>
+                      <ArrowUpDown className="w-3 h-3 text-slate-400" />
+                    </div>
+                  </th>
                   <th 
                     onClick={() => toggleSort('expiry')}
                     className="px-3 py-3.5 text-left cursor-pointer hover:text-primary-700 select-none"
@@ -373,27 +396,14 @@ export const HospitalInventory = () => {
                     const finalPrice = Math.round(
                       med.unitOriginalPrice * (1 - (med.concessionPercent || 0) / 100) * 100
                     ) / 100;
-                    const totalVal = Math.round(finalPrice * med.quantity);
-                    const isSelected = selectedIds.includes(med.id);
                     const isCold = med.storageType?.toLowerCase().includes('cold');
+                    const mfgDate = getMfgDate(med);
 
                     return (
                       <tr 
                         key={med.id} 
-                        className={`transition-colors ${
-                          isSelected ? 'bg-primary-50/40' : 'hover:bg-slate-50/80'
-                        }`}
+                        className="hover:bg-slate-50/80 transition-colors"
                       >
-                        {/* Checkbox */}
-                        <td className="px-4 py-3.5 text-center">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => handleSelectRow(med.id)}
-                            className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
-                          />
-                        </td>
-
                         {/* Medicine Name & Generic */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
@@ -431,9 +441,18 @@ export const HospitalInventory = () => {
                           </span>
                         </td>
 
+                        {/* Mfg Date */}
+                        <td className="px-3 py-3.5">
+                          <div className="font-bold text-slate-700 font-mono text-xs">{mfgDate}</div>
+                          <span className="inline-flex items-center gap-1 text-[9px] font-semibold text-slate-400 mt-0.5">
+                            <Calendar className="w-2.5 h-2.5 text-slate-400" />
+                            Batch Mfg
+                          </span>
+                        </td>
+
                         {/* Expiry Countdown */}
                         <td className="px-3 py-3.5">
-                          <div className="font-bold text-slate-800 font-mono">{med.expiryDate}</div>
+                          <div className="font-bold text-slate-800 font-mono text-xs">{med.expiryDate}</div>
                           <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold border mt-0.5 ${expiryInfo.color}`}>
                             <Clock className="w-2.5 h-2.5" />
                             {expiryInfo.badge}
@@ -474,7 +493,8 @@ export const HospitalInventory = () => {
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              onClick={() => setDeleteConfirmMed(med)}
+                              onClick={() => !isSuspended && setDeleteConfirmMed(med)}
+                              disabled={isSuspended}
                               className="p-1.5 rounded-lg text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors"
                               title="Delete Record"
                             >

@@ -1,5 +1,18 @@
-import { getStoredItem, setStoredItem, KEYS } from './storage';
+import { getStoredItem, setStoredItem, KEYS, isHospitalSuspended } from './storage';
 import { HOSPITAL_ANALYTICS } from './mockData';
+
+const SUSPENDED_HOSPITAL_ERROR = 'Your hospital account is currently suspended. You cannot perform transactions or operational activities.';
+
+const assertHospitalActive = (requestedHospitalId) => {
+  const session = getStoredItem(KEYS.AUTH, null);
+  const authenticatedHospitalId = session?.user?.role === 'hospital' ? session.user.id : requestedHospitalId;
+  if (session?.user?.role === 'hospital' && requestedHospitalId && authenticatedHospitalId !== requestedHospitalId) {
+    throw new Error('You are not authorized to act for this hospital');
+  }
+  if (isHospitalSuspended(authenticatedHospitalId)) {
+    throw new Error(SUSPENDED_HOSPITAL_ERROR);
+  }
+};
 
 export const hospitalService = {
   // 1. Dashboard analytics
@@ -38,6 +51,7 @@ export const hospitalService = {
 
   async addMedicine(medicineData) {
     await new Promise((r) => setTimeout(r, 350));
+    assertHospitalActive(medicineData.hospitalId);
     const medicines = getStoredItem(KEYS.MEDICINES, []);
 
     const newMed = {
@@ -60,6 +74,7 @@ export const hospitalService = {
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const index = medicines.findIndex((m) => m.id === id);
     if (index === -1) throw new Error('Medicine not found');
+    assertHospitalActive(medicines[index].hospitalId);
 
     medicines[index] = {
       ...medicines[index],
@@ -76,6 +91,9 @@ export const hospitalService = {
   async deleteMedicine(id) {
     await new Promise((r) => setTimeout(r, 250));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const medicine = medicines.find((m) => m.id === id);
+    if (!medicine) throw new Error('Medicine not found');
+    assertHospitalActive(medicine.hospitalId);
     const filtered = medicines.filter((m) => m.id !== id);
     setStoredItem(KEYS.MEDICINES, filtered);
     return true;
@@ -113,6 +131,7 @@ export const hospitalService = {
   // 4. Requests (Outgoing & Incoming)
   async createRequest(reqData) {
     await new Promise((r) => setTimeout(r, 400));
+    assertHospitalActive(reqData.fromHospitalId);
     const requests = getStoredItem(KEYS.REQUESTS, []);
 
     const newReq = {
@@ -155,11 +174,12 @@ export const hospitalService = {
     return requests.filter((r) => r.toHospitalId === hospitalId || !hospitalId);
   },
 
-  async handleRequest(requestId, action, reason = '') {
+  async handleRequest(requestId, action, reason = '', hospitalId) {
     await new Promise((r) => setTimeout(r, 350));
     const requests = getStoredItem(KEYS.REQUESTS, []);
     const index = requests.findIndex((r) => r.id === requestId);
     if (index === -1) throw new Error('Request not found');
+    assertHospitalActive(hospitalId || requests[index].toHospitalId);
 
     if (action === 'accept') {
       requests[index].status = 'accepted';
@@ -184,6 +204,7 @@ export const hospitalService = {
     if (index === -1) throw new Error('Request not found');
 
     const req = requests[index];
+    assertHospitalActive(req.fromHospitalId);
     const paymentId = 'pay_' + Math.random().toString(36).substring(2, 11) + 'Xz';
     const orderId = 'order_' + Math.random().toString(36).substring(2, 10);
 

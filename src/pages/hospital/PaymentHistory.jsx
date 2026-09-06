@@ -24,10 +24,12 @@ import toast from 'react-hot-toast';
 export const PaymentHistory = () => {
   const dispatch = useDispatch();
   const { payments, isLoading } = useSelector((state) => state.hospital);
+  const { user } = useSelector((state) => state.auth);
 
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [directionFilter, setDirectionFilter] = useState('ALL');
   const [copiedId, setCopiedId] = useState(null);
 
   useEffect(() => {
@@ -42,16 +44,29 @@ export const PaymentHistory = () => {
   };
 
   const filteredPayments = useMemo(() => {
+    const currentHospitalName = user?.hospitalName || user?.name || 'Apollo Hospital';
+
+    const isCurrentHospital = (hospitalName) =>
+      hospitalName?.toLowerCase().includes(currentHospitalName.toLowerCase()) ||
+      currentHospitalName.toLowerCase().includes(hospitalName?.toLowerCase() || '');
+
     return payments.filter((p) => {
       const matchesSearch = 
         p.transactionId.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.medicineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         (p.razorpayPaymentId && p.razorpayPaymentId.toLowerCase().includes(searchTerm.toLowerCase()));
       
-      const matchesStatus = statusFilter === 'ALL' || p.paymentStatus === statusFilter;
-      return matchesSearch && matchesStatus;
+      const matchesStatus = statusFilter === 'ALL' || p.paymentStatus?.toUpperCase() === statusFilter;
+      const isIncoming = isCurrentHospital(p.sellerHospital);
+      const isOutgoing = isCurrentHospital(p.buyerHospital);
+      const matchesDirection =
+        directionFilter === 'ALL' ||
+        (directionFilter === 'INCOMING' && isIncoming) ||
+        (directionFilter === 'OUTGOING' && isOutgoing);
+
+      return matchesSearch && matchesStatus && matchesDirection;
     });
-  }, [payments, searchTerm, statusFilter]);
+  }, [payments, searchTerm, statusFilter, directionFilter, user]);
 
   const metrics = useMemo(() => {
     const totalVolume = payments.reduce((acc, curr) => acc + (Number(curr.totalPaid) || Number(curr.amount) || 0), 0);
@@ -146,7 +161,7 @@ export const PaymentHistory = () => {
         </div>
       </div>
 
-      {/* Control Bar: Search & Status Filters */}
+      {/* Control Bar: Search & Payment Filters */}
       <div className="bg-white p-3.5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row items-center justify-between gap-3">
         <div className="relative w-full md:w-96">
           <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -161,6 +176,20 @@ export const PaymentHistory = () => {
 
         <div className="flex items-center gap-1.5 w-full md:w-auto overflow-x-auto pb-1 md:pb-0">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1 hidden sm:inline">Filter:</span>
+          {['ALL', 'INCOMING', 'OUTGOING'].map((direction) => (
+            <button
+              key={direction}
+              onClick={() => setDirectionFilter(direction)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                directionFilter === direction
+                  ? 'bg-teal-700 text-white shadow-sm'
+                  : 'bg-slate-100 hover:bg-slate-200/70 text-slate-600'
+              }`}
+            >
+              {direction}
+            </button>
+          ))}
+          <span className="h-5 w-px bg-slate-200 mx-1" />
           {['ALL', 'SUCCESS', 'PAID', 'PENDING'].map((status) => (
             <button
               key={status}
