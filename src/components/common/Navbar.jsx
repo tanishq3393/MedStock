@@ -13,8 +13,6 @@ import {
   Menu, 
   X, 
   ChevronDown,
-  Truck,
-  Layers,
   Sparkles,
   Bell,
   AlertTriangle,
@@ -150,22 +148,20 @@ export const Navbar = () => {
               Home
             </Link>
             <Link 
-              to="/hospital/marketplace" 
-              className={`flex items-center gap-1.5 hover:text-primary-600 transition-colors ${
-                location.pathname.includes('/marketplace') ? 'text-primary-600 font-extrabold' : ''
+              to="/how-it-works" 
+              className={`hover:text-primary-600 transition-colors ${
+                location.pathname === '/how-it-works' ? 'text-primary-600 font-extrabold' : ''
               }`}
             >
-              <Layers className="w-3.5 h-3.5 text-primary-500" />
-              <span>Marketplace</span>
+              How It Works
             </Link>
             <Link 
-              to="/hospital/track" 
-              className={`flex items-center gap-1.5 hover:text-primary-600 transition-colors ${
-                location.pathname.includes('/track') ? 'text-primary-600 font-extrabold' : ''
+              to="/about" 
+              className={`hover:text-primary-600 transition-colors ${
+                location.pathname === '/about' ? 'text-primary-600 font-extrabold' : ''
               }`}
             >
-              <Truck className="w-3.5 h-3.5 text-cyan-600" />
-              <span>Live Track</span>
+              About
             </Link>
           </nav>
 
@@ -515,18 +511,18 @@ export const Navbar = () => {
             Home
           </Link>
           <Link
-            to="/hospital/marketplace"
+            to="/how-it-works"
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2 text-xs font-bold text-slate-700 hover:text-primary-600"
           >
-            Marketplace
+            How It Works
           </Link>
           <Link
-            to="/hospital/track"
+            to="/about"
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2 text-xs font-bold text-slate-700 hover:text-primary-600"
           >
-            Track Shipment
+            About Us
           </Link>
 
           <div className="pt-3 border-t border-slate-100 space-y-2">

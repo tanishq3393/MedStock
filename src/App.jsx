@@ -12,6 +12,17 @@ import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/auth/LoginPage';
 import HospitalSignupPage from './pages/auth/HospitalSignupPage';
 import AdminSignupPage from './pages/auth/AdminSignupPage';
+import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
+import ResetPasswordPage from './pages/auth/ResetPasswordPage';
+import EmailVerificationPage from './pages/auth/EmailVerificationPage';
+
+// Informational & Legal Pages
+import AboutPage from './pages/AboutPage';
+import HowItWorksPage from './pages/HowItWorksPage';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
+import TermsPage from './pages/TermsPage';
+import CookiePreferencesPage from './pages/CookiePreferencesPage';
+import NotFoundPage from './pages/NotFoundPage';
 
 // Hospital Pages
 import HospitalDashboard from './pages/hospital/HospitalDashboard';
@@ -68,12 +79,22 @@ export const App = () => {
       />
 
       <Routes>
-        {/* Public Routes with MainLayout */}
+        {/* Public Informational & Auth Routes with MainLayout */}
         <Route element={<MainLayout />}>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/about" element={<AboutPage />} />
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+          <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/cookie-preferences" element={<CookiePreferencesPage />} />
+
+          {/* Authentication & Security Routes */}
           <Route path="/login" element={<LoginPage />} />
           <Route path="/hospital-signup" element={<HospitalSignupPage />} />
           <Route path="/admin-signup" element={<AdminSignupPage />} />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<EmailVerificationPage />} />
         </Route>
 
         {/* Hospital Portal Routes */}
@@ -117,11 +138,12 @@ export const App = () => {
           <Route path="feedback" element={<AdminFeedback />} />
         </Route>
 
-        {/* Catch-all Fallback */}
-        <Route path="*" element={<Navigate to="/" replace />} />
+        {/* Catch-all 404 Route */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </>
   );
 };
 
 export default App;
+

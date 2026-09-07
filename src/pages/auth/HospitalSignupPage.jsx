@@ -111,8 +111,8 @@ export const HospitalSignupPage = () => {
     try {
       const resultAction = await dispatch(signupHospitalUser(formData));
       if (signupHospitalUser.fulfilled.match(resultAction)) {
-        toast.success('Hospital Registration submitted! Awaiting State Admin verification.');
-        navigate('/hospital/dashboard', { replace: true });
+        toast.success('Account created! Please verify your official contact email.');
+        navigate(`/verify-email?email=${encodeURIComponent(formData.email)}&role=hospital`, { replace: true });
       } else {
         toast.error(resultAction.payload || 'Signup failed');
       }

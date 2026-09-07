@@ -25,6 +25,16 @@ export const calculateMedicineExpiry = (
   quantity = 0,
   minStockThreshold = EXPIRY_THRESHOLDS.LOW_STOCK_MIN_UNITS
 ) => {
+  // Support polymorphic calls where quantity is passed as 2nd parameter
+  let actualMfg = mfgDateStr;
+  let actualQty = quantity;
+  if (typeof mfgDateStr === 'number') {
+    actualQty = mfgDateStr;
+    actualMfg = null;
+  }
+
+  const qty = Number(actualQty) || 0;
+
   if (!expiryDateStr) {
     return {
       status: 'healthy',
@@ -37,7 +47,7 @@ export const calculateMedicineExpiry = (
       isExpired: false,
       isNearExpiry: false,
       isCritical: false,
-      isLowStock: Number(quantity) <= minStockThreshold,
+      isLowStock: qty <= minStockThreshold,
       canBeListed: true,
       canBeDisposed: false,
     };
@@ -48,7 +58,6 @@ export const calculateMedicineExpiry = (
   const diffMs = expDate.getTime() - now.getTime();
   const daysRemaining = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
   const monthsRemaining = Math.max(0, Math.ceil(daysRemaining / 30));
-  const qty = Number(quantity) || 0;
 
   if (daysRemaining <= 0) {
     return {

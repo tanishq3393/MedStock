@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Link, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   Building2, 
@@ -14,24 +14,30 @@ import {
   Sparkles,
   ShieldCheck,
   CheckCircle2,
-  LockKeyhole
+  LockKeyhole,
+  AlertTriangle
 } from 'lucide-react';
 import { loginUser, clearAuthError } from '../../store/slices/authSlice';
-import Modal from '../../components/common/Modal';
 import toast from 'react-hot-toast';
 
 export const LoginPage = () => {
+  const [searchParams] = useSearchParams();
+  const isUnverifiedParam = searchParams.get('unverified') === 'true';
+
   const [activeTab, setActiveTab] = useState('hospital'); // 'hospital' | 'admin'
   const [email, setEmail] = useState('apollo.mumbai@smartmedishare.org');
   const [password, setPassword] = useState('Hospital@123');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
-  const [forgotModalOpen, setForgotModalOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
+  const [showUnverifiedBanner, setShowUnverifiedBanner] = useState(isUnverifiedParam);
 
   const { isLoading, error } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.title = 'MediStock | Institutional Sign In';
+  }, []);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -83,13 +89,6 @@ export const LoginPage = () => {
     }
   };
 
-  const handleForgotSubmit = (e) => {
-    e.preventDefault();
-    toast.success(`Password reset verification link sent to ${forgotEmail}`);
-    setForgotModalOpen(false);
-    setForgotEmail('');
-  };
-
   return (
     <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className="max-w-md w-full space-y-5">
@@ -108,6 +107,27 @@ export const LoginPage = () => {
             Inter-Hospital Logistics & Statutory Medicine Exchange Portal
           </p>
         </div>
+
+        {/* Unverified Email Warning Banner (Requirement 11) */}
+        {showUnverifiedBanner && (
+          <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center justify-between gap-3 animate-fadeIn">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-1.5 font-bold">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span>Please verify your email before continuing.</span>
+              </div>
+              <p className="text-[11px] text-amber-800">
+                A verification link was generated for your registered address.
+              </p>
+            </div>
+            <Link
+              to={`/verify-email?email=${encodeURIComponent(email)}&role=${activeTab}`}
+              className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shrink-0 transition-all shadow-sm"
+            >
+              Verify Email
+            </Link>
+          </div>
+        )}
 
         {/* 1-Click Demo Quick Logins */}
         <div className="p-3.5 bg-gradient-to-r from-teal-50/80 via-white to-slate-50 border border-teal-200/80 rounded-2xl shadow-sm text-xs space-y-2.5">
@@ -207,13 +227,13 @@ export const LoginPage = () => {
             <div className="space-y-1">
               <div className="flex justify-between items-center">
                 <label className="text-xs font-bold text-slate-700">Access Key / Password</label>
-                <button
-                  type="button"
-                  onClick={() => setForgotModalOpen(true)}
-                  className="text-[11px] font-semibold text-teal-600 hover:underline"
+                {/* Direct Link to /forgot-password (Requirement 11) */}
+                <Link
+                  to="/forgot-password"
+                  className="text-[11px] font-semibold text-teal-600 hover:text-teal-700 hover:underline"
                 >
-                  Forgot Key?
-                </button>
+                  Forgot Password?
+                </Link>
               </div>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -272,55 +292,23 @@ export const LoginPage = () => {
             </button>
           </form>
 
-          {/* Card Footer */}
-          <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-100 text-center text-xs text-slate-600">
-            Need institutional verification for your hospital?{' '}
-            <Link to="/hospital-signup" className="font-bold text-teal-700 hover:underline">
-              Onboard Hospital
+          {/* Card Footer with links to Hospital Signup & Admin Signup */}
+          <div className="px-6 py-4 bg-slate-50/80 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-600">
+            <span>
+              Need onboarding?{' '}
+              <Link to="/hospital-signup" className="font-bold text-teal-700 hover:underline">
+                Register Hospital
+              </Link>
+            </span>
+            <span className="text-slate-300 hidden sm:inline">•</span>
+            <Link to="/admin-signup" className="text-slate-500 hover:text-slate-800 font-semibold">
+              Admin Access
             </Link>
           </div>
 
         </div>
+
       </div>
-
-      {/* Forgot Password Modal */}
-      <Modal
-        isOpen={forgotModalOpen}
-        onClose={() => setForgotModalOpen(false)}
-        title="Reset Account Password"
-        subtitle="A secure recovery token will be dispatched to the verified pharmacy director"
-        maxWidth="max-w-md"
-      >
-        <form onSubmit={handleForgotSubmit} className="space-y-4 pt-2">
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Registered Institutional Email</label>
-            <input
-              type="email"
-              required
-              placeholder="e.g. director@apollo.org"
-              value={forgotEmail}
-              onChange={(e) => setForgotEmail(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 focus:ring-2 focus:ring-teal-500 focus:outline-none"
-            />
-          </div>
-          <div className="flex justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={() => setForgotModalOpen(false)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-sm"
-            >
-              Send Reset Token
-            </button>
-          </div>
-        </form>
-      </Modal>
-
     </div>
   );
 };

@@ -1,81 +1,122 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Pill, ShieldCheck, Mail, Phone, MapPin, Heart, ExternalLink } from 'lucide-react';
+import { Pill, ShieldCheck, Mail, Phone, MapPin, Heart, ExternalLink, Sparkles, MessageSquare } from 'lucide-react';
 
 export const Footer = () => {
   return (
-    <footer className="bg-secondary-800 text-slate-300 border-t border-secondary-700">
+    <footer className="bg-secondary-850 text-slate-300 border-t border-secondary-700/80 bg-[#0C1B26]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-10">
           
-          {/* Brand Col */}
+          {/* Brand Col: MEDISTOCK */}
           <div className="lg:col-span-2 space-y-4">
-            <Link to="/" className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary-500 flex items-center justify-center text-white shadow-md">
-                <Pill className="w-5 h-5 rotate-45" />
+            <Link to="/" className="flex items-center gap-3 group">
+              <div className="w-9 h-9 rounded-xl bg-primary-600 flex items-center justify-center text-white shadow-md shadow-primary-600/20 group-hover:scale-105 transition-transform">
+                <Pill className="w-5 h-5 rotate-45 text-cyan-300" />
               </div>
-              <span className="text-xl font-bold text-white tracking-tight">
+              <span className="text-xl font-extrabold text-white tracking-tight">
                 Smart<span className="text-primary-400">MediShare</span>
               </span>
             </Link>
-            <p className="text-sm text-slate-400 max-w-sm leading-relaxed">
-              India's premier verified inter-hospital medicine exchange network. Empowering healthcare facilities to eliminate pharmaceutical wastage, ensure cold-chain logistics integrity, and reduce emergency drug procurement costs.
+            
+            <p className="text-xs text-slate-400 max-w-sm leading-relaxed font-normal">
+              Smart medicine redistribution between verified hospitals. Eliminating pharmaceutical wastage, ensuring cold-chain telemetry visibility, and connecting regional healthcare facilities.
             </p>
-            <div className="flex items-center gap-2 text-xs text-primary-300 bg-secondary-900/60 p-3 rounded-xl border border-secondary-700/60 w-fit">
+
+            <div className="flex items-center gap-2 text-[11px] text-cyan-300 bg-slate-900/80 p-3 rounded-xl border border-slate-800 w-fit">
               <ShieldCheck className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-              <span>Compliant with CDSCO & Pharmacy Practice Regulations 2024</span>
+              <span>Institutional B2B Healthcare Exchange Interface</span>
             </div>
           </div>
 
-          {/* Quick Links */}
+          {/* PRODUCT */}
           <div>
-            <h4 className="text-sm font-bold uppercase tracking-wider text-white mb-4">Quick Links</h4>
-            <ul className="space-y-2.5 text-sm text-slate-400">
+            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white mb-4">
+              Product
+            </h4>
+            <ul className="space-y-2.5 text-xs text-slate-400">
               <li>
-                <Link to="/" className="hover:text-white transition-colors">Home</Link>
+                <Link to="/how-it-works" className="hover:text-white transition-colors">
+                  How It Works
+                </Link>
               </li>
               <li>
-                <Link to="/hospital/marketplace" className="hover:text-white transition-colors">Medicine Marketplace</Link>
+                <Link to="/hospital/marketplace" className="hover:text-white transition-colors">
+                  Marketplace
+                </Link>
               </li>
               <li>
-                <Link to="/hospital/track" className="hover:text-white transition-colors">Logistics Tracking</Link>
+                <Link to="/hospital-signup" className="hover:text-white transition-colors">
+                  Hospital Registration
+                </Link>
               </li>
               <li>
-                <Link to="/login" className="hover:text-white transition-colors">Hospital Portal</Link>
-              </li>
-              <li>
-                <Link to="/admin-signup" className="hover:text-white transition-colors">Admin Access</Link>
+                <Link to="/hospital/track" className="hover:text-white transition-colors">
+                  Live Logistics Tracking
+                </Link>
               </li>
             </ul>
           </div>
 
-          {/* Features */}
+          {/* COMPANY & LEGAL */}
           <div>
-            <h4 className="text-sm font-bold uppercase tracking-wider text-white mb-4">Platform</h4>
-            <ul className="space-y-2.5 text-sm text-slate-400">
-              <li><span className="hover:text-white cursor-pointer transition-colors">Hospital Verification</span></li>
-              <li><span className="hover:text-white cursor-pointer transition-colors">Inventory Concession Calculator</span></li>
-              <li><span className="hover:text-white cursor-pointer transition-colors">Cold-Chain IoT Telemetry</span></li>
-              <li><span className="hover:text-white cursor-pointer transition-colors">Bio-Hazard Disposal Tracking</span></li>
-              <li><span className="hover:text-white cursor-pointer transition-colors">Razorpay B2B Escrow</span></li>
+            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white mb-4">
+              Company & Legal
+            </h4>
+            <ul className="space-y-2.5 text-xs text-slate-400">
+              <li>
+                <Link to="/about" className="hover:text-white transition-colors">
+                  About Us
+                </Link>
+              </li>
+              <li>
+                <Link to="/privacy-policy" className="hover:text-white transition-colors">
+                  Privacy Policy
+                </Link>
+              </li>
+              <li>
+                <Link to="/terms" className="hover:text-white transition-colors">
+                  Terms & Conditions
+                </Link>
+              </li>
+              <li>
+                <Link to="/cookie-preferences" className="hover:text-white transition-colors">
+                  Cookie Preferences
+                </Link>
+              </li>
             </ul>
           </div>
 
-          {/* Contact & Support */}
+          {/* SUPPORT */}
           <div>
-            <h4 className="text-sm font-bold uppercase tracking-wider text-white mb-4">Contact Us</h4>
-            <ul className="space-y-3 text-sm text-slate-400">
-              <li className="flex items-start gap-2.5">
-                <MapPin className="w-4 h-4 text-primary-400 flex-shrink-0 mt-0.5" />
-                <span>National Health Logistics Tower, Bandra-Kurla Complex, Mumbai 400051</span>
+            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-white mb-4">
+              Support
+            </h4>
+            <ul className="space-y-3 text-xs text-slate-400">
+              <li>
+                <Link 
+                  to="/hospital/feedback" 
+                  className="hover:text-white transition-colors flex items-center gap-1.5"
+                >
+                  <MessageSquare className="w-3.5 h-3.5 text-primary-400" />
+                  <span>Platform Feedback</span>
+                </Link>
               </li>
-              <li className="flex items-center gap-2.5">
-                <Phone className="w-4 h-4 text-primary-400 flex-shrink-0" />
-                <span>+91 (022) 8000-MEDI</span>
+              <li>
+                <Link 
+                  to="/login" 
+                  className="hover:text-white transition-colors"
+                >
+                  Institutional Login
+                </Link>
               </li>
-              <li className="flex items-center gap-2.5">
-                <Mail className="w-4 h-4 text-primary-400 flex-shrink-0" />
-                <span>support@smartmedishare.org</span>
+              <li>
+                <Link 
+                  to="/forgot-password" 
+                  className="hover:text-white transition-colors"
+                >
+                  Password Recovery
+                </Link>
               </li>
             </ul>
           </div>
@@ -83,13 +124,24 @@ export const Footer = () => {
         </div>
 
         {/* Bottom Bar */}
-        <div className="mt-12 pt-8 border-t border-secondary-700/80 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-400">
-          <p>© {new Date().getFullYear()} SmartMediShare Inc. All rights reserved.</p>
-          <div className="flex items-center gap-6">
-            <span className="hover:text-white cursor-pointer transition-colors">About</span>
-            <span className="hover:text-white cursor-pointer transition-colors">Privacy Policy</span>
-            <span className="hover:text-white cursor-pointer transition-colors">Terms of Service</span>
-            <span className="hover:text-white cursor-pointer transition-colors">Security Audit</span>
+        <div className="mt-12 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500 font-mono">
+          <p>© {new Date().getFullYear()} MediStock / SmartMediShare. Frontend Prototype Edition.</p>
+          <div className="flex flex-wrap items-center gap-5">
+            <Link to="/about" className="hover:text-slate-300 transition-colors">
+              About
+            </Link>
+            <Link to="/how-it-works" className="hover:text-slate-300 transition-colors">
+              How It Works
+            </Link>
+            <Link to="/privacy-policy" className="hover:text-slate-300 transition-colors">
+              Privacy Policy
+            </Link>
+            <Link to="/terms" className="hover:text-slate-300 transition-colors">
+              Terms
+            </Link>
+            <Link to="/cookie-preferences" className="hover:text-slate-300 transition-colors">
+              Cookies
+            </Link>
           </div>
         </div>
 

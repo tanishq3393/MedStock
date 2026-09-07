@@ -33,8 +33,8 @@ export const AdminSignupPage = () => {
     try {
       const resultAction = await dispatch(signupAdminUser(formData));
       if (signupAdminUser.fulfilled.match(resultAction)) {
-        toast.success('Supervisory Admin Account created successfully!');
-        navigate('/admin/dashboard', { replace: true });
+        toast.success('Supervisory Admin Account created! Please verify your official email.');
+        navigate(`/verify-email?email=${encodeURIComponent(formData.email)}&role=admin`, { replace: true });
       } else {
         toast.error(resultAction.payload || 'Admin registration failed');
       }

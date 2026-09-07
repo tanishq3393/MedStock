@@ -268,6 +268,113 @@ export const hospitalService = {
     return true;
   },
 
+  async importInventoryBatch(hospitalIdParam, { itemsToCreate = [], itemsToUpdate = [], skippedCount = 0, stats = {} }) {
+    await new Promise((r) => setTimeout(r, 300));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) throw new Error('Hospital identity not specified');
+    assertHospitalActive(hospitalId);
+
+    const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === hospitalId) || { name: 'Hospital Pharmacy', city: 'Mumbai', state: 'MH' };
+
+    // 1. Process Updates
+    itemsToUpdate.forEach((updateItem) => {
+      const idx = medicines.findIndex((m) => 
+        (updateItem.id && m.id === updateItem.id) ||
+        (m.hospitalId === hospitalId && 
+         m.brandName?.toLowerCase().trim() === updateItem.brandName?.toLowerCase().trim() && 
+         m.batchNo?.toLowerCase().trim() === updateItem.batchNo?.toLowerCase().trim())
+      );
+
+      if (idx !== -1) {
+        const currentMed = medicines[idx];
+        const newQty = updateItem.quantity !== undefined ? Number(updateItem.quantity) : currentMed.quantity;
+        const newPrice = updateItem.unitOriginalPrice !== undefined ? Number(updateItem.unitOriginalPrice) : currentMed.unitOriginalPrice;
+        const exp = calculateMedicineExpiry(updateItem.expiryDate || currentMed.expiryDate, newQty);
+
+        medicines[idx] = {
+          ...currentMed,
+          ...updateItem,
+          id: currentMed.id,
+          hospitalId: currentMed.hospitalId,
+          hospitalName: currentMed.hospitalName,
+          quantity: Math.max(0, newQty),
+          unitOriginalPrice: Math.max(0, newPrice),
+          status: exp.isExpired ? 'expired' : (currentMed.status === 'expired' ? 'active' : currentMed.status || 'active'),
+          lastUpdated: new Date().toISOString().split('T')[0],
+        };
+      }
+    });
+
+    // 2. Process Creations
+    const timestamp = Date.now();
+    itemsToCreate.forEach((item, index) => {
+      const qty = Math.max(1, Number(item.quantity) || 1);
+      const unitPrice = Math.max(0, Number(item.unitOriginalPrice) || 50);
+      const exp = calculateMedicineExpiry(item.expiryDate, qty);
+
+      const newMedicine = {
+        id: `med-${hospitalId}-${timestamp}-${index + 1}`,
+        brandName: item.brandName.trim(),
+        genericName: item.genericName || item.brandName.trim(),
+        power: item.power || (item.category ? `${item.category}` : 'Formulation'),
+        category: item.category || 'General Formulation',
+        storageType: item.storageType || 'Room Temperature (15°C - 25°C)',
+        mfgDate: item.mfgDate || new Date(Date.now() - 180 * 86400000).toISOString().split('T')[0],
+        expiryDate: item.expiryDate,
+        batchNo: item.batchNo.trim(),
+        manufacturer: item.manufacturer || 'Standard Pharma Corp',
+        quantity: qty,
+        unitOriginalPrice: unitPrice,
+        concessionPercent: Math.max(0, Math.min(90, Number(item.concessionPercent || 0))),
+        hospitalId: hospitalId,
+        hospitalName: hosp.name,
+        location: hosp.city && hosp.state ? `${hosp.city}, ${hosp.state}` : 'Hospital Pharmacy',
+        distanceKm: Number(item.distanceKm) || 10,
+        dateAdded: new Date().toISOString().split('T')[0],
+        status: exp.isExpired ? 'expired' : 'active',
+        minStockThreshold: Number(item.minStockThreshold) || 25,
+        unit: item.unit || 'Units',
+        notes: item.notes || (exp.isExpired ? 'Imported expired batch. Quarantined for bio-waste disposal.' : 'Imported via Hospital CSV system.'),
+      };
+
+      medicines.unshift(newMedicine);
+    });
+
+    // 3. Persist atomically
+    setStoredItem(KEYS.MEDICINES, medicines);
+
+    // 4. Log audit trail event
+    auditService.logEvent({
+      action: 'INVENTORY_IMPORTED_CSV',
+      entityType: 'INVENTORY',
+      entityId: `import-${timestamp}`,
+      hospitalId: hospitalId,
+      hospitalName: hosp.name,
+      summary: `Imported ${itemsToCreate.length + itemsToUpdate.length} inventory records via CSV (${itemsToCreate.length} added, ${itemsToUpdate.length} updated, ${skippedCount} skipped).`,
+      resultingStatus: 'completed',
+      metadata: {
+        totalRecords: itemsToCreate.length + itemsToUpdate.length + skippedCount,
+        addedCount: itemsToCreate.length,
+        updatedCount: itemsToUpdate.length,
+        skippedCount: skippedCount,
+        expiredCount: stats?.expiredCount || 0,
+        nearExpiryCount: stats?.nearExpiryCount || 0,
+        lowStockCount: stats?.lowStockCount || 0,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    return {
+      success: true,
+      addedCount: itemsToCreate.length,
+      updatedCount: itemsToUpdate.length,
+      skippedCount: skippedCount,
+      totalHospitalInventory: medicines.filter((m) => m.hospitalId === hospitalId),
+    };
+  },
+
   // ==========================================
   // 3. MARKETPLACE (Only valid active listings)
   // ==========================================

@@ -43,6 +43,22 @@ export const deleteMedicineItem = createAsyncThunk('hospital/deleteMedicine', as
   }
 });
 
+export const importHospitalInventory = createAsyncThunk(
+  'hospital/importInventory',
+  async ({ hospitalId, itemsToCreate, itemsToUpdate, skippedCount, stats }, { rejectWithValue }) => {
+    try {
+      return await hospitalService.importInventoryBatch(hospitalId, {
+        itemsToCreate,
+        itemsToUpdate,
+        skippedCount,
+        stats,
+      });
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 export const fetchMarketplace = createAsyncThunk('hospital/fetchMarketplace', async ({ hospitalId, filters }, { rejectWithValue }) => {
   try {
     return await hospitalService.getMarketplace(hospitalId, filters);
@@ -171,6 +187,21 @@ const hospitalSlice = createSlice({
       // Delete Medicine
       .addCase(deleteMedicineItem.fulfilled, (state, action) => {
         state.inventory = state.inventory.filter((m) => m.id !== action.payload);
+      })
+
+      // Import Hospital Inventory Batch
+      .addCase(importHospitalInventory.pending, (state) => {
+        state.isLoading = true;
+      })
+      .addCase(importHospitalInventory.fulfilled, (state, action) => {
+        state.isLoading = false;
+        if (action.payload?.totalHospitalInventory) {
+          state.inventory = action.payload.totalHospitalInventory;
+        }
+      })
+      .addCase(importHospitalInventory.rejected, (state, action) => {
+        state.isLoading = false;
+        state.error = action.payload;
       })
 
       // Marketplace

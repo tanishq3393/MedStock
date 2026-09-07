@@ -23,7 +23,8 @@ import {
   RotateCcw,
   Sparkles,
   Package,
-  Layers
+  Layers,
+  Upload
 } from 'lucide-react';
 import { 
   fetchInventory, 
@@ -32,6 +33,7 @@ import {
   deleteMedicineItem 
 } from '../../store/slices/hospitalSlice';
 import MedicineModal from '../../components/forms/MedicineModal';
+import CSVImportModal from '../../components/hospital/CSVImportModal';
 import Modal from '../../components/common/Modal';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
@@ -57,6 +59,7 @@ export const HospitalInventory = () => {
   const [editingMedicine, setEditingMedicine] = useState(null);
   const [selectedMedicineForDetails, setSelectedMedicineForDetails] = useState(null);
   const [deleteConfirmMed, setDeleteConfirmMed] = useState(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   useEffect(() => {
     if (user?.id) {
@@ -310,6 +313,22 @@ export const HospitalInventory = () => {
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (isSuspended) {
+                toast.error('Your hospital account is currently suspended. Operational activities are locked.');
+                return;
+              }
+              setImportModalOpen(true);
+            }}
+            disabled={isSuspended}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-primary-200 bg-primary-50/70 hover:bg-primary-100 text-primary-800 text-xs font-bold transition-all shadow-sm disabled:opacity-50"
+            title="Import your existing hospital inventory from a CSV file."
+          >
+            <Upload className="w-4 h-4 text-primary-600" />
+            <span>Import Inventory</span>
+          </button>
+
           <button
             onClick={handleExportCsv}
             className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-sm"
@@ -1028,6 +1047,17 @@ export const HospitalInventory = () => {
         onSubmit={handleSaveMedicine}
         initialData={editingMedicine}
         isEdit={!!editingMedicine}
+      />
+
+      {/* CSV Import Wizard Modal */}
+      <CSVImportModal
+        isOpen={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImportSuccess={() => {
+          if (user?.id) {
+            dispatch(fetchInventory(user.id));
+          }
+        }}
       />
 
       {/* Delete Confirmation Modal */}

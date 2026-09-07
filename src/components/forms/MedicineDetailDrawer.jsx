@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Building2, 
@@ -26,12 +26,18 @@ export const MedicineDetailDrawer = ({
   onRequestSubmit,
   isRequestDisabled = false
 }) => {
-  if (!isOpen || !medicine) return null;
-
-  const [requestQty, setRequestQty] = useState(Math.min(10, medicine.quantity));
+  const [requestQty, setRequestQty] = useState(1);
   const [requestNotes, setRequestNotes] = useState('');
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'compliance' | 'history'
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (medicine?.quantity) {
+      setRequestQty(Math.min(10, medicine.quantity));
+    }
+  }, [medicine]);
+
+  if (!isOpen || !medicine) return null;
 
   const pricing = calculateOrderPricing({
     unitOriginalPrice: medicine.unitOriginalPrice,
