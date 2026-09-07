@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Building2, 
@@ -7,54 +7,99 @@ import {
   Calendar, 
   ShieldCheck, 
   Send, 
-  History, 
   Sparkles, 
   Clock, 
   AlertTriangle,
   Boxes,
   CheckCircle2,
   Lock,
-  ArrowRight
+  ArrowRight,
+  TrendingDown,
+  Info,
+  Layers,
+  ChevronDown,
+  Box
 } from 'lucide-react';
 import Medicine3DPreview from '../spatial/Medicine3DPreview';
+import MedicineImageGallery from '../hospital/MedicineImageGallery';
+import PurchaseInvoiceViewer from '../hospital/PurchaseInvoiceViewer';
 import { calculateOrderPricing } from '../../utils/pricingUtils';
+import { findAlternatives, extractMedicineComposition, CLINICAL_SAFETY_DISCLAIMER } from '../../services/medicineAlternativeService';
 
+/**
+ * MedicineDetailDrawer
+ * 
+ * Rich, Apollo-style medicine product detail view:
+ * 1. Actual medicine/product image gallery & fallback
+ * 2. Medicine header, category, storage protocol
+ * 3. Composition table (Active ingredient, strength, form, route, manufacturer, pack size)
+ * 4. Manufacturer, batch number, expiry date
+ * 5. Seller hospital & verified status
+ * 6. Stock & unit pricing with concession discounts
+ * 7. B2B Purchase Bill / Invoice provenance viewer
+ * 8. Requisition submission workflow
+ * 9. Composition-based alternative medicines with ALTERNATIVE badges and price comparisons
+ */
 export const MedicineDetailDrawer = ({ 
   isOpen, 
   onClose, 
   medicine, 
   onRequestSubmit,
-  isRequestDisabled = false
+  isRequestDisabled = false,
+  onOpenAlternatives,
+  marketplace = []
 }) => {
+  // Allow switching viewed medicine internally when user clicks an alternative
+  const [activeMed, setActiveMed] = useState(medicine);
   const [requestQty, setRequestQty] = useState(1);
   const [requestNotes, setRequestNotes] = useState('');
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'compliance' | 'history'
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [show3DView, setShow3DView] = useState(false);
 
+  // Sync internal medicine when incoming prop changes
   useEffect(() => {
-    if (medicine?.quantity) {
-      setRequestQty(Math.min(10, medicine.quantity));
-    }
+    setActiveMed(medicine);
+    setShow3DView(false);
   }, [medicine]);
 
-  if (!isOpen || !medicine) return null;
+  useEffect(() => {
+    if (activeMed?.quantity) {
+      setRequestQty(Math.min(10, activeMed.quantity));
+    }
+  }, [activeMed]);
+
+  // Composition-matched alternatives for the currently viewed medicine
+  const alternatives = useMemo(() => {
+    if (!activeMed || !marketplace?.length) return [];
+    return findAlternatives(activeMed, marketplace);
+  }, [activeMed, marketplace]);
+
+  // Composition specifications
+  const compositionSpecs = useMemo(() => {
+    if (!activeMed) return null;
+    return extractMedicineComposition(activeMed);
+  }, [activeMed]);
+
+  if (!isOpen || !activeMed) return null;
+
+  const concession = activeMed.concessionPercent || 0;
 
   const pricing = calculateOrderPricing({
-    unitOriginalPrice: medicine.unitOriginalPrice,
-    concessionPercent: medicine.concessionPercent || 0,
+    unitOriginalPrice: activeMed.unitOriginalPrice,
+    concessionPercent: concession,
     quantity: requestQty,
-    storageType: medicine.storageType
+    storageType: activeMed.storageType
   });
 
   const finalUnitPrice = pricing.unitFinalPrice;
   const totalAmount = pricing.totalPayable;
-  const isColdChain = medicine.storageType?.toLowerCase().includes('cold');
+  const isColdChain = activeMed.storageType?.toLowerCase().includes('cold');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsSubmitting(true);
     await onRequestSubmit({
-      medicine,
+      medicine: activeMed,
       quantity: requestQty,
       notes: requestNotes,
       finalUnitPrice,
@@ -63,283 +108,463 @@ export const MedicineDetailDrawer = ({
     setIsSubmitting(false);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 overflow-hidden flex justify-end bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
-      {/* Backdrop click to close */}
-      <div className="absolute inset-0" onClick={onClose} />
+  const handleSelectAlternative = (altMedicine) => {
+    setActiveMed(altMedicine);
+    // Smoothly scroll container to top
+    const container = document.getElementById('medicine-detail-modal-body');
+    if (container) {
+      container.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
-      {/* Drawer Container */}
-      <div className="relative w-full max-w-xl bg-white h-full shadow-2xl flex flex-col justify-between overflow-y-auto z-10 animate-slideLeft">
+  return (
+    <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-5 bg-slate-950/70 backdrop-blur-sm animate-fadeIn">
+      {/* Backdrop click to close */}
+      <div className="fixed inset-0" onClick={onClose} />
+
+      {/* Modal Card Container */}
+      <div 
+        className="relative w-full max-w-5xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] z-10 animate-scaleUp my-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
         
-        {/* Top Header */}
-        <div className="p-5 border-b border-slate-200/90 flex items-start justify-between bg-slate-50/50 sticky top-0 z-20 backdrop-blur-md">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary-50 text-primary-700 border border-primary-200">
-                CDSCO COMPLIANT LOT
+        {/* TOP HEADER */}
+        <div className="p-5 sm:p-6 border-b border-slate-200/90 flex items-start justify-between bg-slate-50/70 sticky top-0 z-20 backdrop-blur-md">
+          <div className="space-y-1.5 max-w-2xl">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary-50 text-primary-700 border border-primary-200">
+                CDSCO RULE 65 COMPLIANT
+              </span>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                <span>VERIFIED HOSPITAL STOCK</span>
               </span>
               {concession > 20 && (
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                  NEAR EXPIRY OPPORTUNITY
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                  {Math.round(concession)}% CONCESSION APPLIED
                 </span>
               )}
             </div>
-            <h2 className="text-xl font-extrabold text-slate-900 leading-tight">
-              {medicine.brandName}
+
+            <h2 className="text-xl sm:text-2xl font-black text-slate-900 leading-tight">
+              {activeMed.brandName}
             </h2>
-            <p className="text-xs text-slate-500 font-medium">
-              {medicine.power} • {medicine.genericName}
-            </p>
+
+            <div className="flex items-center gap-2 text-xs text-slate-600 font-medium flex-wrap">
+              <span className="font-bold text-primary-700 font-mono">{activeMed.power}</span>
+              <span className="text-slate-300">•</span>
+              <span>{activeMed.genericName}</span>
+              <span className="text-slate-300">•</span>
+              <span className="font-semibold text-slate-500">{activeMed.dosageForm || 'Tablet'}</span>
+            </div>
           </div>
 
           <button
+            type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0"
+            title="Close detail view"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Content Body */}
-        <div className="p-5 sm:p-6 space-y-6 flex-1">
+        {/* SCROLLABLE 2-COLUMN PRODUCT DETAIL BODY */}
+        <div id="medicine-detail-modal-body" className="p-5 sm:p-8 overflow-y-auto space-y-8 flex-1 bg-slate-50/40 font-sans">
           
-          {/* Spatial 3D Medicine Package Viewer */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between text-xs text-slate-500">
-              <span className="font-bold text-slate-700">Digital Package Hologram</span>
-              <span className="font-mono text-[10px]">Tamper-Proof Verification</span>
+          {/* 2-COLUMN GRID (DESKTOP: 5 / 7 RATIO) */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* LEFT COLUMN: IMAGES, 3D PREVIEW, PURCHASE INVOICE */}
+            <div className="lg:col-span-5 space-y-6">
+              
+              {/* Product Image Gallery with Thumbnails & Fallback */}
+              <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-extrabold uppercase tracking-wider text-slate-700 font-mono">
+                    Product Packaging
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShow3DView(!show3DView)}
+                    className="text-[11px] font-bold text-primary-700 hover:text-primary-800 transition-colors flex items-center gap-1"
+                  >
+                    <Box className="w-3.5 h-3.5" />
+                    <span>{show3DView ? 'Show Photo Gallery' : 'View 3D Hologram'}</span>
+                  </button>
+                </div>
+
+                {show3DView ? (
+                  <div className="space-y-2">
+                    <Medicine3DPreview medicine={activeMed} />
+                    <p className="text-[10px] text-center text-slate-400 font-mono">
+                      Interactive 3D Digital Medicine Package
+                    </p>
+                  </div>
+                ) : (
+                  <MedicineImageGallery medicine={activeMed} />
+                )}
+              </div>
+
+              {/* Purchase Bill / Provenance Invoice Viewer */}
+              <div className="p-4 rounded-3xl bg-white border border-slate-200 shadow-sm">
+                <PurchaseInvoiceViewer medicine={activeMed} />
+              </div>
+
             </div>
-            <Medicine3DPreview medicine={medicine} />
+
+            {/* RIGHT COLUMN: SPECS, PRICING, REQUISITION, COMPOSITION */}
+            <div className="lg:col-span-7 space-y-6">
+              
+              {/* SELLER HOSPITAL & STOCK STATUS CARD */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">
+                      Listed By Seller Hospital
+                    </span>
+                    <div className="flex items-center gap-1.5 text-sm font-extrabold text-slate-900">
+                      <Building2 className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                      <span>{activeMed.hospitalName}</span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+                      <span>{activeMed.location}</span>
+                      <span className="text-slate-300">•</span>
+                      <span className="font-mono text-emerald-700 font-bold">{activeMed.distanceKm || 12} km away</span>
+                    </div>
+                  </div>
+
+                  <div className="sm:text-right">
+                    <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-mono font-extrabold shadow-xs">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>In Stock: {activeMed.quantity} units</span>
+                    </span>
+                  </div>
+                </div>
+
+                {/* Batch, Mfg, Expiry, Storage Specs */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs pt-1 font-mono">
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">Batch Lot</span>
+                    <span className="font-bold text-slate-800 text-xs">{activeMed.batchNo || 'PCM2401'}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">Mfg Date</span>
+                    <span className="font-semibold text-slate-700 text-xs">{activeMed.mfgDate || '2024-04-12'}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">Expiry Date</span>
+                    <span className="font-bold text-amber-700 text-xs">{activeMed.expiryDate || '2027-04-30'}</span>
+                  </div>
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                    <span className="text-[9px] text-slate-400 block font-bold uppercase">Storage</span>
+                    <span className={`font-bold text-[11px] truncate block ${
+                      isColdChain ? 'text-cyan-700' : 'text-slate-700'
+                    }`}>
+                      {isColdChain ? 'Cold 2-8°C' : 'Room Temp'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* COMPOSITION SPECIFICATIONS TABLE (REQUIREMENT 11) */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                  <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-mono flex items-center gap-1.5">
+                    <Layers className="w-4 h-4 text-primary-600" />
+                    <span>Active Pharmaceutical Composition</span>
+                  </h3>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    Verified Formulation
+                  </span>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-left border-collapse">
+                    <tbody className="divide-y divide-slate-100">
+                      <tr>
+                        <td className="py-2 text-slate-500 font-semibold w-1/3">Active Ingredient</td>
+                        <td className="py-2 text-slate-900 font-extrabold capitalize">
+                          {compositionSpecs?.ingredients?.[0]?.name || activeMed.genericName}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-slate-500 font-semibold">Strength / Potency</td>
+                        <td className="py-2 text-slate-900 font-extrabold font-mono">
+                          {compositionSpecs?.normalizedStrength || activeMed.power}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-slate-500 font-semibold">Dosage Formulation</td>
+                        <td className="py-2 text-slate-900 font-bold">
+                          {compositionSpecs?.dosageForm || activeMed.dosageForm || 'Tablet'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-slate-500 font-semibold">Administration Route</td>
+                        <td className="py-2 text-slate-900 font-bold">
+                          {compositionSpecs?.route || activeMed.route || 'Oral'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-slate-500 font-semibold">Manufacturer</td>
+                        <td className="py-2 text-slate-900 font-bold">
+                          {activeMed.manufacturer || 'Authorized Manufacturer'}
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="py-2 text-slate-500 font-semibold">Packaging Unit</td>
+                        <td className="py-2 text-slate-900 font-bold">
+                          {activeMed.packSize || '15 tablets / strip'}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* PRICING AND REQUISITION FORM */}
+              <form onSubmit={handleSubmit} className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                  <div>
+                    <span className="text-[10px] font-mono text-slate-400 line-through block">
+                      Standard MRP ₹{activeMed.unitOriginalPrice} / unit
+                    </span>
+                    <div className="text-2xl font-black font-mono text-primary-800 leading-tight">
+                      ₹{finalUnitPrice} <span className="text-xs font-normal text-slate-500">/ unit</span>
+                    </div>
+                  </div>
+
+                  {concession > 0 && (
+                    <span className="px-3 py-1 rounded-xl bg-amber-50 text-amber-800 border border-amber-200 text-xs font-mono font-bold">
+                      {Math.round(concession)}% Concession Savings
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <div className="flex justify-between text-xs font-bold text-slate-700 mb-1">
+                      <span>Quantity Required:</span>
+                      <span className="text-slate-400 font-normal">Max: {activeMed.quantity}</span>
+                    </div>
+                    <input
+                      type="number"
+                      min="1"
+                      max={activeMed.quantity}
+                      required
+                      value={requestQty}
+                      onChange={(e) => setRequestQty(Math.max(1, Math.min(activeMed.quantity, Number(e.target.value))))}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 font-mono font-bold focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Clinical Urgency / Requisition Note
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Inpatient surgical quota..."
+                      value={requestNotes}
+                      onChange={(e) => setRequestNotes(e.target.value)}
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    />
+                  </div>
+                </div>
+
+                {/* ESCROW BREAKDOWN */}
+                <div className="p-3.5 rounded-xl bg-slate-900 text-white space-y-1.5 text-xs font-mono">
+                  <div className="flex justify-between text-slate-400 text-[11px]">
+                    <span>Base Subtotal ({requestQty} units):</span>
+                    <span>₹{pricing.subtotal.toLocaleString()}</span>
+                  </div>
+                  {pricing.concessionSavings > 0 && (
+                    <div className="flex justify-between text-amber-400 text-[11px]">
+                      <span>Concession Savings:</span>
+                      <span>-₹{pricing.concessionSavings.toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-slate-400 text-[11px]">
+                    <span>GST (12% Pharma):</span>
+                    <span>+₹{pricing.gstAmount.toLocaleString()}</span>
+                  </div>
+                  <div className="pt-2 border-t border-slate-700 flex items-center justify-between font-bold">
+                    <span className="text-slate-300">Total Escrow Value:</span>
+                    <span className="text-base text-cyan-300">
+                      ₹{pricing.totalPayable.toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmitting || isRequestDisabled}
+                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-lg shadow-primary-600/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 cursor-pointer"
+                >
+                  <Send className="w-4 h-4" />
+                  <span>Request This Medicine</span>
+                </button>
+              </form>
+
+            </div>
+
           </div>
 
-          {/* Tab Navigation */}
-          <div className="flex items-center gap-2 border-b border-slate-200 pb-2 text-xs font-bold">
-            <button
-              type="button"
-              onClick={() => setActiveTab('overview')}
-              className={`pb-1 px-1 transition-all ${
-                activeTab === 'overview'
-                  ? 'text-primary-700 border-b-2 border-primary-600'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Specifications & SLA
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('compliance')}
-              className={`pb-1 px-1 transition-all ${
-                activeTab === 'compliance'
-                  ? 'text-primary-700 border-b-2 border-primary-600'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Hospital Accreditation
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab('history')}
-              className={`pb-1 px-1 transition-all ${
-                activeTab === 'history'
-                  ? 'text-primary-700 border-b-2 border-primary-600'
-                  : 'text-slate-500 hover:text-slate-800'
-              }`}
-            >
-              Batch Ledger
-            </button>
-          </div>
-
-          {/* TAB 1: Specifications & SLA */}
-          {activeTab === 'overview' && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Manufacturer</span>
-                  <span className="font-bold text-slate-800">{medicine.manufacturer || 'Sanofi Healthcare'}</span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Batch Lot</span>
-                  <span className="font-mono font-bold text-slate-800">{medicine.batchNo || 'LOT-2024-X'}</span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1 col-span-2">
-                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Storage Protocol</span>
-                  <span className={`font-mono font-bold flex items-center gap-1 ${
-                    isColdChain ? 'text-primary-700' : 'text-slate-800'
-                  }`}>
-                    {isColdChain && <Thermometer className="w-3.5 h-3.5 text-cyan-600" />}
-                    {medicine.storageType}
-                  </span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Mfg Date</span>
-                  <span className="font-mono font-bold text-slate-700">{medicine.mfgDate || '2023-11-15'}</span>
-                </div>
-
-                <div className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-1">
-                  <span className="text-[10px] uppercase font-mono font-bold text-slate-400 block">Expiry Window</span>
-                  <span className="font-mono font-bold text-amber-700">{medicine.expiryDate}</span>
-                </div>
+          {/* SECTION 12: COMPOSITION-BASED ALTERNATIVES (MAIN HIGHLIGHT) */}
+          <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-base sm:text-lg font-black text-slate-900 flex items-center gap-1.5">
+                  <Sparkles className="w-5 h-5 text-primary-600 animate-pulse" />
+                  <span>Composition-Based Alternatives</span>
+                </span>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-extrabold bg-primary-100 text-primary-800">
+                  {alternatives.length} {alternatives.length === 1 ? 'Option' : 'Options'} Found
+                </span>
               </div>
-
-              {/* Pricing breakdown box */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-slate-50 to-primary-50/50 border border-primary-200/80 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Standard Government MRP:</span>
-                  <span className="font-mono line-through text-slate-400">₹{medicine.unitOriginalPrice} / unit</span>
-                </div>
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-slate-500">Automated Expiry Concession:</span>
-                  <span className="font-mono font-bold text-amber-700 bg-amber-100/80 px-2 py-0.5 rounded">
-                    {medicine.concessionPercent || 0}% Concession Applied
-                  </span>
-                </div>
-                <div className="pt-2 border-t border-primary-200/60 flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800">Net Transfer Rate:</span>
-                  <span className="text-lg font-extrabold text-primary-800 font-mono">
-                    ₹{finalUnitPrice} <span className="text-xs font-normal text-slate-500">/ unit</span>
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* TAB 2: Hospital Accreditation */}
-          {activeTab === 'compliance' && (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3 text-xs">
-              <div className="flex items-center gap-2 text-slate-900 font-bold">
-                <Building2 className="w-4 h-4 text-primary-600" />
-                <span>{medicine.hospitalName}</span>
-              </div>
-              <p className="text-slate-600 leading-relaxed text-[11px]">
-                Registered Healthcare Provider with Form 20B / 21B drug distribution endorsement and cold-chain compliance telemetry verified by State Drug Control Administration.
+              <p className="text-xs text-slate-500">
+                Different brands with the same active composition, strength and dosage form.
               </p>
-              <div className="pt-2 border-t border-slate-200 grid grid-cols-2 gap-2 text-[11px] font-mono">
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Location</span>
-                  <span className="text-slate-800 font-bold">{medicine.location}</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px]">Cluster Distance</span>
-                  <span className="text-slate-800 font-bold">{medicine.distanceKm || 12} km</span>
-                </div>
+            </div>
+
+            {/* MANDATORY CLINICAL SAFETY NOTICE */}
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-800 flex items-start gap-2.5">
+              <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+              <p className="text-[11px] leading-relaxed font-medium">
+                {CLINICAL_SAFETY_DISCLAIMER}
+              </p>
+            </div>
+
+            {/* ALTERNATIVES GRID */}
+            {alternatives.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
+                {alternatives.map((alt) => {
+                  const hasSavings = (alt.savingsPerUnit || 0) > 0;
+                  const priceDiff = (alt.discountedPrice - finalUnitPrice);
+
+                  return (
+                    <div 
+                      key={alt.id}
+                      className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-primary-400 hover:shadow-card-hover transition-all flex flex-col justify-between space-y-3 group"
+                    >
+                      <div className="space-y-2">
+                        {/* VISIBLE ALTERNATIVE BADGE */}
+                        <div className="flex items-center justify-between">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[10px] font-mono font-black uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-300 shadow-xs">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 animate-ping" />
+                            <span>ALTERNATIVE</span>
+                          </span>
+
+                          <span className="text-[10px] font-mono text-slate-500">
+                            {alt.quantity} available
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-primary-700 transition-colors">
+                            {alt.brandName}
+                          </h4>
+                          <p className="text-xs text-slate-600 font-medium mt-0.5">
+                            {alt.genericName} • {alt.power}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                            Mfd by: {alt.manufacturer || 'Authorized Pharma'}
+                          </p>
+                        </div>
+
+                        {/* PRICE COMPARISON */}
+                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs font-mono">
+                          <div>
+                            <span className="text-[9px] text-slate-400 block">Unit Price</span>
+                            <span className="font-extrabold text-slate-900 text-sm">
+                              ₹{alt.discountedPrice} <span className="text-[9px] font-normal text-slate-500">/ unit</span>
+                            </span>
+                          </div>
+
+                          {hasSavings ? (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
+                              ₹{alt.savingsPerUnit.toFixed(2)} cheaper
+                            </span>
+                          ) : priceDiff > 0 ? (
+                            <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
+                              +₹{priceDiff.toFixed(2)} / unit
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">
+                              Equal Price
+                            </span>
+                          )}
+                        </div>
+
+                        {/* SELLER HOSPITAL & DISTANCE */}
+                        <div className="text-[11px] text-slate-600 flex items-center justify-between">
+                          <span className="truncate font-semibold flex items-center gap-1">
+                            <Building2 className="w-3.5 h-3.5 text-primary-600 flex-shrink-0" />
+                            <span className="truncate">{alt.hospitalName}</span>
+                          </span>
+                          <span className="text-[10px] font-mono text-slate-500 flex-shrink-0">
+                            {alt.distanceKm || 12} km
+                          </span>
+                        </div>
+
+                        {/* WHY IS THIS AN ALTERNATIVE? CHECKLIST (REQUIREMENT 14) */}
+                        <div className="p-2.5 rounded-xl bg-primary-50/50 border border-primary-100 text-[10px] space-y-1 text-slate-700">
+                          <div className="font-bold text-primary-900 flex items-center gap-1">
+                            <CheckCircle2 className="w-3 h-3 text-primary-600" />
+                            <span>Verified Equivalence Criteria:</span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-600 font-medium">
+                            <div>✓ Same active ingredient</div>
+                            <div>✓ Same strength ({alt.power})</div>
+                            <div>✓ Same dosage form ({alt.dosageForm || 'Tablet'})</div>
+                            <div>✓ Same route ({alt.route || 'Oral'})</div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* SWITCH VIEW TRIGGER BUTTON */}
+                      <button
+                        type="button"
+                        onClick={() => handleSelectAlternative(alt)}
+                        className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-primary-600 hover:text-white text-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-1.5 group-hover:bg-primary-600 group-hover:text-white cursor-pointer"
+                      >
+                        <span>View This Alternative</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
-            </div>
-          )}
-
-          {/* TAB 3: Batch Ledger */}
-          {activeTab === 'history' && (
-            <div className="p-4 rounded-xl bg-slate-50 border border-slate-200 space-y-2 text-xs">
-              <span className="font-mono text-[10px] text-slate-400 block uppercase font-bold">Traceability Timeline</span>
-              <div className="space-y-2 font-mono text-[11px] text-slate-600">
-                <div className="flex justify-between">
-                  <span>Batch Ingest Date:</span>
-                  <span className="text-slate-900 font-bold">{medicine.dateAdded || '2024-08-01'}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Certified Stock:</span>
-                  <span className="text-slate-900 font-bold">{medicine.quantity} units</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Escrow Lock SLA:</span>
-                  <span className="text-emerald-700 font-bold">24-hour physical signoff</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Requisition Submission Form */}
-          <form onSubmit={handleSubmit} className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-4">
-            <h4 className="text-xs font-extrabold text-slate-900 uppercase tracking-wider">
-              Initiate B2B Medicine Requisition
-            </h4>
-
-            <div>
-              <div className="flex justify-between text-xs font-bold text-slate-700 mb-1">
-                <span>Quantity Required (Units):</span>
-                <span className="text-slate-500 font-normal">Max available: {medicine.quantity}</span>
-              </div>
-              <input
-                type="number"
-                min="1"
-                max={medicine.quantity}
-                required
-                value={requestQty}
-                onChange={(e) => setRequestQty(Math.max(1, Math.min(medicine.quantity, Number(e.target.value))))}
-                className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 font-mono font-bold focus:ring-2 focus:ring-primary-500 focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Clinical Requirement / Urgency Note
-              </label>
-              <textarea
-                rows="2"
-                placeholder="e.g. Inpatient ICU surgical quota / immediate patient emergency..."
-                value={requestNotes}
-                onChange={(e) => setRequestNotes(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
-
-            {isRequestDisabled && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-700">
-                This hospital is suspended and cannot submit medicine exchange requests.
+            ) : (
+              <div className="p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center space-y-1">
+                <p className="text-xs font-bold text-slate-700">
+                  No direct composition alternatives currently listed in peer hospital stock
+                </p>
+                <p className="text-[11px] text-slate-500">
+                  Other listings have different active ingredients, strengths, or formulations.
+                </p>
               </div>
             )}
 
-            <div className="p-3.5 rounded-xl bg-slate-900 text-white space-y-1.5 text-xs font-mono">
-              <div className="flex justify-between text-slate-400 text-[11px]">
-                <span>Base Subtotal:</span>
-                <span>₹{pricing.subtotal.toLocaleString()}</span>
-              </div>
-              {pricing.concessionSavings > 0 && (
-                <div className="flex justify-between text-amber-400 text-[11px]">
-                  <span>Near-Expiry Concession:</span>
-                  <span>-₹{pricing.concessionSavings.toLocaleString()}</span>
-                </div>
-              )}
-              {pricing.logisticsFee > 0 && (
-                <div className="flex justify-between text-cyan-300 text-[11px]">
-                  <span>Cold-Chain Logistics Fee:</span>
-                  <span>+₹{pricing.logisticsFee.toLocaleString()}</span>
-                </div>
-              )}
-              <div className="flex justify-between text-slate-400 text-[11px]">
-                <span>GST (12% Pharma):</span>
-                <span>+₹{pricing.gstAmount.toLocaleString()}</span>
-              </div>
-              <div className="pt-2 border-t border-slate-700 flex items-center justify-between font-bold">
-                <span className="text-slate-300">Total Escrow Value:</span>
-                <span className="text-base text-cyan-300">
-                  ₹{pricing.totalPayable.toLocaleString()}
-                </span>
-              </div>
-            </div>
+          </div>
 
-            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-[10px] text-amber-800 space-y-0.5">
-              <div className="flex items-center gap-1 font-bold">
-                <Clock className="w-3 h-3 text-amber-600" />
-                <span>48-Hour Peer Fulfillment Protocol</span>
-              </div>
-              <p className="leading-tight text-slate-600">
-                Peer hospital has 48 hours to fulfill or decline. If competing requests exist from other buyers, first peer acceptance wins.
-              </p>
-            </div>
+        </div>
 
-            <button
-              type="submit"
-              disabled={isSubmitting || isRequestDisabled}
-              className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-lg shadow-primary-600/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] disabled:opacity-75"
-            >
-              <Send className="w-4 h-4" />
-              <span>Submit Requisition Request</span>
-            </button>
-          </form>
+        {/* MODAL FOOTER */}
+        <div className="p-4 bg-white border-t border-slate-200 flex items-center justify-between text-xs flex-shrink-0">
+          <span className="text-slate-500 text-[11px]">
+            CDSCO Rule 65 inter-hospital mutual exchange platform
+          </span>
 
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition-colors cursor-pointer"
+          >
+            Close Detail View
+          </button>
         </div>
 
       </div>

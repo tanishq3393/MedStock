@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   Search, 
@@ -22,14 +22,18 @@ import {
   LayoutGrid,
   ArrowLeftRight,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  TrendingDown,
+  FileText
 } from 'lucide-react';
 import { fetchMarketplace } from '../../store/slices/hospitalSlice';
 import { createNewRequest } from '../../store/slices/requestSlice';
 import MedicineDetailDrawer from '../../components/forms/MedicineDetailDrawer';
+import AlternativeMedicinesModal from '../../components/hospital/AlternativeMedicinesModal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { isHospitalSuspended } from '../../services/storage';
+import { findAlternatives, findAlternativesForSearchQuery } from '../../services/medicineAlternativeService';
 
 export const Marketplace = () => {
   const dispatch = useDispatch();
@@ -48,6 +52,38 @@ export const Marketplace = () => {
 
   // Selected Medicine for Drawer Inspection
   const [activeDrawerMedicine, setActiveDrawerMedicine] = useState(null);
+
+  // Alternative Medicines Finder State
+  const [altTargetMedicine, setAltTargetMedicine] = useState(null);
+  const [isAltModalOpen, setIsAltModalOpen] = useState(false);
+
+  // Precomputed alternatives count map for instant badge rendering
+  const alternativesCountMap = useMemo(() => {
+    if (!marketplace?.length) return {};
+    const map = {};
+    marketplace.forEach((med) => {
+      map[med.id] = findAlternatives(med, marketplace).length;
+    });
+    return map;
+  }, [marketplace]);
+
+  // Smart composition alternatives matching active search keyword
+  const smartSearchAlternatives = useMemo(() => {
+    if (!search || search.trim().length < 2 || !marketplace?.length) return [];
+    return findAlternativesForSearchQuery(search, marketplace);
+  }, [search, marketplace]);
+
+  const handleOpenAlternatives = (med) => {
+    setAltTargetMedicine(med);
+    setIsAltModalOpen(true);
+  };
+
+  const handleSelectAlternative = (altMedicine) => {
+    setIsAltModalOpen(false);
+    setAltTargetMedicine(null);
+    setActiveDrawerMedicine(altMedicine);
+    toast.success(`Selected ${altMedicine.brandName} (${altMedicine.power}) for requisition review`);
+  };
 
   useEffect(() => {
     if (user?.id) {
@@ -115,6 +151,41 @@ export const Marketplace = () => {
     return true;
   });
 
+  const searchActive = Boolean(search && search.trim().length >= 2);
+
+  // Partition search results into Primary Matches and Composition-Based Alternatives
+  const { primaryResults, alternativeResults } = useMemo(() => {
+    if (!searchActive) {
+      return { primaryResults: filteredMarketplace, alternativeResults: [] };
+    }
+    const q = search.toLowerCase().trim();
+
+    // Check direct brand name matches first
+    const brandMatches = filteredMarketplace.filter((m) =>
+      m.brandName?.toLowerCase().includes(q)
+    );
+
+    let primaries = [];
+    let alternatives = [];
+
+    if (brandMatches.length > 0) {
+      primaries = brandMatches;
+      const primaryIds = new Set(primaries.map((p) => p.id));
+      alternatives = filteredMarketplace.filter((m) => !primaryIds.has(m.id));
+    } else {
+      const genericMatches = filteredMarketplace.filter((m) =>
+        m.genericName?.toLowerCase().includes(q) ||
+        m.category?.toLowerCase().includes(q) ||
+        m.power?.toLowerCase().includes(q)
+      );
+      primaries = genericMatches.length > 0 ? genericMatches : filteredMarketplace;
+      const primaryIds = new Set(primaries.map((p) => p.id));
+      alternatives = filteredMarketplace.filter((m) => !primaryIds.has(m.id));
+    }
+
+    return { primaryResults: primaries, alternativeResults: alternatives };
+  }, [searchActive, search, filteredMarketplace]);
+
   const scrollShelf = (direction) => {
     const el = document.getElementById('horizontal-shelf-container');
     if (el) {
@@ -123,42 +194,82 @@ export const Marketplace = () => {
     }
   };
 
-  const renderGridCard = (med) => {
+  const renderGridCard = (med, { isPrimary = false, isAlternative = false } = {}) => {
     const discountedPrice = Math.round(
       med.unitOriginalPrice * (1 - (med.concessionPercent || 0) / 100) * 100
     ) / 100;
     const isCold = med.storageType?.toLowerCase().includes('cold');
+    const altCount = alternativesCountMap[med.id] || 0;
+    const displayImg = med.images?.[0]?.url || med.image;
 
     return (
       <div
         key={med.id}
         onClick={() => handleOpenDetail(med)}
-        className="bg-white rounded-2xl border border-slate-200/90 shadow-card hover:shadow-card-hover hover:border-primary-400 transition-all p-5 flex flex-col justify-between group cursor-pointer h-full"
+        className={`bg-white rounded-2xl border transition-all p-5 flex flex-col justify-between group cursor-pointer h-full relative ${
+          isAlternative 
+            ? 'border-emerald-300 shadow-md hover:border-emerald-500 hover:shadow-lg ring-1 ring-emerald-200/60' 
+            : 'border-slate-200/90 shadow-card hover:shadow-card-hover hover:border-primary-400'
+        }`}
       >
         <div className="space-y-3.5">
           {/* Card Top Tag Row */}
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full truncate max-w-[150px]">
-              {med.category || 'Pharmaceutical'}
-            </span>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-sm">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {isAlternative ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm flex items-center gap-1.5">
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>ALTERNATIVE</span>
+              </span>
+            ) : isPrimary && searchActive ? (
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide bg-primary-100 text-primary-800 border border-primary-300 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3 text-primary-600" />
+                <span>PRIMARY MATCH</span>
+              </span>
+            ) : (
+              <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full truncate max-w-[150px]">
+                {med.category || 'Pharmaceutical'}
+              </span>
+            )}
+
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-mono font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-sm ml-auto">
               {med.concessionPercent || 0}% OFF
             </span>
           </div>
 
-          {/* Image / Icon Badge */}
+          {/* Product Image & Title */}
           <div className="flex items-start gap-3">
-            <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary-50 to-primary-100 border border-primary-200 text-primary-700 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-sm">
-              <Pill className="w-6 h-6 rotate-45" />
+            <div className="w-14 h-14 rounded-xl bg-white border border-slate-200/90 text-primary-700 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-sm overflow-hidden p-1">
+              {displayImg ? (
+                <img
+                  src={displayImg}
+                  alt={med.brandName}
+                  className="w-full h-full object-contain"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-primary-50 text-primary-600 rounded-lg">
+                  <Pill className="w-7 h-7 rotate-45" />
+                </div>
+              )}
             </div>
-            <div>
-              <h3 className="text-base font-extrabold text-slate-900 group-hover:text-primary-700 transition-colors leading-tight">
+
+            <div className="min-w-0 flex-1">
+              <h3 className="text-base font-extrabold text-slate-900 group-hover:text-primary-700 transition-colors leading-tight truncate">
                 {med.brandName}
               </h3>
-              <p className="text-xs font-semibold text-primary-700 mt-0.5 font-mono">{med.power}</p>
-              <p className="text-[11px] text-slate-500 truncate max-w-[190px]">{med.genericName}</p>
+              <p className="text-xs font-bold text-primary-700 mt-0.5 font-mono">{med.power}</p>
+              <p className="text-[11px] text-slate-500 truncate">{med.genericName}</p>
             </div>
           </div>
+
+          {/* Alternative Similarity Notice */}
+          {isAlternative && (
+            <div className="p-2 rounded-xl bg-emerald-50/90 border border-emerald-200/80 text-[11px] text-emerald-900 font-medium flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+              <span className="truncate">
+                Equivalent salt: <strong>{med.genericName}</strong> ({med.power})
+              </span>
+            </div>
+          )}
 
           {/* Hospital & Location Meta */}
           <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 text-xs space-y-1.5">
@@ -174,9 +285,9 @@ export const Marketplace = () => {
             </div>
             
             <div className="flex items-center justify-between text-[11px] text-slate-500">
-              <span className="flex items-center gap-1">
-                <MapPin className="w-3 h-3 text-slate-400" />
-                {med.location}
+              <span className="flex items-center gap-1 truncate max-w-[140px]">
+                <MapPin className="w-3 h-3 text-slate-400 flex-shrink-0" />
+                <span className="truncate">{med.location}</span>
               </span>
 
               <span className={`inline-flex items-center gap-1 font-mono font-semibold ${
@@ -191,76 +302,135 @@ export const Marketplace = () => {
           {/* Specs Grid */}
           <div className="grid grid-cols-3 gap-2 text-xs pt-1">
             <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-[10px] text-slate-400 block font-medium">Available Units</span>
+              <span className="text-[10px] text-slate-400 block font-medium">Available</span>
               <span className="font-mono font-extrabold text-slate-900 text-sm">{med.quantity}</span>
             </div>
             <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-[10px] text-slate-400 block font-medium">Mfg Date</span>
-              <span className="font-mono font-semibold text-slate-700 text-xs">{med.mfgDate || '2023-11-15'}</span>
+              <span className="text-[10px] text-slate-400 block font-medium">Batch No.</span>
+              <span className="font-mono font-semibold text-slate-700 text-xs truncate block">{med.batchNo || 'N/A'}</span>
             </div>
             <div className="p-2 bg-slate-50 rounded-xl border border-slate-100">
-              <span className="text-[10px] text-slate-400 block font-medium">Expiry Date</span>
-              <span className="font-mono font-bold text-amber-700 text-xs">{med.expiryDate}</span>
+              <span className="text-[10px] text-slate-400 block font-medium">Expiry</span>
+              <span className="font-mono font-bold text-amber-700 text-xs truncate block">{med.expiryDate}</span>
             </div>
           </div>
         </div>
 
         {/* Pricing and Request Button */}
-        <div className="pt-4 mt-4 border-t border-slate-100 flex items-center justify-between">
-          <div>
-            <span className="text-[10px] font-mono text-slate-400 line-through">MRP ₹{med.unitOriginalPrice}</span>
-            <div className="text-base font-extrabold font-mono text-primary-800">
-              ₹{discountedPrice} <span className="text-[10px] text-slate-500 font-normal">/ unit</span>
+        <div className="pt-4 mt-4 border-t border-slate-100 space-y-2.5">
+          <div className="flex items-center justify-between">
+            <div>
+              <span className="text-[10px] font-mono text-slate-400 line-through">MRP ₹{med.unitOriginalPrice}</span>
+              <div className="text-base font-extrabold font-mono text-primary-800">
+                ₹{discountedPrice} <span className="text-[10px] text-slate-500 font-normal">/ unit</span>
+              </div>
             </div>
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenDetail(med);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all group-hover:scale-105"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Inspect Lot</span>
+            </button>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenDetail(med);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all group-hover:scale-105"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>Inspect Lot</span>
-          </button>
+          {/* Alternative count pill or invoice indicator */}
+          <div className="flex items-center gap-2">
+            {altCount > 0 && !isAlternative && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenAlternatives(med);
+                }}
+                className="w-full py-2 px-3 rounded-xl bg-teal-50/90 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-all flex items-center justify-center gap-1.5 hover:scale-[1.01]"
+                title="View composition-based alternative brands"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                <span>{altCount} Composition Alternative{altCount > 1 ? 's' : ''} Available</span>
+              </button>
+            )}
+
+            {isAlternative && med.invoice && (
+              <div className="w-full py-1.5 px-2.5 rounded-xl bg-slate-50 text-slate-600 border border-slate-200 text-[11px] font-medium flex items-center justify-center gap-1.5 font-mono">
+                <FileText className="w-3.5 h-3.5 text-primary-600" />
+                <span>Verified Invoice Attached</span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
   };
 
-  const renderHorizontalCard = (med) => {
+  const renderHorizontalCard = (med, { isPrimary = false, isAlternative = false } = {}) => {
     const discountedPrice = Math.round(
       med.unitOriginalPrice * (1 - (med.concessionPercent || 0) / 100) * 100
     ) / 100;
     const isCold = med.storageType?.toLowerCase().includes('cold');
+    const altCount = alternativesCountMap[med.id] || 0;
+    const displayImg = med.images?.[0]?.url || med.image;
 
     return (
       <div
         key={med.id}
         onClick={() => handleOpenDetail(med)}
-        className="bg-white rounded-2xl border border-slate-200/90 shadow-card hover:shadow-card-hover hover:border-primary-400 transition-all p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 group cursor-pointer"
+        className={`bg-white rounded-2xl border transition-all p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 group cursor-pointer ${
+          isAlternative 
+            ? 'border-emerald-300 shadow-md hover:border-emerald-500 hover:shadow-lg ring-1 ring-emerald-200/60' 
+            : 'border-slate-200/90 shadow-card hover:shadow-card-hover hover:border-primary-400'
+        }`}
       >
         {/* Medicine & Formulation Info */}
-        <div className="flex items-start sm:items-center gap-3.5 min-w-[280px] lg:w-[32%]">
-          <div className="w-12 h-12 rounded-xl bg-gradient-to-tr from-primary-50 to-primary-100 border border-primary-200 text-primary-700 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-sm">
-            <Pill className="w-6 h-6 rotate-45" />
+        <div className="flex items-start sm:items-center gap-3.5 min-w-[280px] lg:w-[34%]">
+          <div className="w-14 h-14 rounded-xl bg-white border border-slate-200/90 text-primary-700 flex items-center justify-center flex-shrink-0 group-hover:scale-105 transition-transform shadow-sm overflow-hidden p-1">
+            {displayImg ? (
+              <img
+                src={displayImg}
+                alt={med.brandName}
+                className="w-full h-full object-contain"
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-primary-50 text-primary-600 rounded-lg">
+                <Pill className="w-7 h-7 rotate-45" />
+              </div>
+            )}
           </div>
+
           <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
               <h3 className="text-base font-extrabold text-slate-900 group-hover:text-primary-700 transition-colors leading-tight">
                 {med.brandName}
               </h3>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-sm flex-shrink-0">
+
+              {isAlternative ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[11px] font-black tracking-wide bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-sm flex items-center gap-1 flex-shrink-0">
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>ALTERNATIVE</span>
+                </span>
+              ) : isPrimary && searchActive ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black tracking-wide bg-primary-100 text-primary-800 border border-primary-300 flex items-center gap-1 flex-shrink-0">
+                  <CheckCircle2 className="w-3 h-3 text-primary-600" />
+                  <span>PRIMARY MATCH</span>
+                </span>
+              ) : null}
+
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-amber-50 text-amber-800 border border-amber-200 shadow-sm flex-shrink-0">
                 {med.concessionPercent || 0}% OFF
               </span>
             </div>
+
             <div className="flex items-center gap-1.5 text-xs">
               <span className="font-bold text-primary-700 font-mono">{med.power}</span>
               <span className="text-slate-300">•</span>
               <span className="text-slate-500 truncate text-[11px]">{med.genericName}</span>
             </div>
+
             <div className="flex items-center gap-1.5 pt-0.5 flex-wrap">
               <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
                 {med.category || 'Pharmaceutical'}
@@ -271,12 +441,18 @@ export const Marketplace = () => {
                 <Thermometer className="w-3 h-3 text-cyan-600" />
                 {isCold ? 'Cold 2°C - 8°C' : 'Room Temp'}
               </span>
+              {med.invoice && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-md">
+                  <FileText className="w-3 h-3 text-primary-600" />
+                  <span>Invoice #{med.invoice.invoiceNumber || 'Verified'}</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
 
         {/* Hospital Provider & Location */}
-        <div className="flex flex-col justify-center space-y-1.5 sm:w-56 lg:border-l lg:border-r border-slate-100 lg:px-4">
+        <div className="flex flex-col justify-center space-y-1.5 sm:w-52 lg:border-l lg:border-r border-slate-100 lg:px-4">
           <div className="flex items-center gap-1.5 text-xs text-slate-800 font-bold truncate">
             <Building2 className="w-3.5 h-3.5 text-primary-600 flex-shrink-0" />
             <span className="truncate">{med.hospitalName}</span>
@@ -303,15 +479,15 @@ export const Marketplace = () => {
             <span className="text-[9px] text-slate-400 uppercase font-mono">Units</span>
           </div>
           <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-center">
-            <span className="text-[10px] text-slate-400 block font-medium">Mfg Date</span>
-            <span className="font-mono font-semibold text-slate-700 text-xs block leading-tight">
-              {med.mfgDate || '2023-11-15'}
+            <span className="text-[10px] text-slate-400 block font-medium">Batch No.</span>
+            <span className="font-mono font-semibold text-slate-700 text-xs block leading-tight truncate">
+              {med.batchNo || 'N/A'}
             </span>
-            <span className="text-[9px] text-slate-400 uppercase font-mono">Batch</span>
+            <span className="text-[9px] text-slate-400 uppercase font-mono">Lot #</span>
           </div>
           <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-center">
-            <span className="text-[10px] text-slate-400 block font-medium">Expiry Date</span>
-            <span className="font-mono font-bold text-amber-700 text-xs block leading-tight">
+            <span className="text-[10px] text-slate-400 block font-medium">Expiry</span>
+            <span className="font-mono font-bold text-amber-700 text-xs block leading-tight truncate">
               {med.expiryDate}
             </span>
             <span className="text-[9px] text-amber-700/80 uppercase font-mono">Window</span>
@@ -319,7 +495,7 @@ export const Marketplace = () => {
         </div>
 
         {/* Pricing & CTA */}
-        <div className="flex items-center justify-between lg:flex-col lg:items-end lg:justify-center gap-2.5 min-w-[150px] border-t lg:border-t-0 border-slate-100 pt-3 lg:pt-0">
+        <div className="flex items-center justify-between lg:flex-col lg:items-end lg:justify-center gap-2.5 min-w-[170px] border-t lg:border-t-0 border-slate-100 pt-3 lg:pt-0">
           <div className="text-left lg:text-right">
             <span className="text-[10px] font-mono text-slate-400 line-through block">MRP ₹{med.unitOriginalPrice}</span>
             <div className="text-lg font-extrabold font-mono text-primary-800 leading-tight">
@@ -327,18 +503,92 @@ export const Marketplace = () => {
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              handleOpenDetail(med);
-            }}
-            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all group-hover:scale-105 flex-shrink-0"
-          >
-            <Eye className="w-3.5 h-3.5" />
-            <span>Inspect Lot</span>
-          </button>
+          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
+            {altCount > 0 && !isAlternative && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenAlternatives(med);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 text-xs font-bold transition-all hover:scale-105 flex-shrink-0"
+                title="View composition-based alternative brands"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-teal-600" />
+                <span>{altCount} Alt{altCount > 1 ? 's' : ''}</span>
+              </button>
+            )}
+
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenDetail(med);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all group-hover:scale-105 flex-shrink-0"
+            >
+              <Eye className="w-3.5 h-3.5" />
+              <span>Inspect Lot</span>
+            </button>
+          </div>
         </div>
+      </div>
+    );
+  };
+
+  const renderCardList = (items, { isPrimary = false, isAlternative = false } = {}) => {
+    if (viewMode === 'scroll') {
+      return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
+              <ArrowLeftRight className="w-3.5 h-3.5 text-primary-600" />
+              <span>Scroll horizontally to browse medicine lots</span>
+            </p>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => scrollShelf('left')}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors shadow-sm"
+                title="Scroll Left"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => scrollShelf('right')}
+                className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors shadow-sm"
+                title="Scroll Right"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div
+            id="horizontal-shelf-container"
+            className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-300"
+          >
+            {items.map((med) => (
+              <div key={med.id} className="w-[350px] flex-shrink-0 snap-start">
+                {renderGridCard(med, { isPrimary, isAlternative })}
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    if (viewMode === 'grid') {
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {items.map((med) => renderGridCard(med, { isPrimary, isAlternative }))}
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3.5">
+        {items.map((med) => renderHorizontalCard(med, { isPrimary, isAlternative }))}
       </div>
     );
   };
@@ -424,6 +674,38 @@ export const Marketplace = () => {
           </div>
 
         </div>
+
+        {/* Smart Composition Alternatives Search Banner */}
+        {smartSearchAlternatives.length > 0 && (
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-teal-50 via-primary-50 to-teal-50 border border-teal-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fadeIn">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2 rounded-xl bg-teal-600 text-white shadow-sm flex-shrink-0 mt-0.5 sm:mt-0">
+                <Sparkles className="w-4 h-4 animate-pulse" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs font-extrabold text-slate-900">
+                    Smart Composition Match:
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-teal-100 text-teal-900 border border-teal-200">
+                    {smartSearchAlternatives.length} Alternative Brand{smartSearchAlternatives.length > 1 ? 's' : ''} Found
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-600 mt-0.5 leading-tight">
+                  Identical active formulation & strength available from peer hospital pharmacies for query "<strong className="text-slate-800">{search.trim()}</strong>".
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleOpenAlternatives(smartSearchAlternatives[0])}
+              className="w-full sm:w-auto px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-sm transition-all hover:scale-105 flex items-center justify-center gap-1.5 flex-shrink-0"
+            >
+              <span>Explore Alternatives</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
 
         {/* Secondary Category Pills and View Switcher */}
         <div className="pt-2 border-t border-slate-100 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs">
@@ -513,53 +795,78 @@ export const Marketplace = () => {
       {/* Medicine Cards Section */}
       {isLoading && marketplace.length === 0 ? (
         <LoadingSpinner text="Querying active marketplace lots..." />
-      ) : filteredMarketplace.length > 0 ? (
-        viewMode === 'scroll' ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-slate-500 font-medium flex items-center gap-1.5">
-                <ArrowLeftRight className="w-3.5 h-3.5 text-primary-600" />
-                <span>Scroll horizontally to browse active medicine lots</span>
-              </p>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => scrollShelf('left')}
-                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors shadow-sm"
-                  title="Scroll Left"
-                >
-                  <ChevronLeft className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => scrollShelf('right')}
-                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-600 transition-colors shadow-sm"
-                  title="Scroll Right"
-                >
-                  <ChevronRight className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-            <div
-              id="horizontal-shelf-container"
-              className="flex gap-4 overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory scrollbar-thin scrollbar-thumb-slate-300"
-            >
-              {filteredMarketplace.map((med) => (
-                <div key={med.id} className="w-[350px] flex-shrink-0 snap-start">
-                  {renderGridCard(med)}
-                </div>
-              ))}
-            </div>
-          </div>
-        ) : viewMode === 'grid' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredMarketplace.map((med) => renderGridCard(med))}
+      ) : searchActive ? (
+        // SEARCH IS ACTIVE: Split into Primary Matches and Composition Alternatives
+        primaryResults.length === 0 && alternativeResults.length === 0 ? (
+          <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400">
+            <Boxes className="w-10 h-10 mx-auto mb-2 opacity-40" />
+            <p className="font-bold text-sm text-slate-700">No medicines found matching "{search.trim()}"</p>
+            <p className="text-xs text-slate-400 mt-1">Try searching by generic salt name (e.g. Paracetamol) or resetting filters</p>
           </div>
         ) : (
-          <div className="space-y-3.5">
-            {filteredMarketplace.map((med) => renderHorizontalCard(med))}
+          <div className="space-y-8">
+            {/* 1. Primary Results Section */}
+            {primaryResults.length > 0 && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2.5 h-2.5 rounded-full bg-primary-600" />
+                    <h2 className="text-base font-extrabold text-slate-900">
+                      Primary Matches for "{search.trim()}"
+                    </h2>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-primary-50 text-primary-700 border border-primary-200">
+                      {primaryResults.length} {primaryResults.length === 1 ? 'lot' : 'lots'}
+                    </span>
+                  </div>
+                  <span className="text-xs text-slate-500 font-medium hidden sm:inline">
+                    Direct brand or search keyword matches
+                  </span>
+                </div>
+
+                {renderCardList(primaryResults, { isPrimary: true, isAlternative: false })}
+              </div>
+            )}
+
+            {/* 2. Composition-Based Alternatives Section */}
+            {alternativeResults.length > 0 && (
+              <div className="space-y-4 pt-2">
+                <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-emerald-50 border border-emerald-200 shadow-sm">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2.5 rounded-xl bg-emerald-600 text-white shadow-sm flex-shrink-0 mt-0.5 sm:mt-0">
+                        <Sparkles className="w-5 h-5 animate-pulse" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h2 className="text-base font-black text-slate-900">
+                            Composition-Based Alternative Medicines
+                          </h2>
+                          <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-600 text-white shadow-sm">
+                            {alternativeResults.length} ALTERNATIVE{alternativeResults.length > 1 ? 'S' : ''}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-700 mt-1 leading-relaxed">
+                          Different brands with the <strong>same active composition, strength, and dosage form</strong> as your requested medicine. Available from peer hospital pharmacies.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 pt-2.5 border-t border-emerald-200/80 flex items-center gap-2 text-[11px] text-emerald-900 font-medium">
+                    <ShieldCheck className="w-4 h-4 text-emerald-700 flex-shrink-0" />
+                    <span>
+                      <strong>Clinical Safety Notice:</strong> For licensed medical professional reference only. Generic / brand substitution requires physician or hospital pharmacist verification.
+                    </span>
+                  </div>
+                </div>
+
+                {renderCardList(alternativeResults, { isPrimary: false, isAlternative: true })}
+              </div>
+            )}
           </div>
         )
+      ) : filteredMarketplace.length > 0 ? (
+        renderCardList(filteredMarketplace)
       ) : (
         <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400">
           <Boxes className="w-10 h-10 mx-auto mb-2 opacity-40" />
@@ -575,6 +882,20 @@ export const Marketplace = () => {
         medicine={activeDrawerMedicine}
         onRequestSubmit={handleRequisitionSubmit}
         isRequestDisabled={isSuspended}
+        onOpenAlternatives={handleOpenAlternatives}
+        marketplace={marketplace}
+      />
+
+      {/* Alternative Branded Medicines Finder Modal */}
+      <AlternativeMedicinesModal
+        isOpen={isAltModalOpen}
+        onClose={() => {
+          setIsAltModalOpen(false);
+          setAltTargetMedicine(null);
+        }}
+        targetMedicine={altTargetMedicine}
+        marketplaceInventory={marketplace}
+        onSelectAlternative={handleSelectAlternative}
       />
 
     </div>

@@ -59,22 +59,43 @@ export const initializeStorage = () => {
         modified = true;
       }
 
-      // Ensure mfgDate on all medicines
+      // Backfill missing fields (images, invoice, packSize) and ensure mfgDate
       const updated = parsed.map((m) => {
-        if (!m.mfgDate) {
-          modified = true;
-          const match = INITIAL_MEDICINES.find((init) => init.id === m.id);
-          if (match && match.mfgDate) {
-            return { ...m, mfgDate: match.mfgDate };
+        let med = { ...m };
+        const match = INITIAL_MEDICINES.find((init) => init.id === m.id);
+        if (match) {
+          if (!med.images && match.images) {
+            med.images = match.images;
+            modified = true;
           }
-          if (m.expiryDate) {
-            const d = new Date(m.expiryDate);
-            d.setFullYear(d.getFullYear() - 1);
-            return { ...m, mfgDate: d.toISOString().split('T')[0] };
+          if (!med.image && match.image) {
+            med.image = match.image;
+            modified = true;
           }
-          return { ...m, mfgDate: '2023-11-15' };
+          if (!med.invoice && match.invoice) {
+            med.invoice = match.invoice;
+            modified = true;
+          }
+          if (!med.packSize && match.packSize) {
+            med.packSize = match.packSize;
+            modified = true;
+          }
+          if (!med.mfgDate && match.mfgDate) {
+            med.mfgDate = match.mfgDate;
+            modified = true;
+          }
         }
-        return m;
+        if (!med.mfgDate) {
+          if (med.expiryDate) {
+            const d = new Date(med.expiryDate);
+            d.setFullYear(d.getFullYear() - 1);
+            med.mfgDate = d.toISOString().split('T')[0];
+          } else {
+            med.mfgDate = '2023-11-15';
+          }
+          modified = true;
+        }
+        return med;
       });
 
       if (modified) {

@@ -3,6 +3,7 @@ import { HOSPITAL_ANALYTICS } from './mockData';
 import { calculateMedicineExpiry, calculateRequestExpiry, processExpiredRequests } from '../utils/expiryUtils';
 import { calculateOrderPricing } from '../utils/pricingUtils';
 import { auditService } from './auditService';
+import { findAlternatives } from './medicineAlternativeService';
 
 const SUSPENDED_HOSPITAL_ERROR = 'Your hospital account is currently suspended. You cannot perform transactions or operational activities.';
 
@@ -395,16 +396,27 @@ export const hospitalService = {
       return true;
     });
 
-    // Medicine form / dosage search (Tablets, Capsules, Injections, Syrups, etc.)
+    // Medicine form / dosage search with composition-based alternative matching
     if (filters.search) {
-      const q = filters.search.toLowerCase();
-      results = results.filter((m) =>
+      const q = filters.search.toLowerCase().trim();
+      const directMatches = results.filter((m) =>
         m.brandName.toLowerCase().includes(q) ||
         m.genericName?.toLowerCase().includes(q) ||
         m.category?.toLowerCase().includes(q) ||
         m.power.toLowerCase().includes(q) ||
         m.hospitalName.toLowerCase().includes(q)
       );
+
+      // Find exact composition alternatives for any direct matches
+      const altIds = new Set();
+      directMatches.forEach((directMed) => {
+        const alts = findAlternatives(directMed, results);
+        alts.forEach((alt) => altIds.add(alt.id));
+      });
+
+      const directList = results.filter((m) => directMatches.some((dm) => dm.id === m.id));
+      const altList = results.filter((m) => !directMatches.some((dm) => dm.id === m.id) && altIds.has(m.id));
+      results = [...directList, ...altList];
     }
     if (filters.power) {
       const p = filters.power.toLowerCase();
