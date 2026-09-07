@@ -17,6 +17,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import Medicine3DPreview from '../spatial/Medicine3DPreview';
+import { calculateOrderPricing } from '../../utils/pricingUtils';
 
 export const MedicineDetailDrawer = ({ 
   isOpen, 
@@ -32,11 +33,15 @@ export const MedicineDetailDrawer = ({
   const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'compliance' | 'history'
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const unitPrice = medicine.unitOriginalPrice;
-  const concession = medicine.concessionPercent || 0;
-  const finalUnitPrice = Math.round(unitPrice * (1 - concession / 100) * 100) / 100;
-  const totalAmount = Math.round(finalUnitPrice * requestQty);
+  const pricing = calculateOrderPricing({
+    unitOriginalPrice: medicine.unitOriginalPrice,
+    concessionPercent: medicine.concessionPercent || 0,
+    quantity: requestQty,
+    storageType: medicine.storageType
+  });
 
+  const finalUnitPrice = pricing.unitFinalPrice;
+  const totalAmount = pricing.totalPayable;
   const isColdChain = medicine.storageType?.toLowerCase().includes('cold');
 
   const handleSubmit = async (e) => {
@@ -280,11 +285,43 @@ export const MedicineDetailDrawer = ({
               </div>
             )}
 
-            <div className="p-3 rounded-xl bg-slate-900 text-white flex items-center justify-between text-xs">
-              <span className="text-slate-400">Escrow Total:</span>
-              <span className="text-base font-extrabold text-cyan-300 font-mono">
-                ₹{totalAmount.toLocaleString()}
-              </span>
+            <div className="p-3.5 rounded-xl bg-slate-900 text-white space-y-1.5 text-xs font-mono">
+              <div className="flex justify-between text-slate-400 text-[11px]">
+                <span>Base Subtotal:</span>
+                <span>₹{pricing.subtotal.toLocaleString()}</span>
+              </div>
+              {pricing.concessionSavings > 0 && (
+                <div className="flex justify-between text-amber-400 text-[11px]">
+                  <span>Near-Expiry Concession:</span>
+                  <span>-₹{pricing.concessionSavings.toLocaleString()}</span>
+                </div>
+              )}
+              {pricing.logisticsFee > 0 && (
+                <div className="flex justify-between text-cyan-300 text-[11px]">
+                  <span>Cold-Chain Logistics Fee:</span>
+                  <span>+₹{pricing.logisticsFee.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between text-slate-400 text-[11px]">
+                <span>GST (12% Pharma):</span>
+                <span>+₹{pricing.gstAmount.toLocaleString()}</span>
+              </div>
+              <div className="pt-2 border-t border-slate-700 flex items-center justify-between font-bold">
+                <span className="text-slate-300">Total Escrow Value:</span>
+                <span className="text-base text-cyan-300">
+                  ₹{pricing.totalPayable.toLocaleString()}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-200 text-[10px] text-amber-800 space-y-0.5">
+              <div className="flex items-center gap-1 font-bold">
+                <Clock className="w-3 h-3 text-amber-600" />
+                <span>48-Hour Peer Fulfillment Protocol</span>
+              </div>
+              <p className="leading-tight text-slate-600">
+                Peer hospital has 48 hours to fulfill or decline. If competing requests exist from other buyers, first peer acceptance wins.
+              </p>
             </div>
 
             <button

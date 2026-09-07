@@ -49,6 +49,14 @@ export const reactivateHospitalAction = createAsyncThunk('admin/reactivateHospit
   }
 });
 
+export const setReviewStatusAction = createAsyncThunk('admin/setReviewStatus', async ({ hospitalId, status, note }, { rejectWithValue }) => {
+  try {
+    return await adminService.setReviewStatus(hospitalId, status, note);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 export const fetchHospitalDetails = createAsyncThunk('admin/fetchHospitalDetails', async (hospitalId, { rejectWithValue }) => {
   try {
     return await adminService.getHospitalDetails(hospitalId);
@@ -166,6 +174,13 @@ const adminSlice = createSlice({
         }
       })
       .addCase(rejectHospitalAction.fulfilled, (state, action) => {
+        const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
+        if (index !== -1) state.hospitals[index] = action.payload;
+        if (state.selectedHospital?.id === action.payload.id) {
+          state.selectedHospital = action.payload;
+        }
+      })
+      .addCase(setReviewStatusAction.fulfilled, (state, action) => {
         const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
         if (index !== -1) state.hospitals[index] = action.payload;
         if (state.selectedHospital?.id === action.payload.id) {

@@ -17,7 +17,9 @@ import {
   Activity,
   FileCheck2,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Flame,
+  Trash2
 } from 'lucide-react';
 
 export const Sidebar = ({ role = 'hospital' }) => {
@@ -36,10 +38,11 @@ export const Sidebar = ({ role = 'hospital' }) => {
       ]
     },
     {
-      title: 'INVENTORY',
+      title: 'INVENTORY & DISPOSAL',
       items: [
         { to: '/hospital/inventory', icon: Boxes, label: 'My Inventory' },
         { to: '/hospital/marketplace', icon: ShoppingBag, label: 'Marketplace' },
+        { to: '/hospital/waste-management', icon: Trash2, label: 'Waste Disposal' },
       ]
     },
     {

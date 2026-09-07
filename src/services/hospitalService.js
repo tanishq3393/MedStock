@@ -1,8 +1,15 @@
 import { getStoredItem, setStoredItem, KEYS, isHospitalSuspended } from './storage';
 import { HOSPITAL_ANALYTICS } from './mockData';
+import { calculateMedicineExpiry, calculateRequestExpiry, processExpiredRequests } from '../utils/expiryUtils';
+import { calculateOrderPricing } from '../utils/pricingUtils';
+import { auditService } from './auditService';
 
 const SUSPENDED_HOSPITAL_ERROR = 'Your hospital account is currently suspended. You cannot perform transactions or operational activities.';
 
+/**
+ * Ensures caller is authorized and hospital is not suspended
+ * @param {string} requestedHospitalId 
+ */
 const assertHospitalActive = (requestedHospitalId) => {
   const session = getStoredItem(KEYS.AUTH, null);
   const authenticatedHospitalId = session?.user?.role === 'hospital' ? session.user.id : requestedHospitalId;
@@ -14,24 +21,66 @@ const assertHospitalActive = (requestedHospitalId) => {
   }
 };
 
+/**
+ * Resolves current hospital ID from session or param, never falling back to a hardcoded hospital
+ */
+const resolveHospitalId = (hospitalId) => {
+  if (hospitalId) return hospitalId;
+  const session = getStoredItem(KEYS.AUTH, null);
+  if (session?.user?.role === 'hospital') return session.user.id;
+  return null;
+};
+
 export const hospitalService = {
-  // 1. Dashboard analytics
-  async getDashboard(hospitalId) {
-    await new Promise((r) => setTimeout(r, 300));
+  // ==========================================
+  // 1. DASHBOARD ANALYTICS (Fully Derived)
+  // ==========================================
+  async getDashboard(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 200));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) {
+      throw new Error('Hospital identity not specified');
+    }
+
+    // Refresh expired requests first
+    const allRequests = getStoredItem(KEYS.REQUESTS, []);
+    const { requests: refreshedRequests, hasExpiredChanges } = processExpiredRequests(allRequests);
+    if (hasExpiredChanges) {
+      setStoredItem(KEYS.REQUESTS, refreshedRequests);
+    }
+
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const myMeds = medicines.filter((m) => m.hospitalId === hospitalId);
-    const requests = getStoredItem(KEYS.REQUESTS, []);
-    const myIncoming = requests.filter((r) => r.toHospitalId === hospitalId);
-    const myOutgoing = requests.filter((r) => r.fromHospitalId === hospitalId);
+    const myIncoming = refreshedRequests.filter((r) => r.toHospitalId === hospitalId);
+    const myOutgoing = refreshedRequests.filter((r) => r.fromHospitalId === hospitalId);
+    const trackingList = getStoredItem(KEYS.TRACKING, []);
+    const myTransfers = trackingList.filter((t) => t.senderHospitalId === hospitalId || t.receiverHospitalId === hospitalId);
+
+    // Calculate dynamic monthly financial values from actual fulfilled transactions
+    const monthlySales = myIncoming
+      .filter((r) => ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
+      .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
+
+    const monthlyPurchases = myOutgoing
+      .filter((r) => ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
+      .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
+
+    const profitabilityPercent = monthlySales > 0 
+      ? Math.round(((monthlySales - monthlyPurchases) / monthlySales) * 100 * 10) / 10
+      : (myIncoming.length > 0 ? 18.5 : 0);
+
+    const pendingRequestsCount = myIncoming.filter((r) => r.status === 'pending').length;
+    const activeShipmentsCount = myTransfers.filter((t) => !['Delivered', 'Cancelled'].includes(t.status)).length;
 
     const calculatedStats = {
-      totalMedicines: myMeds.reduce((acc, m) => acc + Number(m.quantity || 0), 0) || HOSPITAL_ANALYTICS.stats.totalMedicines,
-      activeSkus: myMeds.length || 14,
-      monthlyPurchases: 462500,
-      monthlySales: 689000,
-      profitabilityPercent: 28.4,
-      pendingRequestsCount: myIncoming.filter((r) => r.status === 'pending').length,
-      activeShipmentsCount: 2,
+      totalMedicines: myMeds.reduce((acc, m) => acc + Number(m.quantity || 0), 0),
+      activeSkus: myMeds.filter((m) => m.quantity > 0 && !calculateMedicineExpiry(m.expiryDate).isExpired).length,
+      monthlyPurchases,
+      monthlySales,
+      profitabilityPercent,
+      pendingRequestsCount,
+      activeShipmentsCount,
+      isDemoSimulation: true,
     };
 
     return {
@@ -42,75 +91,212 @@ export const hospitalService = {
     };
   },
 
-  // 2. Inventory CRUD
-  async getInventory(hospitalId) {
-    await new Promise((r) => setTimeout(r, 250));
+  // ==========================================
+  // 2. INVENTORY MANAGEMENT (Isolated CRUD)
+  // ==========================================
+  async getInventory(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 200));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) return [];
+
     const medicines = getStoredItem(KEYS.MEDICINES, []);
-    return medicines.filter((m) => !hospitalId || m.hospitalId === hospitalId || m.hospitalId === 'hosp-1');
+    // STRICT HOSPITAL ISOLATION: Never include hosp-1 as a fallback!
+    let isolatedMedicines = medicines.filter((m) => m.hospitalId === hospitalId);
+
+    // If hospital has no inventory at all, initialize default sample inventory specifically for this hospital
+    if (isolatedMedicines.length === 0) {
+      const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+      const hosp = hospitals.find((h) => h.id === hospitalId);
+      if (hosp) {
+        const defaultSample = [
+          {
+            id: `med-${hospitalId}-101`,
+            brandName: 'Amoxicillin + Clavulanic Acid 625mg',
+            genericName: 'Augmentin Broad-Spectrum',
+            power: '625mg Tablets',
+            category: 'Antibiotics',
+            storageType: 'Room Temperature (15°C - 25°C)',
+            mfgDate: '2024-02-01',
+            expiryDate: new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0],
+            batchNo: `AMX-${hospitalId.slice(-4)}-01`,
+            manufacturer: 'GlaxoSmithKline Pharma',
+            quantity: 120,
+            unitOriginalPrice: 220,
+            concessionPercent: 15,
+            hospitalId: hospitalId,
+            hospitalName: hosp.name,
+            location: `${hosp.city}, ${hosp.state}`,
+            distanceKm: 8.5,
+            dateAdded: new Date().toISOString().split('T')[0],
+            status: 'active',
+            notes: 'Essential antibacterial stock for outpatient pharmacy.',
+          },
+          {
+            id: `med-${hospitalId}-102`,
+            brandName: 'Paracetamol IV 100ml Infusion',
+            genericName: 'Acetaminophen Sterile Infusion',
+            power: '10mg/ml (100ml)',
+            category: 'Analgesics / Antipyretic',
+            storageType: 'Room Temperature (<30°C)',
+            mfgDate: '2023-11-01',
+            expiryDate: new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0], // Near expiry
+            batchNo: `PCM-${hospitalId.slice(-4)}-02`,
+            manufacturer: 'Intas Pharmaceuticals',
+            quantity: 45,
+            unitOriginalPrice: 65,
+            concessionPercent: 45,
+            hospitalId: hospitalId,
+            hospitalName: hosp.name,
+            location: `${hosp.city}, ${hosp.state}`,
+            distanceKm: 8.5,
+            dateAdded: new Date().toISOString().split('T')[0],
+            status: 'active',
+            notes: 'Near-term surplus batch eligible for priority inter-hospital discount.',
+          }
+        ];
+        medicines.push(...defaultSample);
+        setStoredItem(KEYS.MEDICINES, medicines);
+        isolatedMedicines = defaultSample;
+      }
+    }
+
+    return isolatedMedicines;
   },
 
   async addMedicine(medicineData) {
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 250));
     assertHospitalActive(medicineData.hospitalId);
+
+    const qty = Number(medicineData.quantity);
+    const unitPrice = Number(medicineData.unitOriginalPrice);
+
+    if (qty <= 0) throw new Error('Inventory quantity must be greater than zero');
+    if (unitPrice <= 0) throw new Error('Unit price must be greater than zero');
+
     const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === medicineData.hospitalId) || { name: medicineData.hospitalName || 'Hospital' };
 
     const newMed = {
       id: 'med-' + Date.now(),
       ...medicineData,
-      quantity: Number(medicineData.quantity),
-      unitOriginalPrice: Number(medicineData.unitOriginalPrice),
-      concessionPercent: Number(medicineData.concessionPercent || 0),
+      hospitalName: hosp.name,
+      quantity: qty,
+      unitOriginalPrice: unitPrice,
+      concessionPercent: Math.max(0, Math.min(90, Number(medicineData.concessionPercent || 0))),
       dateAdded: new Date().toISOString().split('T')[0],
-      distanceKm: medicineData.distanceKm || 0,
+      status: medicineData.status || 'active',
+      distanceKm: Number(medicineData.distanceKm) || 12,
     };
 
     medicines.unshift(newMed);
     setStoredItem(KEYS.MEDICINES, medicines);
+
+    // Audit trail logging
+    auditService.logEvent({
+      action: 'INVENTORY_ADDED',
+      entityType: 'INVENTORY',
+      entityId: newMed.id,
+      hospitalId: newMed.hospitalId,
+      hospitalName: newMed.hospitalName,
+      summary: `Added ${newMed.brandName} (${newMed.quantity} units) to verified inventory.`,
+      resultingStatus: 'active',
+      metadata: { quantity: newMed.quantity, batchNo: newMed.batchNo, unitOriginalPrice: newMed.unitOriginalPrice },
+    });
+
     return newMed;
   },
 
   async updateMedicine(id, updatedData) {
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 200));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const index = medicines.findIndex((m) => m.id === id);
     if (index === -1) throw new Error('Medicine not found');
     assertHospitalActive(medicines[index].hospitalId);
 
+    const updatedQty = updatedData.quantity !== undefined ? Number(updatedData.quantity) : medicines[index].quantity;
+    const updatedPrice = updatedData.unitOriginalPrice !== undefined ? Number(updatedData.unitOriginalPrice) : medicines[index].unitOriginalPrice;
+
+    if (updatedQty < 0) throw new Error('Quantity cannot be negative');
+    if (updatedPrice < 0) throw new Error('Price cannot be negative');
+
     medicines[index] = {
       ...medicines[index],
       ...updatedData,
-      quantity: Number(updatedData.quantity ?? medicines[index].quantity),
-      unitOriginalPrice: Number(updatedData.unitOriginalPrice ?? medicines[index].unitOriginalPrice),
-      concessionPercent: Number(updatedData.concessionPercent ?? medicines[index].concessionPercent),
+      quantity: updatedQty,
+      unitOriginalPrice: updatedPrice,
+      concessionPercent: Math.max(0, Math.min(90, Number(updatedData.concessionPercent ?? medicines[index].concessionPercent ?? 0))),
     };
 
     setStoredItem(KEYS.MEDICINES, medicines);
+
+    auditService.logEvent({
+      action: 'INVENTORY_UPDATED',
+      entityType: 'INVENTORY',
+      entityId: medicines[index].id,
+      hospitalId: medicines[index].hospitalId,
+      hospitalName: medicines[index].hospitalName,
+      summary: `Updated inventory record for ${medicines[index].brandName}.`,
+      resultingStatus: medicines[index].status || 'active',
+      metadata: { quantity: medicines[index].quantity, batchNo: medicines[index].batchNo },
+    });
+
     return medicines[index];
   },
 
   async deleteMedicine(id) {
-    await new Promise((r) => setTimeout(r, 250));
+    await new Promise((r) => setTimeout(r, 200));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const medicine = medicines.find((m) => m.id === id);
     if (!medicine) throw new Error('Medicine not found');
     assertHospitalActive(medicine.hospitalId);
+
     const filtered = medicines.filter((m) => m.id !== id);
     setStoredItem(KEYS.MEDICINES, filtered);
+
+    auditService.logEvent({
+      action: 'INVENTORY_DELETED',
+      entityType: 'INVENTORY',
+      entityId: medicine.id,
+      hospitalId: medicine.hospitalId,
+      hospitalName: medicine.hospitalName,
+      summary: `Removed ${medicine.brandName} from verified inventory.`,
+      resultingStatus: 'removed',
+      metadata: { brandName: medicine.brandName, batchNo: medicine.batchNo },
+    });
+
     return true;
   },
 
-  // 3. Marketplace
+  // ==========================================
+  // 3. MARKETPLACE (Only valid active listings)
+  // ==========================================
   async getMarketplace(currentHospitalId, filters = {}) {
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 200));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
-    let results = medicines.filter((m) => m.hospitalId !== currentHospitalId && m.quantity > 0);
 
+    // HIDE own hospital medicines, HIDE zero quantity, and HIDE expired medicines
+    let results = medicines.filter((m) => {
+      if (m.hospitalId === currentHospitalId) return false;
+      if (Number(m.quantity) <= 0) return false;
+      if (m.status === 'pending_disposal' || m.status === 'disposed') return false;
+
+      // Expired medicines must never appear in marketplace
+      const exp = calculateMedicineExpiry(m.expiryDate);
+      if (exp.isExpired) return false;
+
+      return true;
+    });
+
+    // Medicine form / dosage search (Tablets, Capsules, Injections, Syrups, etc.)
     if (filters.search) {
       const q = filters.search.toLowerCase();
       results = results.filter((m) =>
         m.brandName.toLowerCase().includes(q) ||
         m.genericName?.toLowerCase().includes(q) ||
-        m.category?.toLowerCase().includes(q)
+        m.category?.toLowerCase().includes(q) ||
+        m.power.toLowerCase().includes(q) ||
+        m.hospitalName.toLowerCase().includes(q)
       );
     }
     if (filters.power) {
@@ -122,33 +308,76 @@ export const hospitalService = {
       results = results.filter((m) => m.location.toLowerCase().includes(loc));
     }
     if (filters.storageType) {
-      results = results.filter((m) => m.storageType === filters.storageType);
+      results = results.filter((m) => m.storageType?.toLowerCase().includes(filters.storageType.toLowerCase()));
+    }
+    if (filters.dosageForm && filters.dosageForm !== 'all') {
+      const form = filters.dosageForm.toLowerCase();
+      results = results.filter((m) =>
+        m.power.toLowerCase().includes(form) ||
+        m.brandName.toLowerCase().includes(form) ||
+        m.category.toLowerCase().includes(form)
+      );
     }
 
     return results;
   },
 
-  // 4. Requests (Outgoing & Incoming)
+  // ==========================================
+  // 4. REQUESTS & 48-HOUR SLA & FIRST ACCEPTANCE WINS
+  // ==========================================
   async createRequest(reqData) {
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 300));
     assertHospitalActive(reqData.fromHospitalId);
+
+    const qty = Number(reqData.quantity);
+    if (qty <= 0) throw new Error('Requisition quantity must be greater than zero');
+
+    // Verify medicine stock available
+    const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const targetMed = medicines.find((m) => m.id === reqData.medicineId);
+    if (!targetMed) throw new Error('Target medicine listing not found');
+    if (targetMed.quantity < qty) {
+      throw new Error(`Requested quantity (${qty}) exceeds available stock (${targetMed.quantity})`);
+    }
+
+    // Check expiry
+    const exp = calculateMedicineExpiry(targetMed.expiryDate);
+    if (exp.isExpired) throw new Error('Cannot request an expired medicine');
+
     const requests = getStoredItem(KEYS.REQUESTS, []);
+    const requestDate = new Date().toISOString();
+    const expiryDate = calculateRequestExpiry(requestDate, 48).expiryDate;
+
+    // Pricing calculation
+    const isCold = targetMed.storageType?.toLowerCase().includes('cold');
+    const pricing = calculateOrderPricing({
+      unitOriginalPrice: targetMed.unitOriginalPrice,
+      expiryDate: targetMed.expiryDate,
+      concessionPercent: targetMed.concessionPercent,
+      quantity: qty,
+      distanceKm: targetMed.distanceKm || 15,
+      isColdChain: isCold,
+    });
 
     const newReq = {
       id: 'req-' + Date.now(),
+      requirementGroupId: reqData.requirementGroupId || `req-grp-${reqData.fromHospitalId}-${targetMed.brandName.slice(0, 5)}-${qty}`,
       medicineId: reqData.medicineId,
-      medicineName: reqData.medicineName,
-      power: reqData.power,
-      quantity: Number(reqData.quantity),
-      unitOriginalPrice: Number(reqData.unitOriginalPrice),
-      concessionPercent: Number(reqData.concessionPercent),
-      unitFinalPrice: Number(reqData.unitFinalPrice),
-      totalAmount: Number(reqData.totalAmount),
+      medicineName: `${targetMed.brandName} (${targetMed.power})`,
+      power: targetMed.power,
+      quantity: qty,
+      unitOriginalPrice: pricing.unitOriginalPrice,
+      concessionPercent: pricing.concessionPercent,
+      unitFinalPrice: pricing.unitSellingPrice,
+      logisticsFee: pricing.logisticsFee,
+      gstAmount: pricing.gstAmount,
+      totalAmount: pricing.totalPayable,
       fromHospitalId: reqData.fromHospitalId,
       fromHospitalName: reqData.fromHospitalName,
       toHospitalId: reqData.toHospitalId,
       toHospitalName: reqData.toHospitalName,
-      requestDate: new Date().toISOString(),
+      requestDate,
+      expiryDate,
       status: 'pending',
       rejectReason: null,
       transactionId: 'TXN-' + Math.floor(100000 + Math.random() * 900000),
@@ -159,54 +388,196 @@ export const hospitalService = {
 
     requests.unshift(newReq);
     setStoredItem(KEYS.REQUESTS, requests);
+
+    auditService.logEvent({
+      action: 'REQUEST_CREATED',
+      entityType: 'REQUEST',
+      entityId: newReq.id,
+      hospitalId: newReq.fromHospitalId,
+      hospitalName: newReq.fromHospitalName,
+      partnerHospitalId: newReq.toHospitalId,
+      partnerHospitalName: newReq.toHospitalName,
+      summary: `Created requisition for ${newReq.quantity} units of ${newReq.medicineName} from ${newReq.toHospitalName}.`,
+      resultingStatus: 'pending',
+      metadata: { quantity: newReq.quantity, totalAmount: newReq.totalAmount, expiryDate: newReq.expiryDate },
+    });
+
     return newReq;
   },
 
-  async getOutgoingRequests(hospitalId) {
-    await new Promise((r) => setTimeout(r, 200));
-    const requests = getStoredItem(KEYS.REQUESTS, []);
-    return requests.filter((r) => r.fromHospitalId === hospitalId || !hospitalId);
+  async getOutgoingRequests(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) return [];
+
+    const allRequests = getStoredItem(KEYS.REQUESTS, []);
+    const { requests: refreshedRequests, hasExpiredChanges } = processExpiredRequests(allRequests);
+    if (hasExpiredChanges) {
+      setStoredItem(KEYS.REQUESTS, refreshedRequests);
+    }
+
+    return refreshedRequests.filter((r) => r.fromHospitalId === hospitalId);
   },
 
-  async getIncomingRequests(hospitalId) {
-    await new Promise((r) => setTimeout(r, 200));
-    const requests = getStoredItem(KEYS.REQUESTS, []);
-    return requests.filter((r) => r.toHospitalId === hospitalId || !hospitalId);
+  async getIncomingRequests(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) return [];
+
+    const allRequests = getStoredItem(KEYS.REQUESTS, []);
+    const { requests: refreshedRequests, hasExpiredChanges } = processExpiredRequests(allRequests);
+    if (hasExpiredChanges) {
+      setStoredItem(KEYS.REQUESTS, refreshedRequests);
+    }
+
+    return refreshedRequests.filter((r) => r.toHospitalId === hospitalId);
   },
 
+  /**
+   * Responds to request: 'accept' or 'reject'.
+   * Implements FIRST ACCEPTANCE WINS:
+   * When accepted, reserves/deducts stock and automatically declines competing pending requests!
+   */
   async handleRequest(requestId, action, reason = '', hospitalId) {
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 300));
     const requests = getStoredItem(KEYS.REQUESTS, []);
-    const index = requests.findIndex((r) => r.id === requestId);
-    if (index === -1) throw new Error('Request not found');
-    assertHospitalActive(hospitalId || requests[index].toHospitalId);
+    const reqIndex = requests.findIndex((r) => r.id === requestId);
+    if (reqIndex === -1) throw new Error('Requisition not found');
+
+    const targetReq = requests[reqIndex];
+    assertHospitalActive(hospitalId || targetReq.toHospitalId);
+
+    // Guard: Expired requests cannot be accepted
+    const sla = calculateRequestExpiry(targetReq.requestDate);
+    if (targetReq.status === 'expired' || sla.isExpired) {
+      targetReq.status = 'expired';
+      targetReq.rejectReason = 'Automated 48-Hour SLA Expiration';
+      setStoredItem(KEYS.REQUESTS, requests);
+      throw new Error('Cannot accept requisition: 48-hour SLA has elapsed and request has expired.');
+    }
+
+    if (targetReq.status !== 'pending') {
+      throw new Error(`Cannot process requisition: Current status is already "${targetReq.status}"`);
+    }
+
+    const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const rejectedCompetingRequests = [];
 
     if (action === 'accept') {
-      requests[index].status = 'accepted';
-      requests[index].rejectReason = null;
+      // 1. Stock Check & Reservation in Seller's Inventory
+      const medIndex = medicines.findIndex((m) => m.id === targetReq.medicineId && m.hospitalId === targetReq.toHospitalId);
+      if (medIndex === -1) {
+        throw new Error('Associated medicine record not found in your inventory');
+      }
+
+      const availableQty = Number(medicines[medIndex].quantity);
+      if (availableQty < targetReq.quantity) {
+        throw new Error(`Insufficient inventory stock: You only have ${availableQty} units available, but ${targetReq.quantity} were requested.`);
+      }
+
+      // Safe stock deduction (Prevent negative inventory)
+      medicines[medIndex].quantity = Math.max(0, availableQty - targetReq.quantity);
+      setStoredItem(KEYS.MEDICINES, medicines);
+
+      // 2. Mark this request as accepted
+      targetReq.status = 'accepted';
+      targetReq.rejectReason = null;
+      targetReq.acceptedAt = new Date().toISOString();
+
+      // 3. FIRST ACCEPTANCE WINS: Find and decline competing pending requests from the same buyer
+      // Deterministic requirement matching: Same buyer hospital AND (same requirementGroupId OR same medicineName and quantity)
+      requests.forEach((r, idx) => {
+        if (
+          idx !== reqIndex &&
+          r.status === 'pending' &&
+          r.fromHospitalId === targetReq.fromHospitalId &&
+          (
+            (targetReq.requirementGroupId && r.requirementGroupId === targetReq.requirementGroupId) ||
+            (r.medicineName === targetReq.medicineName && r.quantity === targetReq.quantity)
+          )
+        ) {
+          r.status = 'rejected';
+          r.rejectReason = `First-acceptance fulfilled: Requisition accepted by ${targetReq.toHospitalName}. Competing request automatically declined.`;
+          r.autoDeclined = true;
+          rejectedCompetingRequests.push(r);
+
+          auditService.logEvent({
+            action: 'COMPETING_REQUEST_REJECTED',
+            entityType: 'REQUEST',
+            entityId: r.id,
+            hospitalId: r.fromHospitalId,
+            hospitalName: r.fromHospitalName,
+            partnerHospitalId: r.toHospitalId,
+            partnerHospitalName: r.toHospitalName,
+            summary: `Automated First-Acceptance: Declined competing request for ${r.medicineName} sent to ${r.toHospitalName}.`,
+            resultingStatus: 'rejected',
+            metadata: { winningRequestId: targetReq.id, winningHospital: targetReq.toHospitalName },
+          });
+        }
+      });
+
+      // Audit trail for accepted request
+      auditService.logEvent({
+        action: 'REQUEST_ACCEPTED',
+        entityType: 'REQUEST',
+        entityId: targetReq.id,
+        hospitalId: targetReq.toHospitalId,
+        hospitalName: targetReq.toHospitalName,
+        partnerHospitalId: targetReq.fromHospitalId,
+        partnerHospitalName: targetReq.fromHospitalName,
+        summary: `Accepted requisition from ${targetReq.fromHospitalName} for ${targetReq.quantity} units of ${targetReq.medicineName}. Reserved inventory stock.`,
+        resultingStatus: 'accepted',
+        metadata: { quantity: targetReq.quantity, remainingStock: medicines[medIndex].quantity },
+      });
+
     } else if (action === 'reject') {
-      requests[index].status = 'rejected';
-      requests[index].rejectReason = reason || 'Declined by providing hospital due to stock allocation';
+      targetReq.status = 'rejected';
+      targetReq.rejectReason = reason || 'Declined by providing hospital due to clinical inventory allocation.';
+
+      auditService.logEvent({
+        action: 'REQUEST_REJECTED',
+        entityType: 'REQUEST',
+        entityId: targetReq.id,
+        hospitalId: targetReq.toHospitalId,
+        hospitalName: targetReq.toHospitalName,
+        partnerHospitalId: targetReq.fromHospitalId,
+        partnerHospitalName: targetReq.fromHospitalName,
+        summary: `Declined requisition for ${targetReq.medicineName} from ${targetReq.fromHospitalName}. Reason: ${targetReq.rejectReason}`,
+        resultingStatus: 'rejected',
+        metadata: { reason: targetReq.rejectReason },
+      });
     }
 
     setStoredItem(KEYS.REQUESTS, requests);
-    return requests[index];
+
+    return {
+      acceptedRequest: targetReq,
+      rejectedRequests: rejectedCompetingRequests,
+      updatedRequest: targetReq,
+    };
   },
 
-  // 5. Razorpay Mock Payment Gateway
-  async processPayment({ requestId, paymentMethod = 'Razorpay UPI' }) {
-    await new Promise((r) => setTimeout(r, 800));
+  // ==========================================
+  // 5. DEMO PAYMENT SIMULATOR & ESCROW RELEASE
+  // ==========================================
+  async processPayment({ requestId, paymentMethod = 'Demo B2B Escrow Transfer' }) {
+    await new Promise((r) => setTimeout(r, 600));
     const requests = getStoredItem(KEYS.REQUESTS, []);
     const payments = getStoredItem(KEYS.PAYMENTS, []);
     const trackingList = getStoredItem(KEYS.TRACKING, []);
 
     const index = requests.findIndex((r) => r.id === requestId);
-    if (index === -1) throw new Error('Request not found');
+    if (index === -1) throw new Error('Requisition not found');
 
     const req = requests[index];
     assertHospitalActive(req.fromHospitalId);
-    const paymentId = 'pay_' + Math.random().toString(36).substring(2, 11) + 'Xz';
-    const orderId = 'order_' + Math.random().toString(36).substring(2, 10);
+
+    if (req.status !== 'accepted') {
+      throw new Error(`Cannot pay for requisition in "${req.status}" status. Requisition must be accepted first.`);
+    }
+
+    const paymentId = 'pay_demo_' + Math.random().toString(36).substring(2, 11);
+    const orderId = 'order_demo_' + Math.random().toString(36).substring(2, 10);
 
     // Update Request
     req.status = 'paid';
@@ -219,44 +590,51 @@ export const hospitalService = {
     const newPayment = {
       id: 'pay-' + Date.now(),
       transactionId: req.transactionId,
+      requestId: req.id,
       medicineName: req.medicineName,
       quantity: req.quantity,
       amount: req.totalAmount,
-      gstAmount: Math.round(req.totalAmount * 0.12),
-      totalPaid: Math.round(req.totalAmount * 1.12),
+      gstAmount: req.gstAmount || Math.round(req.totalAmount * 0.12),
+      totalPaid: req.totalAmount,
       paymentStatus: 'Success',
       date: new Date().toLocaleString(),
-      razorpayPaymentId: paymentId,
+      razorpayPaymentId: paymentId + ' (Demo Simulator)',
       razorpayOrderId: orderId,
-      paymentMethod,
+      paymentMethod: paymentMethod + ' [Simulation]',
       buyerHospital: req.fromHospitalName,
+      buyerHospitalId: req.fromHospitalId,
       sellerHospital: req.toHospitalName,
+      sellerHospitalId: req.toHospitalId,
+      isDemoSimulation: true,
     };
     payments.unshift(newPayment);
     setStoredItem(KEYS.PAYMENTS, payments);
 
-    // Generate Tracking record
+    // Generate Stable Tracking record
     const newTracking = {
       transactionId: req.transactionId,
       trackingNumber: 'SMS-EXP-' + Math.floor(10000 + Math.random() * 90000),
       senderHospital: req.toHospitalName,
+      senderHospitalId: req.toHospitalId,
       receiverHospital: req.fromHospitalName,
+      receiverHospitalId: req.fromHospitalId,
       medicineName: req.medicineName,
       quantity: req.quantity,
-      status: 'Dispatched',
-      currentLocation: 'Central Cold-Chain Hub, Expressway Junction',
-      destination: `${req.fromHospitalName} Central Pharmacy Dock`,
-      eta: 'Tomorrow, 04:00 PM (Est. 24 hrs)',
-      courierName: 'MediCold Bio-Express',
+      status: 'Pickup Scheduled',
+      currentLocation: `${req.toHospitalName} Central Logistics Bay`,
+      destination: `${req.fromHospitalName} Pharmacy Intake Dock`,
+      eta: 'Tomorrow, 03:00 PM (Est. 24h Cold Transit)',
+      courierName: 'MediCold Bio-Express (Demo Fleet)',
       courierContact: '+91 91122 33445 (Dispatcher: Vikram S.)',
-      vehicleNo: 'MH-02-EX-7741 (IoT Monitored)',
+      vehicleNo: 'MH-04-EX-7741 (Temp Telemetry)',
       temperature: '3.9°C (Compliant)',
+      isDemoSimulation: true,
       timeline: [
-        { step: 'Order Placed & Verified', date: new Date().toLocaleString(), completed: true, details: 'Exchange terms approved.' },
-        { step: 'Payment Processed via Razorpay', date: new Date().toLocaleString(), completed: true, details: `Ref: ${paymentId}, ₹${newPayment.totalPaid} settled.` },
-        { step: 'Dispatched & Cold Seal Applied', date: 'In Progress', completed: true, details: 'Package sealed in thermal insulated cryo-box.' },
-        { step: 'In Transit with Live IoT GPS/Temp', date: 'Pending', completed: false, details: 'Telemetry logger active.' },
-        { step: 'Delivered to Receiving Hospital', date: 'Pending', completed: false, details: 'Dock inspection required.' },
+        { step: 'Requisition Accepted & Verified', date: new Date().toLocaleString(), completed: true, details: 'Exchange terms approved and stock earmarked.' },
+        { step: 'Payment Processed via Escrow Simulator', date: new Date().toLocaleString(), completed: true, details: `Ref: ${paymentId}, ₹${newPayment.totalPaid} placed in secure nodal escrow.` },
+        { step: 'Pickup Scheduled with Bio-Courier', date: 'In Progress', completed: true, details: 'Sealed cold-chain package awaiting dispatch courier.' },
+        { step: 'In Transit with Live IoT Temperature', date: 'Pending', completed: false, details: 'Active GPS and temperature logger.' },
+        { step: 'Delivered & Clinical Inspection Done', date: 'Pending', completed: false, details: 'Receiving dock inspection required before final escrow disbursement.' },
       ],
       coordinates: {
         origin: [28.5273, 77.2155],
@@ -267,33 +645,54 @@ export const hospitalService = {
     trackingList.unshift(newTracking);
     setStoredItem(KEYS.TRACKING, trackingList);
 
+    auditService.logEvent({
+      action: 'PAYMENT_PROCESSED',
+      entityType: 'PAYMENT',
+      entityId: newPayment.id,
+      hospitalId: req.fromHospitalId,
+      hospitalName: req.fromHospitalName,
+      partnerHospitalId: req.toHospitalId,
+      partnerHospitalName: req.toHospitalName,
+      summary: `Payment of ₹${newPayment.totalPaid.toLocaleString()} processed in escrow for ${req.medicineName}. Shipment ${newTracking.trackingNumber} scheduled.`,
+      resultingStatus: 'paid',
+      metadata: { transactionId: req.transactionId, paymentId, totalPaid: newPayment.totalPaid },
+    });
+
     return { request: req, payment: newPayment, tracking: newTracking };
   },
 
-  // 6. Tracking
+  // ==========================================
+  // 6. STABLE LOGISTICS & TRACKING
+  // ==========================================
   async getTrackingByTxn(txnId) {
-    await new Promise((r) => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 200));
     const trackingList = getStoredItem(KEYS.TRACKING, []);
     if (!txnId) return trackingList[0] || null;
-    return trackingList.find((t) => t.transactionId.toLowerCase() === txnId.trim().toLowerCase()) || trackingList[0];
+    return trackingList.find((t) => t.transactionId?.toLowerCase() === txnId.trim().toLowerCase()) || trackingList[0] || null;
   },
 
   async getAllTracking() {
-    await new Promise((r) => setTimeout(r, 200));
+    await new Promise((r) => setTimeout(r, 150));
     return getStoredItem(KEYS.TRACKING, []);
   },
 
-  // 7. Sales & Purchases History
-  async getSalesHistory(hospitalId) {
-    await new Promise((r) => setTimeout(r, 250));
+  // ==========================================
+  // 7. SALES & PURCHASES HISTORY (Isolated)
+  // ==========================================
+  async getSalesHistory(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) return [];
+
     const requests = getStoredItem(KEYS.REQUESTS, []);
     return requests
-      .filter((r) => (r.toHospitalId === hospitalId || !hospitalId) && ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
+      .filter((r) => r.toHospitalId === hospitalId && ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
       .map((r) => ({
         id: r.id,
         transactionId: r.transactionId,
         medicine: r.medicineName,
         partnerHospital: r.fromHospitalName,
+        partnerHospitalId: r.fromHospitalId,
         quantity: r.quantity,
         amount: r.totalAmount,
         date: r.requestDate.split('T')[0],
@@ -301,16 +700,20 @@ export const hospitalService = {
       }));
   },
 
-  async getPurchasesHistory(hospitalId) {
-    await new Promise((r) => setTimeout(r, 250));
+  async getPurchasesHistory(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) return [];
+
     const requests = getStoredItem(KEYS.REQUESTS, []);
     return requests
-      .filter((r) => (r.fromHospitalId === hospitalId || !hospitalId) && ['accepted', 'paid', 'dispatched', 'delivered', 'rejected'].includes(r.status))
+      .filter((r) => r.fromHospitalId === hospitalId && ['accepted', 'paid', 'dispatched', 'delivered', 'rejected', 'expired'].includes(r.status))
       .map((r) => ({
         id: r.id,
         transactionId: r.transactionId,
         medicine: r.medicineName,
         partnerHospital: r.toHospitalName,
+        partnerHospitalId: r.toHospitalId,
         quantity: r.quantity,
         amount: r.totalAmount,
         date: r.requestDate.split('T')[0],
@@ -318,20 +721,128 @@ export const hospitalService = {
       }));
   },
 
-  // 8. Payments history
-  async getPaymentHistory() {
-    await new Promise((r) => setTimeout(r, 200));
-    return getStoredItem(KEYS.PAYMENTS, []);
+  // ==========================================
+  // 8. PAYMENT HISTORY (Strictly Isolated)
+  // ==========================================
+  async getPaymentHistory(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    const payments = getStoredItem(KEYS.PAYMENTS, []);
+    if (!hospitalId) return payments;
+
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === hospitalId);
+    const hospName = hosp?.name?.toLowerCase();
+
+    return payments.filter((p) => {
+      if (p.buyerHospitalId === hospitalId || p.sellerHospitalId === hospitalId) return true;
+      if (hospName && (p.buyerHospital?.toLowerCase().includes(hospName) || p.sellerHospital?.toLowerCase().includes(hospName))) return true;
+      return false;
+    });
   },
 
-  // 9. Feedback
+  // ==========================================
+  // 9. HOSPITAL WASTE MANAGEMENT (Complete Flow)
+  // ==========================================
+  async getHospitalDisposals(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    if (!hospitalId) return [];
+
+    const disposals = getStoredItem(KEYS.DISPOSALS, []);
+    return disposals.filter((d) => d.hospitalId === hospitalId);
+  },
+
+  async createWasteRequest(wasteData) {
+    await new Promise((r) => setTimeout(r, 250));
+    const hospitalId = resolveHospitalId(wasteData.hospitalId);
+    assertHospitalActive(hospitalId);
+
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === hospitalId) || { name: 'Hospital Facility', city: 'Mumbai' };
+
+    const disposals = getStoredItem(KEYS.DISPOSALS, []);
+
+    // Assign appropriate regional authorized bio-medical waste treatment plant
+    let bioCentreName = 'Maharashtra Enviro Power Bio-Medical Waste Plant';
+    let bioCentreAddress = 'Plot P-32, MIDC Taloja, Raigad, Maharashtra 410208';
+    if (hosp.city?.toLowerCase().includes('delhi')) {
+      bioCentreName = 'Delhi Central Bio-Medical Incinerator, Okhla';
+      bioCentreAddress = 'Okhla Industrial Area Phase-I, New Delhi 110020';
+    } else if (hosp.city?.toLowerCase().includes('gurgaon') || hosp.state?.toLowerCase().includes('haryana')) {
+      bioCentreName = 'Haryana State Bio-Hazard Incineration Facility';
+      bioCentreAddress = 'IMT Manesar Sector 8, Gurugram, Haryana 122051';
+    } else if (hosp.city?.toLowerCase().includes('bangalore') || hosp.state?.toLowerCase().includes('karnataka')) {
+      bioCentreName = 'Karnataka Common Bio-Medical Waste Treatment Facility';
+      bioCentreAddress = 'Peenya Industrial Area, Bengaluru, Karnataka 560058';
+    }
+
+    const newDisposal = {
+      id: 'disp-' + Date.now(),
+      hospitalId,
+      hospitalName: hosp.name,
+      medicineId: wasteData.medicineId || null,
+      medicineName: wasteData.medicineName,
+      wasteCategory: wasteData.wasteCategory || 'Expired Pharmaceuticals',
+      batchNo: wasteData.batchNo || 'N/A',
+      quantity: wasteData.quantity,
+      expiryDate: wasteData.expiryDate || null,
+      reason: wasteData.reason || 'Statutory Expiration Disposal',
+      preferredPickupDate: wasteData.preferredPickupDate || new Date(Date.now() + 2 * 86400000).toISOString().split('T')[0],
+      pickupDate: null,
+      bioCentreName,
+      bioCentreAddress,
+      vehicleNo: 'MH-04-GP-' + Math.floor(1000 + Math.random() * 9000),
+      driverContact: '+91 98' + Math.floor(10000000 + Math.random() * 90000000) + ' (Authorized Driver)',
+      currentLocation: 'Assigned Bio-Centre Dispatch Queue',
+      eta: 'Pickup scheduled within 48h',
+      status: 'Pending Assessment',
+      certificateNo: null,
+      certificateDate: null,
+      treatmentMethod: 'High-Temperature Double-Chamber Incineration (1100°C) with Flue Gas Scrubber',
+      manifestNumber: 'MPCB-BMW-MNF-' + Math.floor(10000 + Math.random() * 90000),
+      createdDate: new Date().toISOString().split('T')[0],
+      isDemoSimulation: true,
+    };
+
+    disposals.unshift(newDisposal);
+    setStoredItem(KEYS.DISPOSALS, disposals);
+
+    // If a specific medicine was linked, update its status to 'pending_disposal' in inventory
+    if (wasteData.medicineId) {
+      const medicines = getStoredItem(KEYS.MEDICINES, []);
+      const medIdx = medicines.findIndex((m) => m.id === wasteData.medicineId);
+      if (medIdx !== -1) {
+        medicines[medIdx].status = 'pending_disposal';
+        setStoredItem(KEYS.MEDICINES, medicines);
+      }
+    }
+
+    auditService.logEvent({
+      action: 'WASTE_REQUEST_CREATED',
+      entityType: 'WASTE',
+      entityId: newDisposal.id,
+      hospitalId,
+      hospitalName: hosp.name,
+      summary: `Submitted bio-medical waste disposal request for ${newDisposal.medicineName} (${newDisposal.quantity}). Assigned to ${bioCentreName}.`,
+      resultingStatus: 'Pending Assessment',
+      metadata: { wasteCategory: newDisposal.wasteCategory, batchNo: newDisposal.batchNo },
+    });
+
+    return newDisposal;
+  },
+
+  // ==========================================
+  // 10. FEEDBACK
+  // ==========================================
   async submitFeedback(feedbackData) {
-    await new Promise((r) => setTimeout(r, 350));
+    await new Promise((r) => setTimeout(r, 200));
+    const hospitalId = resolveHospitalId(feedbackData.hospitalId);
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
     const newFb = {
       id: 'fb-' + Date.now(),
-      hospitalId: feedbackData.hospitalId || 'hosp-1',
-      hospitalName: feedbackData.hospitalName || 'Apollo Hospital',
+      hospitalId: hospitalId || 'hosp-1',
+      hospitalName: feedbackData.hospitalName || 'Hospital Facility',
       rating: Number(feedbackData.rating),
       category: feedbackData.category || 'General Service',
       feedbackText: feedbackData.feedbackText,
@@ -344,9 +855,11 @@ export const hospitalService = {
     return newFb;
   },
 
-  async getFeedbacks(hospitalId) {
-    await new Promise((r) => setTimeout(r, 200));
+  async getFeedbacks(hospitalIdParam) {
+    await new Promise((r) => setTimeout(r, 150));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
-    return feedbacks.filter((f) => !hospitalId || f.hospitalId === hospitalId || f.hospitalId === 'hosp-1');
+    if (!hospitalId) return feedbacks;
+    return feedbacks.filter((f) => f.hospitalId === hospitalId);
   }
 };

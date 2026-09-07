@@ -35,7 +35,7 @@ export const Marketplace = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { marketplace, isLoading } = useSelector((state) => state.hospital);
-  const isSuspended = isHospitalSuspended(user?.id || 'hosp-1');
+  const isSuspended = isHospitalSuspended(user?.id);
 
   const [search, setSearch] = useState('');
   const [powerFilter, setPowerFilter] = useState('');
@@ -50,16 +50,18 @@ export const Marketplace = () => {
   const [activeDrawerMedicine, setActiveDrawerMedicine] = useState(null);
 
   useEffect(() => {
-    dispatch(fetchMarketplace({
-      hospitalId: user?.id || 'hosp-1',
-      filters: {
-        search,
-        power: powerFilter,
-        location: locationFilter,
-        storageType: selectedStorage
-      }
-    }));
-  }, [dispatch, user, search, powerFilter, locationFilter, selectedStorage]);
+    if (user?.id) {
+      dispatch(fetchMarketplace({
+        hospitalId: user.id,
+        filters: {
+          search,
+          power: powerFilter,
+          location: locationFilter,
+          storageType: selectedStorage
+        }
+      }));
+    }
+  }, [dispatch, user?.id, search, powerFilter, locationFilter, selectedStorage]);
 
   const handleOpenDetail = (med) => {
     setActiveDrawerMedicine(med);
@@ -79,8 +81,8 @@ export const Marketplace = () => {
       concessionPercent: medicine.concessionPercent || 0,
       unitFinalPrice: finalUnitPrice,
       totalAmount,
-      fromHospitalId: user?.id || 'hosp-1',
-      fromHospitalName: user?.name || 'Apollo Hospital',
+      fromHospitalId: user?.id,
+      fromHospitalName: user?.name || 'Authorized Buyer Hospital',
       toHospitalId: medicine.hospitalId,
       toHospitalName: medicine.hospitalName,
       notes,
@@ -97,6 +99,10 @@ export const Marketplace = () => {
 
   // Filter with additional criteria
   const filteredMarketplace = marketplace.filter((med) => {
+    // Strictly filter out any expired inventory batches from trade floor
+    if (med.expiryDate && new Date(med.expiryDate) < new Date()) {
+      return false;
+    }
     if (selectedCategory !== 'all' && !med.category?.toLowerCase().includes(selectedCategory.toLowerCase())) {
       return false;
     }

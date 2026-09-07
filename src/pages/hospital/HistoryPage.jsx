@@ -29,9 +29,11 @@ export const HistoryPage = () => {
   const [endDate, setEndDate] = useState('');
 
   useEffect(() => {
-    dispatch(fetchSalesHistory(user?.id || 'hosp-1'));
-    dispatch(fetchPurchasesHistory(user?.id || 'hosp-1'));
-  }, [dispatch, user]);
+    if (user?.id) {
+      dispatch(fetchSalesHistory(user.id));
+      dispatch(fetchPurchasesHistory(user.id));
+    }
+  }, [dispatch, user?.id]);
 
   const activeData = activeTab === 'sales' ? salesHistory : purchasesHistory;
 

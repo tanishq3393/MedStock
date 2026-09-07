@@ -163,6 +163,28 @@ export const authService = {
     return { user, token };
   },
 
+  async switchHospital(hospitalId) {
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const matched = hospitals.find((h) => h.id === hospitalId) || hospitals[0];
+    if (!matched) throw new Error('Hospital not found');
+
+    const user = {
+      id: matched.id,
+      name: matched.name,
+      email: matched.email,
+      role: 'hospital',
+      status: matched.status || 'verified',
+      registrationNo: matched.registrationNo,
+      authorizedPerson: matched.authorizedPerson,
+      city: matched.city,
+      state: matched.state,
+      phone: matched.phone,
+    };
+    const token = 'mock_jwt_token_hosp_' + matched.id;
+    setStoredItem(KEYS.AUTH, { user, token });
+    return { user, token };
+  },
+
   async getCurrentSession() {
     return getStoredItem(KEYS.AUTH, null);
   },

@@ -47,6 +47,7 @@ const requestSlice = createSlice({
     outgoingRequests: [],
     incomingRequests: [],
     isProcessingPayment: false,
+    isResponding: false,
     isLoading: false,
     error: null,
   },
@@ -84,13 +85,40 @@ const requestSlice = createSlice({
         state.outgoingRequests.unshift(action.payload);
       })
 
-      // Respond (Accept/Reject)
+      // Respond (Accept/Reject) with FIRST ACCEPTANCE WINS batch update
+      .addCase(respondToRequest.pending, (state) => {
+        state.isResponding = true;
+        state.error = null;
+      })
       .addCase(respondToRequest.fulfilled, (state, action) => {
-        const idxIn = state.incomingRequests.findIndex((r) => r.id === action.payload.id);
-        if (idxIn !== -1) state.incomingRequests[idxIn] = action.payload;
+        state.isResponding = false;
+        const result = action.payload;
+        const mainReq = result.acceptedRequest || result.updatedRequest || result;
+        const rejectedCompeting = result.rejectedRequests || [];
 
-        const idxOut = state.outgoingRequests.findIndex((r) => r.id === action.payload.id);
-        if (idxOut !== -1) state.outgoingRequests[idxOut] = action.payload;
+        // Helper to update a request in an array
+        const updateInList = (list, item) => {
+          const idx = list.findIndex((r) => r.id === item.id);
+          if (idx !== -1) {
+            list[idx] = { ...list[idx], ...item };
+          }
+        };
+
+        // Update accepted/rejected main request
+        if (mainReq && mainReq.id) {
+          updateInList(state.incomingRequests, mainReq);
+          updateInList(state.outgoingRequests, mainReq);
+        }
+
+        // Update all automatically rejected competing requests
+        rejectedCompeting.forEach((compReq) => {
+          updateInList(state.incomingRequests, compReq);
+          updateInList(state.outgoingRequests, compReq);
+        });
+      })
+      .addCase(respondToRequest.rejected, (state, action) => {
+        state.isResponding = false;
+        state.error = action.payload;
       })
 
       // Pay

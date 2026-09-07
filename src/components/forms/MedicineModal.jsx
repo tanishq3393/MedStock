@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
 import { Calculator, Sparkles, AlertTriangle, ShieldCheck, ThermometerSnowflake } from 'lucide-react';
+import { calculateConcessionRate } from '../../utils/pricingUtils';
 import toast from 'react-hot-toast';
 
 export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, isEdit = false }) => {
@@ -64,23 +65,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     setFormData((prev) => ({ ...prev, expiryDate: dateVal }));
     if (!dateVal) return;
 
-    const today = new Date();
-    const exp = new Date(dateVal);
-    const diffMonths = (exp.getFullYear() - today.getFullYear()) * 12 + (exp.getMonth() - today.getMonth());
-
-    let suggested = 15;
-    if (diffMonths <= 2) {
-      suggested = 50;
-    } else if (diffMonths <= 4) {
-      suggested = 40;
-    } else if (diffMonths <= 6) {
-      suggested = 30;
-    } else if (diffMonths <= 12) {
-      suggested = 20;
-    } else {
-      suggested = 15;
-    }
-
+    const suggested = calculateConcessionRate(dateVal);
     setAutoSuggestedConcession(suggested);
     // Auto apply if creating fresh
     if (!isEdit) {
@@ -98,6 +83,10 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     e.preventDefault();
     if (!formData.brandName || !formData.power || !formData.expiryDate) {
       toast.error('Please fill all mandatory fields (Brand, Power, Expiry Date)');
+      return;
+    }
+    if (new Date(formData.expiryDate) < new Date()) {
+      toast.error('Cannot add an already expired medicine to active trade inventory. Please log it under Bio-Waste & Disposal.');
       return;
     }
     onSubmit(formData);

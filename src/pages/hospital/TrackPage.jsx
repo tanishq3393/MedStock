@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import React, { useState, useEffect, useMemo } from 'react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   Search, 
@@ -11,25 +11,41 @@ import {
   CheckCircle2, 
   Phone, 
   Navigation,
-  Activity,
+  RefreshCw,
   Boxes,
+  RotateCcw,
+  Check,
   AlertCircle,
-  Radio,
-  Sparkles,
+  Package,
+  FileCheck2,
+  Building2,
+  Calendar,
+  ExternalLink,
+  ChevronRight,
+  Info,
   ArrowRight
 } from 'lucide-react';
 import { fetchTrackingByTxn } from '../../store/slices/trackSlice';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { getStoredItem, KEYS } from '../../services/storage';
+import { extractCity } from '../../utils/geoUtils';
+import IndiaLiveMap from '../../components/tracking/IndiaLiveMap';
+import toast from 'react-hot-toast';
 
 export const TrackPage = () => {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const dispatch = useDispatch();
   const { currentTracking, isLoading } = useSelector((state) => state.track);
+  const { user } = useSelector((state) => state.auth);
 
   const initialTxn = searchParams.get('txn') || 'TXN-773120';
   const [txnInput, setTxnInput] = useState(initialTxn);
   const [selectedTxn, setSelectedTxn] = useState(initialTxn);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [lastRefreshedTime, setLastRefreshedTime] = useState('Just now');
+  const [showProofModal, setShowProofModal] = useState(false);
 
   useEffect(() => {
     dispatch(fetchTrackingByTxn(selectedTxn));
@@ -38,8 +54,9 @@ export const TrackPage = () => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (txnInput.trim()) {
-      setSelectedTxn(txnInput.trim());
-      setSearchParams({ txn: txnInput.trim() });
+      const q = txnInput.trim();
+      setSelectedTxn(q);
+      setSearchParams({ txn: q });
     }
   };
 
@@ -49,374 +66,383 @@ export const TrackPage = () => {
     setSearchParams({ txn: txnId });
   };
 
-  const allAvailableShipments = [
-    {
-      txnId: 'TXN-773120',
-      trackingNo: 'SMS-EXP-88912',
-      medicine: 'Enoxaparin Sodium 40mg Prefilled',
-      units: 50,
-      from: 'Max Super Speciality (Delhi)',
-      to: 'Apollo Hospital (Mumbai)',
-      status: 'In Transit',
-      temp: '4.2°C',
-      eta: 'Today, 06:30 PM'
-    },
-    {
-      txnId: 'TXN-984210',
-      trackingNo: 'SMS-EXP-90145',
-      medicine: 'Meropenem 1g IV Injection',
-      units: 45,
-      from: 'Fortis Memorial (Gurgaon)',
-      to: 'Apollo Hospital (Mumbai)',
-      status: 'Ordered',
-      temp: '3.9°C',
-      eta: 'Tomorrow, 11:00 AM'
-    },
-    {
-      txnId: 'TXN-451290',
-      trackingNo: 'SMS-EXP-66231',
-      medicine: 'Human Albumin 20% Infusion',
-      units: 28,
-      from: 'Lilavati Hospital (Mumbai)',
-      to: 'Fortis Hospital (Gurgaon)',
-      status: 'In Transit',
-      temp: '4.0°C',
-      eta: 'Today, 04:40 PM'
-    }
-  ];
+  const handleRefresh = () => {
+    setIsRefreshing(true);
+    dispatch(fetchTrackingByTxn(selectedTxn));
+    setTimeout(() => {
+      setIsRefreshing(false);
+      setLastRefreshedTime('Just now');
+      toast.success('Demo tracking telemetry refreshed');
+    }, 600);
+  };
 
+  const storedTrackings = getStoredItem(KEYS.TRACKING, []);
+
+  // Standard active shipments list
+  const availableShipments = useMemo(() => {
+    if (storedTrackings.length > 0) {
+      return storedTrackings.map((t) => ({
+        txnId: t.transactionId,
+        trackingNo: t.trackingNumber,
+        medicine: t.medicineName,
+        units: t.quantity,
+        from: t.senderHospital,
+        to: t.receiverHospital,
+        status: t.status,
+        temp: t.temperature || '4.0°C',
+        eta: t.eta || 'Today, 06:30 PM',
+      }));
+    }
+    return [
+      {
+        txnId: 'TXN-773120',
+        trackingNo: 'SMS-EXP-88912',
+        medicine: 'Enoxaparin Sodium 40mg',
+        units: 50,
+        from: 'Max Super Speciality (Delhi)',
+        to: 'Apollo Hospital (Mumbai)',
+        status: 'In Transit',
+        temp: '4.2°C',
+        eta: 'Today, 06:30 PM',
+      },
+      {
+        txnId: 'TXN-770412',
+        trackingNo: 'SMS-EXP-77041',
+        medicine: 'Rituximab (Ristova) 500mg',
+        units: 4,
+        from: 'Tata Memorial Centre (Mumbai)',
+        to: 'Apollo Hospital (Mumbai)',
+        status: 'In Transit',
+        temp: '3.8°C',
+        eta: 'Today, 04:15 PM',
+      },
+      {
+        txnId: 'TXN-663190',
+        trackingNo: 'SMS-EXP-66319',
+        medicine: 'Streptokinase 1,500,000 IU',
+        units: 12,
+        from: 'Lilavati Hospital (Mumbai)',
+        to: 'Apollo Hospital (Pune)',
+        status: 'In Transit',
+        temp: '4.5°C',
+        eta: 'Today, 05:00 PM',
+      },
+      {
+        txnId: 'TXN-331902',
+        trackingNo: 'SMS-EXP-33190',
+        medicine: 'Bevacizumab (Avastin) 400mg',
+        units: 3,
+        from: 'Tata Memorial Centre (Mumbai)',
+        to: 'Fortis Memorial (Gurgaon)',
+        status: 'Delivered',
+        temp: '4.0°C',
+        eta: 'Delivered',
+      },
+    ];
+  }, [storedTrackings]);
+
+  // Active tracking item with standard fallback
   const tracking = currentTracking || {
-    transactionId: 'TXN-773120',
+    transactionId: selectedTxn,
     trackingNumber: 'SMS-EXP-88912',
     senderHospital: 'Max Super Speciality Hospital (Delhi)',
     receiverHospital: 'Apollo Hospital (Mumbai)',
     medicineName: 'Enoxaparin Sodium 40mg Prefilled Syringe',
     quantity: 50,
     status: 'In Transit',
-    currentLocation: 'NH-48 Logistic Hub, Vadodara, Gujarat',
-    destination: 'Apollo Hospital Central Pharmacy, Belapur, Mumbai',
-    eta: 'Today, 06:30 PM (Est. 4 hrs)',
-    courierName: 'MediCold Logistics Express Ltd.',
+    currentLocation: 'Vadodara Distribution Hub, NH-48',
+    destination: 'Apollo Hospital Central Pharmacy Intake Dock',
+    eta: 'Today • 6:30 PM',
+    courierName: 'MediCold Bio-Express Logistics Ltd.',
     courierContact: '+91 91234 56789 (Driver: Harpreet Singh)',
     vehicleNo: 'MH-04-AZ-4419 (Temp Controlled)',
-    temperature: '4.2°C (Compliant)',
+    temperature: '4.2°C (Compliant 2°C - 8°C)',
     timeline: [
-      { step: 'Order Placed & Verified', date: '2024-08-25 14:15', completed: true, details: 'Verified by SmartMediShare verification engine.' },
-      { step: 'Payment Processed via Razorpay', date: '2024-08-26 09:45', completed: true, details: 'Ref: pay_Nz8849qK91Xza, ₹18,000 settled.' },
-      { step: 'Dispatched & Cold Seal Applied', date: '2024-08-26 15:30', completed: true, details: 'Dispatched from Saket Hub, Temp: 3.8°C.' },
-      { step: 'In Transit with Live IoT GPS/Temp', date: '2024-08-27 11:20', completed: true, details: 'Crossing Vadodara Hub checkpoint.' },
-      { step: 'Delivered to Receiving Hospital', date: 'Pending', completed: false, details: 'Target delivery at Mumbai pharmacy intake dock.' },
-    ]
+      { step: 'Order Confirmed', date: '25 Aug • 02:15 PM', completed: true, details: 'Verified by SmartMediShare verification engine.' },
+      { step: 'Pickup Scheduled', date: '26 Aug • 09:45 AM', completed: true, details: 'Authorized medical courier dispatched to origin.' },
+      { step: 'Picked Up', date: '26 Aug • 03:30 PM', completed: true, details: 'Cryo-insulated cold box sealed at seller pharmacy.' },
+      { step: 'In Transit', date: '27 Aug • 11:20 AM', completed: true, details: 'Medicine is currently moving toward destination on NH-48.' },
+      { step: 'Out for Delivery', date: 'Pending', completed: false, details: 'Last mile transfer to hospital receiving bay.' },
+      { step: 'Delivered', date: 'Pending', completed: false, details: 'Pharmacy intake inspection and handoff sign-off.' },
+    ],
   };
 
-  // 6-point temperature telemetry log for graph simulation
-  const tempLogs = [
-    { time: '08:00', temp: 3.8 },
-    { time: '10:00', temp: 4.0 },
-    { time: '12:00', temp: 4.3 },
-    { time: '14:00', temp: 4.1 },
-    { time: '16:00', temp: 4.2 },
-    { time: 'Current', temp: 4.2 },
+  const isDelivered = (tracking.status || '').toLowerCase() === 'delivered';
+  const isInTransit = (tracking.status || '').toLowerCase().includes('transit');
+  const isOrdered = (tracking.status || '').toLowerCase() === 'ordered' || (tracking.status || '').toLowerCase() === 'pending';
+
+  const sellerCity = extractCity(tracking.senderHospital);
+  const buyerCity = extractCity(tracking.receiverHospital);
+
+  // 6 Standard Progress Steps (Requirement 10)
+  const progressSteps = [
+    { label: 'Order Confirmed', short: 'Confirmed', time: '25 Aug • 02:15 PM', desc: 'Requisition verified by verification engine', completed: true, active: false },
+    { label: 'Pickup Scheduled', short: 'Scheduled', time: '26 Aug • 09:45 AM', desc: 'Authorized medical courier assigned', completed: true, active: false },
+    { label: 'Picked Up', short: 'Picked Up', time: '26 Aug • 03:30 PM', desc: 'Medicine collected from seller hospital', completed: !isOrdered, active: false },
+    { label: 'In Transit', short: 'In Transit', time: 'Today • 12:40 PM', desc: 'Medicine is currently moving toward the destination', completed: isDelivered, active: isInTransit },
+    { label: 'Out for Delivery', short: 'Out for Delivery', time: isDelivered ? 'Today • 03:45 PM' : 'Pending', desc: 'En route to hospital intake dock', completed: isDelivered, active: false },
+    { label: 'Delivered', short: 'Delivered', time: isDelivered ? 'Today • 04:30 PM' : 'Pending', desc: 'Intake dock inspection and handoff sign-off', completed: isDelivered, active: false },
   ];
 
   return (
-    <div className="space-y-6 pb-8">
+    <div className="space-y-7 pb-10">
       
-      {/* Page Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+      {/* 1. Header (WHERE AM I? + WHAT IS HAPPENING?) */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-secondary-900 tracking-tight">
-              Live Cold-Chain Logistics Command Center
-            </h1>
-            <span className="flex items-center gap-1 px-2.5 py-0.5 text-[10px] font-mono font-bold text-cyan-800 bg-cyan-50 border border-cyan-200 rounded-full">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-500 animate-pulse" />
-              IOT TELEMETRY LIVE
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Real-time IoT temperature monitoring, highway waypoint checkpoints, and cryptographic custody verification for inter-hospital medicine consignments.
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+            Live Tracking
+          </h1>
+          <p className="text-sm text-slate-500 mt-1 font-medium">
+            Track your medicine transfer with live geographic routing across India.
           </p>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-sm"
+          >
+            <RefreshCw className={`w-4 h-4 text-slate-500 ${isRefreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh Tracking</span>
+          </button>
         </div>
       </div>
 
-      {/* 3-COLUMN COCKPIT LAYOUT */}
+      {/* 2. TOP STATUS HERO PANEL (Requirement 9: Visual Focus — Understand in 3 Seconds) */}
+      <div className={`p-6 sm:p-7 rounded-3xl border shadow-sm transition-all relative overflow-hidden ${
+        isDelivered 
+          ? 'bg-gradient-to-br from-emerald-500 to-teal-700 text-white border-emerald-600'
+          : isInTransit
+            ? 'bg-gradient-to-br from-blue-600 to-primary-700 text-white border-blue-700'
+            : 'bg-gradient-to-br from-slate-800 to-slate-900 text-white border-slate-800'
+      }`}>
+        <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-5">
+          
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/15 backdrop-blur-md text-xs font-black uppercase tracking-wider">
+              {isDelivered ? (
+                <>
+                  <Check className="w-4 h-4 text-white" />
+                  <span>✓ DELIVERED</span>
+                </>
+              ) : isInTransit ? (
+                <>
+                  <Truck className="w-4 h-4 text-white animate-pulse" />
+                  <span>🚚 IN TRANSIT</span>
+                </>
+              ) : (
+                <>
+                  <Clock className="w-4 h-4 text-white" />
+                  <span>📦 ORDER CONFIRMED</span>
+                </>
+              )}
+            </div>
+
+            <h2 className="text-2xl sm:text-3xl font-black tracking-tight leading-snug">
+              {isDelivered
+                ? 'Medicine successfully delivered to hospital intake dock.'
+                : isInTransit
+                  ? 'Your medicine is on the way.'
+                  : 'Transfer approved. Awaiting pickup dispatch.'}
+            </h2>
+
+            <p className="text-xs sm:text-sm text-white/80 font-medium">
+              Current Location: <strong className="text-white underline decoration-white/40">{tracking.currentLocation}</strong>
+            </p>
+          </div>
+
+          {/* Large Estimated Delivery Highlight */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-white/10 backdrop-blur-md border border-white/15 text-left md:text-right flex-shrink-0 min-w-[210px]">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-white/75 block">
+              {isDelivered ? 'Delivered Timestamp' : 'Estimated Delivery'}
+            </span>
+            <div className="text-xl sm:text-2xl font-black font-mono text-white mt-1">
+              {tracking.eta}
+            </div>
+            <span className="text-[11px] text-white/80 block mt-1 font-mono">
+              Temp: {tracking.temperature?.split(' ')[0] || '4.2°C'} (Compliant)
+            </span>
+          </div>
+
+        </div>
+      </div>
+
+      {/* 3. MAIN SECTION: MAP (LEFT) + SIDEBAR (RIGHT) */}
+      {/* On Desktop: Left=Map + Timeline, Right=Shipment Info Card + Courier + Active Consignments */}
+      {/* On Mobile: Top Status -> Map -> Route Summary -> Timeline -> Transfer Details (Requirement 11) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         
-        {/* COLUMN 1: Shipment List Selector (3 cols) */}
-        <div className="lg:col-span-3 space-y-4">
+        {/* LEFT / MAIN COLUMN (lg:col-span-7 xl:col-span-8) */}
+        <div className="lg:col-span-7 xl:col-span-8 space-y-6">
           
-          {/* Quick Search */}
-          <div className="bg-white p-3.5 rounded-2xl border border-slate-200/90 shadow-sm space-y-2">
-            <form onSubmit={handleSearch} className="relative">
-              <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="TXN ID (e.g. TXN-773120)..."
-                value={txnInput}
-                onChange={(e) => setTxnInput(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 font-mono focus:ring-2 focus:ring-primary-500 focus:outline-none"
-              />
-            </form>
-          </div>
-
-          {/* Active Consignment Selector Cards */}
-          <div className="space-y-2.5">
-            <div className="flex items-center justify-between px-1 text-xs font-mono font-bold text-slate-400 uppercase">
-              <span>Consignments</span>
-              <span>{allAvailableShipments.length} Active</span>
-            </div>
-
-            {allAvailableShipments.map((s) => {
-              const isSelected = selectedTxn === s.txnId;
-
-              return (
-                <div
-                  key={s.txnId}
-                  onClick={() => handleSelectShipment(s.txnId)}
-                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer space-y-2 ${
-                    isSelected
-                      ? 'bg-primary-50/60 border-primary-500 shadow-md ring-2 ring-primary-500/20'
-                      : 'bg-white hover:bg-slate-50 border-slate-200/90 shadow-subtle'
-                  }`}
-                >
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <h4 className="text-xs font-extrabold text-slate-900 leading-tight">
-                        {s.medicine}
-                      </h4>
-                      <p className="text-[10px] font-mono text-slate-500 mt-0.5">
-                        {s.units} units • {s.txnId}
-                      </p>
-                    </div>
-                    <StatusBadge status={s.status} />
-                  </div>
-
-                  <div className="text-[11px] text-slate-600 truncate">
-                    <span className="font-semibold text-slate-800">{s.from}</span>
-                    <span className="text-slate-400 mx-1">➔</span>
-                    <span className="font-semibold text-slate-800">{s.to}</span>
-                  </div>
-
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[10px] font-mono">
-                    <span className="text-cyan-700 font-bold flex items-center gap-1">
-                      <Thermometer className="w-3 h-3 text-cyan-600" />
-                      {s.temp}
-                    </span>
-                    <span className="text-slate-500">{s.eta}</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-        </div>
-
-        {/* COLUMN 2: Large Interactive Telemetry Map (5 cols) */}
-        <div className="lg:col-span-5 space-y-4">
-          
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+          {/* REAL INTERACTIVE MAP OF INDIA */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-5 sm:p-6 shadow-sm space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
               <div>
-                <h3 className="text-sm font-extrabold text-slate-900">
-                  Highway Telemetry Corridor
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                  GEOGRAPHIC LIVE ROUTE
+                </span>
+                <h3 className="text-base font-extrabold text-slate-900 flex items-center gap-1.5 mt-0.5">
+                  <MapPin className="w-4 h-4 text-amber-500 animate-bounce" />
+                  <span>{sellerCity} → {buyerCity} Transit Corridor</span>
                 </h3>
-                <p className="text-xs text-slate-400">Live GPS tracking via National Highway 48 corridor</p>
               </div>
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[10px] font-mono font-bold text-emerald-800">
-                <Radio className="w-3 h-3 text-emerald-600 animate-pulse" />
-                Live 60s Sync
+
+              <div className="text-left sm:text-right">
+                <span className="px-2.5 py-1 rounded-full text-[10px] font-mono font-bold bg-slate-100 text-slate-600 border border-slate-200 inline-block">
+                  Demo Live Location • Tracking Simulation
+                </span>
+              </div>
+            </div>
+
+            {/* Embedded Leaflet Map */}
+            <IndiaLiveMap tracking={tracking} />
+
+            <div className="pt-2 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between text-xs text-slate-500 gap-2">
+              <span className="flex items-center gap-1 font-mono">
+                <Navigation className="w-3.5 h-3.5 text-primary-600" />
+                Transit: <strong className="text-slate-800">{tracking.currentLocation}</strong>
+              </span>
+              <span className="text-[11px] text-slate-400">
+                Last telemetry update: {lastRefreshedTime}
               </span>
             </div>
-
-            {/* Spatial Dark Map Container */}
-            <div className="relative rounded-2xl overflow-hidden bg-gradient-to-br from-[#081521] via-[#0D2133] to-[#061019] p-5 text-white min-h-[340px] flex flex-col justify-between border border-slate-800 shadow-2xl select-none">
-              
-              <div className="absolute inset-0 bg-grid-dark opacity-35 pointer-events-none" />
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-64 h-64 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
-
-              {/* Map Top Coordinates */}
-              <div className="relative z-10 flex items-start justify-between">
-                <div className="space-y-1">
-                  <span className="text-[9px] uppercase font-mono font-bold text-cyan-400 tracking-wider">
-                    Geospatial GPS Coordinate
-                  </span>
-                  <div className="flex items-center gap-1.5 text-sm font-bold text-white">
-                    <MapPin className="w-4 h-4 text-amber-400 animate-bounce" />
-                    <span>{tracking.currentLocation}</span>
-                  </div>
-                </div>
-
-                <div className="text-right">
-                  <span className="text-[9px] uppercase font-mono font-bold text-slate-400 tracking-wider">
-                    Estimated Delivery
-                  </span>
-                  <p className="text-xs font-mono font-extrabold text-emerald-400 mt-0.5">
-                    {tracking.eta}
-                  </p>
-                </div>
-              </div>
-
-              {/* SVG Highway Route */}
-              <div className="relative z-10 py-8 my-auto">
-                <svg className="w-full h-12" viewBox="0 0 100 20" preserveAspectRatio="none">
-                  <defs>
-                    <linearGradient id="trackGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-                      <stop offset="0%" stopColor="#0A6E79" />
-                      <stop offset="65%" stopColor="#06B6D4" />
-                      <stop offset="100%" stopColor="#334155" />
-                    </linearGradient>
-                  </defs>
-                  
-                  {/* Highway corridor line */}
-                  <line x1="5" y1="10" x2="95" y2="10" stroke="#1E293B" strokeWidth="4" strokeLinecap="round" />
-                  <line x1="5" y1="10" x2="68" y2="10" stroke="url(#trackGrad)" strokeWidth="4" strokeLinecap="round" />
-
-                  {/* Nodes */}
-                  <circle cx="5" cy="10" r="3" fill="#0A6E79" />
-                  <circle cx="35" cy="10" r="2" fill="#06B6D4" />
-                  <circle cx="68" cy="10" r="3.5" fill="#F59E0B" />
-                  <circle cx="95" cy="10" r="3" fill="#475569" />
-                </svg>
-
-                <div className="flex justify-between text-[10px] text-slate-400 font-mono pt-1">
-                  <span>Origin Dock (Delhi)</span>
-                  <span className="text-amber-400 font-bold">● Vadodara Hub (Live)</span>
-                  <span>Intake Dock (Mumbai)</span>
-                </div>
-              </div>
-
-              {/* Telemetry Strip */}
-              <div className="relative z-10 grid grid-cols-2 gap-2 pt-3 border-t border-slate-800 text-xs font-mono">
-                <div>
-                  <span className="text-[10px] text-slate-400 block">Vehicle Registry</span>
-                  <strong className="text-white">{tracking.vehicleNo}</strong>
-                </div>
-                <div className="text-right">
-                  <span className="text-[10px] text-slate-400 block">Current Velocity</span>
-                  <strong className="text-cyan-300">68 km/h (Express Route)</strong>
-                </div>
-              </div>
-
-            </div>
-
-            {/* Consignment Overview */}
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="text-[10px] uppercase font-mono text-slate-400 block">Origin Dispatch Dock</span>
-                <p className="font-bold text-slate-800 mt-1 leading-snug">{tracking.senderHospital}</p>
-              </div>
-              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="text-[10px] uppercase font-mono text-slate-400 block">Destination Receiving Dock</span>
-                <p className="font-bold text-slate-800 mt-1 leading-snug">{tracking.receiverHospital}</p>
-              </div>
-            </div>
-
           </div>
 
-        </div>
-
-        {/* COLUMN 3: Consignment Dossier & Temperature Telemetry (4 cols) */}
-        <div className="lg:col-span-4 space-y-4">
-          
-          {/* Cold-Chain IoT Sensor Monitor */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-4">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-1.5 font-bold text-xs text-primary-700">
-                <Thermometer className="w-4 h-4 text-primary-600" />
-                <span>Cold Chain Sensor Health</span>
-              </div>
-              <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
-                COMPLIANT 2°C - 8°C
+          {/* ROUTE SUMMARY ROW (Requirement 9 & 11) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                FROM (SELLER)
               </span>
+              <div className="text-sm font-extrabold text-slate-900 leading-snug truncate">
+                {tracking.senderHospital}
+              </div>
+              <p className="text-[11px] text-slate-500 font-semibold">{sellerCity}</p>
             </div>
 
-            {/* Chamber readout */}
-            <div className="p-4 rounded-xl bg-gradient-to-br from-primary-50 to-teal-50 border border-primary-200 text-center space-y-1">
-              <span className="text-[10px] uppercase font-mono font-bold text-primary-700">
-                Internal Chamber Temperature
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                TO (BUYER)
               </span>
-              <div className="text-3xl font-extrabold font-mono text-primary-900 tracking-tight">
-                {tracking.temperature}
+              <div className="text-sm font-extrabold text-slate-900 leading-snug truncate">
+                {tracking.receiverHospital}
               </div>
-              <p className="text-[11px] text-slate-600 font-medium">
-                Digital Data Logger: ±0.1°C precision
-              </p>
+              <p className="text-[11px] text-slate-500 font-semibold">{buyerCity}</p>
             </div>
 
-            {/* Temperature History Line Graph Simulation */}
-            <div className="space-y-1.5">
-              <span className="text-[10px] font-mono font-bold uppercase text-slate-400">
-                Chamber Temperature History (Today)
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                MEDICINE
               </span>
-              
-              <div className="grid grid-cols-6 gap-1 text-center font-mono">
-                {tempLogs.map((tl, idx) => (
-                  <div key={idx} className="p-1.5 rounded-lg bg-slate-50 border border-slate-100">
-                    <span className="text-[9px] text-slate-400 block">{tl.time}</span>
-                    <span className="text-xs font-bold text-primary-700">{tl.temp}°C</span>
-                  </div>
-                ))}
+              <div className="text-sm font-extrabold text-slate-900 leading-snug truncate">
+                {tracking.medicineName}
               </div>
+              <p className="text-[11px] text-slate-500 font-mono">Batch verified</p>
             </div>
 
-            {/* Chain of Custody Stamp */}
-            <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 flex items-center gap-2.5 text-xs">
-              <ShieldCheck className="w-5 h-5 text-emerald-600 flex-shrink-0" />
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                QUANTITY
+              </span>
+              <div className="text-2xl font-black text-slate-900 font-mono">
+                {tracking.quantity}
+              </div>
+              <p className="text-[11px] text-slate-500">Units reserved</p>
+            </div>
+
+            <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-1 col-span-2 sm:col-span-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block font-mono">
+                TRACKING ID
+              </span>
+              <div className="text-sm font-black font-mono text-primary-700 truncate">
+                {tracking.trackingNumber || `MS-TRK-${tracking.transactionId}`}
+              </div>
+              <p className="text-[11px] text-slate-400 font-mono">Txn: {tracking.transactionId}</p>
+            </div>
+          </div>
+
+          {/* DELIVERY PROGRESS TIMELINE (Requirement 10: 6 Steps) */}
+          <div className="bg-white p-6 sm:p-7 rounded-3xl border border-slate-200/90 shadow-sm space-y-5">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
-                <span className="font-bold text-emerald-900 block">Chain of Custody: Verified</span>
-                <span className="text-[10px] text-emerald-700">Cryo-seal intact, tamper sensors locked.</span>
+                <h3 className="text-base font-extrabold text-slate-900">Tracking Timeline</h3>
+                <p className="text-xs text-slate-500">Milestone checkpoint tracking from order verification to hospital intake dock</p>
               </div>
-            </div>
-          </div>
-
-          {/* Courier Partner Card */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-3">
-            <div className="flex items-center gap-2 text-xs font-bold text-slate-800 pb-2 border-b border-slate-100">
-              <Truck className="w-4 h-4 text-primary-600" />
-              <span>Dedicated Bio-Express Courier</span>
+              <span className="text-xs font-mono font-bold text-slate-400">
+                Updated: {lastRefreshedTime}
+              </span>
             </div>
 
-            <div className="space-y-1 text-xs">
-              <h5 className="font-extrabold text-slate-900">{tracking.courierName}</h5>
-              <p className="text-slate-500 text-[11px]">Specialized Medical Transit Partner</p>
-
-              <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 mt-2 flex items-center gap-2 text-slate-700 font-mono">
-                <Phone className="w-3.5 h-3.5 text-primary-600" />
-                <span>{tracking.courierContact}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* 5-Step Milestone Progress */}
-          <div className="bg-white rounded-2xl border border-slate-200/90 p-5 shadow-sm space-y-3">
-            <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-400">
-              Milestone Audit Trail
-            </h4>
-
-            <div className="space-y-3 pt-1">
-              {tracking.timeline.map((item, idx) => (
-                <div key={idx} className="flex items-start gap-2.5 relative text-xs">
-                  {idx !== tracking.timeline.length - 1 && (
-                    <div className={`absolute left-3 top-5 w-0.5 h-7 ${
-                      item.completed ? 'bg-primary-500' : 'bg-slate-200'
+            {/* Desktop Horizontal Stepper */}
+            <div className="hidden md:grid grid-cols-6 gap-3 pt-2">
+              {progressSteps.map((step, idx) => (
+                <div key={idx} className="space-y-2 text-left relative">
+                  {idx !== 5 && (
+                    <div className={`absolute top-3.5 left-7 right-0 h-1 z-0 ${
+                      step.completed ? 'bg-emerald-500' : 'bg-slate-200'
                     }`} />
                   )}
 
-                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white flex-shrink-0 z-10 ${
-                    item.completed ? 'bg-primary-600 ring-2 ring-primary-100' : 'bg-slate-200 text-slate-400'
+                  <div className="flex items-center gap-2 relative z-10">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                      step.completed 
+                        ? 'bg-emerald-600 shadow-sm' 
+                        : step.active 
+                          ? 'bg-blue-600 ring-4 ring-blue-100 animate-pulse shadow-sm' 
+                          : 'bg-slate-200 text-slate-500'
+                    }`}>
+                      {step.completed ? <Check className="w-4 h-4 stroke-[3]" /> : step.active ? '●' : '○'}
+                    </div>
+                  </div>
+
+                  <div className="pt-1">
+                    <div className={`text-xs font-bold leading-tight ${
+                      step.completed ? 'text-slate-900' : step.active ? 'text-blue-700 font-black' : 'text-slate-400'
+                    }`}>
+                      {step.label}
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                      {step.time}
+                    </span>
+                    <p className="text-[11px] text-slate-500 mt-1 leading-snug">{step.desc}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Mobile Vertical Stepper */}
+            <div className="block md:hidden space-y-4 pt-1">
+              {progressSteps.map((step, idx) => (
+                <div key={idx} className="flex items-start gap-3.5 relative">
+                  {idx !== 5 && (
+                    <div className={`absolute left-3 top-5 w-0.5 h-12 ${
+                      step.completed ? 'bg-emerald-500' : 'bg-slate-200'
+                    }`} />
+                  )}
+
+                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0 z-10 ${
+                    step.completed 
+                      ? 'bg-emerald-600 shadow-sm' 
+                      : step.active 
+                        ? 'bg-blue-600 ring-4 ring-blue-100 animate-pulse shadow-sm' 
+                        : 'bg-slate-200 text-slate-500'
                   }`}>
-                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    {step.completed ? <Check className="w-3.5 h-3.5 stroke-[3]" /> : step.active ? '●' : '○'}
                   </div>
 
                   <div className="flex-1">
-                    <div className="flex justify-between items-center">
-                      <span className={`font-bold ${item.completed ? 'text-slate-900' : 'text-slate-400'}`}>
-                        {item.step}
+                    <div className="flex items-center justify-between">
+                      <span className={`text-xs font-bold ${
+                        step.completed ? 'text-slate-900' : step.active ? 'text-blue-700 font-black' : 'text-slate-400'
+                      }`}>
+                        {step.label}
                       </span>
-                      <span className="text-[10px] text-slate-400 font-mono">{item.date}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">{step.time}</span>
                     </div>
-                    <p className="text-[11px] text-slate-500 mt-0.5">{item.details}</p>
+                    <p className="text-[11px] text-slate-500 mt-0.5">{step.desc}</p>
                   </div>
                 </div>
               ))}
@@ -425,7 +451,213 @@ export const TrackPage = () => {
 
         </div>
 
+        {/* RIGHT / SIDEBAR COLUMN (lg:col-span-5 xl:col-span-4) */}
+        <div className="lg:col-span-5 xl:col-span-4 space-y-5 lg:sticky lg:top-6">
+          
+          {/* 1. CURRENT SHIPMENT INFORMATION (Requirement 11 Sidebar Card) */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
+            
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <span className="px-3 py-1 rounded-full bg-blue-50 text-blue-800 border border-blue-200/80 text-xs font-extrabold flex items-center gap-1.5">
+                {isDelivered ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>DELIVERED ✓</span>
+                  </>
+                ) : (
+                  <>
+                    <Truck className="w-3.5 h-3.5 text-blue-600" />
+                    <span>IN TRANSIT 🚚</span>
+                  </>
+                )}
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">
+                {tracking.trackingNumber || 'MS-TRK-20481'}
+              </span>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                  Medicine & Quantity
+                </span>
+                <h4 className="text-base font-extrabold text-slate-900 mt-0.5 leading-snug">
+                  {tracking.medicineName}
+                </h4>
+                <div className="text-xl font-black text-slate-900 font-mono mt-1">
+                  {tracking.quantity} units
+                </div>
+              </div>
+
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 font-mono block">
+                  Expected Delivery (ETA)
+                </span>
+                <div className="text-base font-black font-mono text-primary-800">
+                  {tracking.eta}
+                </div>
+              </div>
+
+              {/* Corridor Route Label */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                <div>
+                  <span className="text-[10px] text-slate-400 font-mono block uppercase">Origin</span>
+                  <strong className="text-slate-900 text-xs">{sellerCity}</strong>
+                </div>
+                <ArrowRight className="w-4 h-4 text-slate-400" />
+                <div className="text-right">
+                  <span className="text-[10px] text-slate-400 font-mono block uppercase">Destination</span>
+                  <strong className="text-slate-900 text-xs">{buyerCity}</strong>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          {/* 2. DELIVERY INFORMATION & COURIER PARTNER */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-6 shadow-sm space-y-4">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono block">
+              DELIVERY INFORMATION
+            </span>
+
+            <div className="space-y-3 text-xs">
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 space-y-1">
+                <span className="text-[10px] text-slate-400 font-medium block">Logistics Provider</span>
+                <strong className="text-slate-900 text-sm">{tracking.courierName}</strong>
+                <p className="text-[11px] text-slate-500 font-mono">Vehicle: {tracking.vehicleNo}</p>
+              </div>
+
+              {/* Courier Contact */}
+              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-100 flex items-center gap-2.5 text-slate-700">
+                <Phone className="w-4 h-4 text-primary-600 flex-shrink-0" />
+                <div className="text-xs">
+                  <span className="text-[10px] text-slate-400 block font-medium">Driver / Dispatch Contact</span>
+                  <strong className="text-slate-900">{tracking.courierContact}</strong>
+                </div>
+              </div>
+
+              {/* Temperature IoT Monitoring Card */}
+              <div className="p-4 bg-cyan-50/50 rounded-2xl border border-cyan-200/80 flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Thermometer className="w-5 h-5 text-cyan-600" />
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-cyan-800 block">Chamber Temperature</span>
+                    <strong className="text-sm font-mono text-cyan-950">{tracking.temperature}</strong>
+                  </div>
+                </div>
+                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                  SAFE
+                </span>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="space-y-2 pt-2 border-t border-slate-100">
+              {isDelivered ? (
+                <button
+                  type="button"
+                  onClick={() => setShowProofModal(true)}
+                  className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition-all"
+                >
+                  <FileCheck2 className="w-4 h-4" />
+                  <span>✓ Delivered • View Delivery Proof</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => navigate(`/hospital/requests`)}
+                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-primary-600/20 transition-all"
+                >
+                  <span>View Transfer Details</span>
+                  <ExternalLink className="w-4 h-4" />
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={handleRefresh}
+                className="w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 transition-all"
+              >
+                <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+                <span>Refresh Tracking Data</span>
+              </button>
+            </div>
+
+          </div>
+
+          {/* 3. ACTIVE CONSIGNMENTS SWITCHER (Allows testing all demo shipments) */}
+          <div className="bg-white rounded-3xl border border-slate-200/90 p-5 shadow-sm space-y-3">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono block">
+              Active Consignments ({availableShipments.length})
+            </span>
+
+            <div className="space-y-2">
+              {availableShipments.map((s) => (
+                <button
+                  key={s.txnId}
+                  type="button"
+                  onClick={() => handleSelectShipment(s.txnId)}
+                  className={`w-full text-left p-3 rounded-2xl border transition-all text-xs flex items-center justify-between ${
+                    selectedTxn === s.txnId
+                      ? 'border-primary-600 bg-primary-50/50 shadow-sm ring-1 ring-primary-600/30'
+                      : 'border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  <div>
+                    <div className="font-extrabold text-slate-900">{s.medicine}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">
+                      {s.units} units • {s.txnId}
+                    </div>
+                  </div>
+                  <StatusBadge status={s.status} className="text-[10px] px-2 py-0.5" />
+                </button>
+              ))}
+            </div>
+          </div>
+
+        </div>
+
       </div>
+
+      {/* Proof of Delivery Modal */}
+      {showProofModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-6 space-y-5 border border-slate-100">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">Proof of Delivery Verified</h3>
+              <p className="text-xs text-slate-500">
+                Consignment successfully received and checked at receiving hospital dock.
+              </p>
+            </div>
+
+            <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-xs space-y-2 font-mono">
+              <div className="flex justify-between">
+                <span className="text-slate-400">Consignment:</span>
+                <span className="font-bold text-slate-800">{tracking.trackingNumber}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Received By:</span>
+                <span className="font-bold text-slate-800">Hospital Pharmacy Intake Dock</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-400">Cold Chain SLA:</span>
+                <span className="text-emerald-700 font-bold">100% Compliant (Zero Breaches)</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowProofModal(false)}
+              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -24,6 +24,7 @@ import TrackPage from './pages/hospital/TrackPage';
 import PaymentHistory from './pages/hospital/PaymentHistory';
 import HospitalFeedback from './pages/hospital/HospitalFeedback';
 import HospitalProfilePage from './pages/hospital/HospitalProfilePage';
+import HospitalWasteManagement from './pages/hospital/HospitalWasteManagement';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -93,6 +94,7 @@ export const App = () => {
           <Route path="history" element={<HistoryPage />} />
           <Route path="track" element={<TrackPage />} />
           <Route path="payment-history" element={<PaymentHistory />} />
+          <Route path="waste-management" element={<HospitalWasteManagement />} />
           <Route path="feedback" element={<HospitalFeedback />} />
           <Route path="profile" element={<HospitalProfilePage />} />
         </Route>

@@ -39,20 +39,23 @@ export const HospitalDashboard = () => {
   const [timeRange, setTimeRange] = useState('6M'); // 7D | 30D | 3M | 6M | 1Y
 
   useEffect(() => {
-    dispatch(fetchHospitalDashboard(user?.id || 'hosp-1'));
-  }, [dispatch, user]);
+    if (user?.id) {
+      dispatch(fetchHospitalDashboard(user.id));
+    }
+  }, [dispatch, user?.id]);
 
   if (isLoading && !dashboardData) {
     return <LoadingSpinner text="Compiling Pharmacy Supply Chain Telemetry..." />;
   }
 
   const stats = dashboardData?.stats || {
-    totalMedicines: 940,
-    monthlyPurchases: 462500,
-    monthlySales: 689000,
-    profitabilityPercent: 28.4,
-    pendingRequestsCount: 2,
-    activeShipmentsCount: 3,
+    totalMedicines: 0,
+    activeSkus: 0,
+    monthlyPurchases: 0,
+    monthlySales: 0,
+    profitabilityPercent: 0,
+    pendingRequestsCount: 0,
+    activeShipmentsCount: 0,
   };
 
   return (
@@ -148,11 +151,11 @@ export const HospitalDashboard = () => {
 
             <div className="pt-2">
               <div className="text-3xl font-extrabold font-mono tracking-tight text-white">
-                940 <span className="text-sm font-normal text-slate-300">units</span>
+                {stats?.totalMedicines?.toLocaleString() || 0} <span className="text-sm font-normal text-slate-300">units</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold mt-1">
                 <ArrowUpRight className="w-3.5 h-3.5" />
-                <span>+12.4% velocity this month</span>
+                <span>{stats?.activeSkus ?? 0} active listed SKUs</span>
               </div>
             </div>
           </div>
@@ -166,7 +169,7 @@ export const HospitalDashboard = () => {
               <span className="w-1.5 h-3 bg-amber-400 rounded-t" />
               <span className="w-1.5 h-4 bg-primary-400 rounded-t" />
             </div>
-            <span className="text-slate-400">Warehouse Utilization: 78%</span>
+            <span className="text-slate-400">Shipments: {stats?.activeShipmentsCount ?? 0} Active</span>
           </div>
         </div>
 
@@ -178,7 +181,7 @@ export const HospitalDashboard = () => {
                 Monthly Procurement
               </span>
               <div className="text-2xl font-extrabold font-mono tracking-tight text-slate-900 mt-1">
-                ₹462,500
+                ₹{stats?.monthlyPurchases?.toLocaleString() || 0}
               </div>
             </div>
             <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
@@ -192,7 +195,7 @@ export const HospitalDashboard = () => {
               <span>Concession Savings</span>
             </div>
             <p className="text-[11px] text-blue-800">
-              Saved <strong className="font-mono font-bold">₹84,200</strong> through peer discounts
+              Automated shelf-life discounts applied
             </p>
           </div>
         </div>
@@ -205,7 +208,7 @@ export const HospitalDashboard = () => {
                 Redistribution Revenue
               </span>
               <div className="text-2xl font-extrabold font-mono tracking-tight text-slate-900 mt-1">
-                ₹689,000
+                ₹{stats?.monthlySales?.toLocaleString() || 0}
               </div>
             </div>
             <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
@@ -219,7 +222,7 @@ export const HospitalDashboard = () => {
               <span>Capital Recovered</span>
             </div>
             <p className="text-[11px] text-emerald-800">
-              <strong className="font-mono font-bold">+18.5%</strong> near-expiry stock recovery
+              {stats?.pendingRequestsCount ?? 0} incoming peer requests pending
             </p>
           </div>
         </div>
@@ -232,7 +235,7 @@ export const HospitalDashboard = () => {
                 Operating Margin
               </span>
               <div className="text-2xl font-extrabold font-mono tracking-tight text-slate-900 mt-1">
-                28.4%
+                {stats?.profitabilityPercent ?? 0}%
               </div>
             </div>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -243,10 +246,10 @@ export const HospitalDashboard = () => {
           <div className="p-2.5 rounded-xl bg-amber-50/70 border border-amber-100 text-xs text-amber-900 font-semibold space-y-0.5">
             <div className="flex items-center gap-1 font-bold text-amber-700">
               <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" />
-              <span>QoQ Growth</span>
+              <span>Target Efficiency</span>
             </div>
             <p className="text-[11px] text-amber-800">
-              <strong className="font-mono font-bold">+3.2%</strong> vs previous quarter
+              Zero-waste exchange redistribution
             </p>
           </div>
         </div>
@@ -260,9 +263,14 @@ export const HospitalDashboard = () => {
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
-              Procurement & Sales Velocity Analytics
-            </h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-base font-extrabold text-slate-900 tracking-tight">
+                Procurement & Sales Velocity Analytics
+              </h3>
+              <span className="text-[10px] font-mono font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+                Demo Projection
+              </span>
+            </div>
             <p className="text-xs text-slate-500">
               Dual-view financial trends benchmarked against historical concession concessions.
             </p>

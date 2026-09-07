@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { hospitalService } from '../../services/hospitalService';
+import { respondToRequest } from './requestSlice';
 
 export const fetchHospitalDashboard = createAsyncThunk('hospital/fetchDashboard', async (hospitalId, { rejectWithValue }) => {
   try {
@@ -66,9 +67,9 @@ export const fetchPurchasesHistory = createAsyncThunk('hospital/fetchPurchasesHi
   }
 });
 
-export const fetchPaymentHistory = createAsyncThunk('hospital/fetchPaymentHistory', async (_, { rejectWithValue }) => {
+export const fetchPaymentHistory = createAsyncThunk('hospital/fetchPaymentHistory', async (hospitalId, { rejectWithValue }) => {
   try {
-    return await hospitalService.getPaymentHistory();
+    return await hospitalService.getPaymentHistory(hospitalId);
   } catch (err) {
     return rejectWithValue(err.message);
   }
@@ -90,6 +91,22 @@ export const fetchHospitalFeedbacks = createAsyncThunk('hospital/fetchFeedbacks'
   }
 });
 
+export const fetchHospitalDisposals = createAsyncThunk('hospital/fetchDisposals', async (hospitalId, { rejectWithValue }) => {
+  try {
+    return await hospitalService.getHospitalDisposals(hospitalId);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
+export const createHospitalWasteRequest = createAsyncThunk('hospital/createWasteRequest', async (wasteData, { rejectWithValue }) => {
+  try {
+    return await hospitalService.createWasteRequest(wasteData);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 const hospitalSlice = createSlice({
   name: 'hospital',
   initialState: {
@@ -100,12 +117,20 @@ const hospitalSlice = createSlice({
     purchasesHistory: [],
     payments: [],
     feedbacks: [],
+    disposals: [],
     isLoading: false,
     error: null,
   },
   reducers: {
     clearHospitalError: (state) => {
       state.error = null;
+    },
+    decrementInventoryStock: (state, action) => {
+      const { medicineId, quantity } = action.payload;
+      const idx = state.inventory.findIndex((m) => m.id === medicineId);
+      if (idx !== -1) {
+        state.inventory[idx].quantity = Math.max(0, state.inventory[idx].quantity - quantity);
+      }
     }
   },
   extraReducers: (builder) => {
@@ -172,15 +197,39 @@ const hospitalSlice = createSlice({
         state.payments = action.payload;
       })
 
+      // Disposals
+      .addCase(fetchHospitalDisposals.fulfilled, (state, action) => {
+        state.disposals = action.payload;
+      })
+      .addCase(createHospitalWasteRequest.fulfilled, (state, action) => {
+        state.disposals.unshift(action.payload);
+        // If an inventory medicine was associated, mark it pending disposal
+        if (action.payload.medicineId) {
+          const idx = state.inventory.findIndex((m) => m.id === action.payload.medicineId);
+          if (idx !== -1) state.inventory[idx].status = 'pending_disposal';
+        }
+      })
+
       // Feedback
       .addCase(fetchHospitalFeedbacks.fulfilled, (state, action) => {
         state.feedbacks = action.payload;
       })
       .addCase(submitHospitalFeedback.fulfilled, (state, action) => {
         state.feedbacks.unshift(action.payload);
+      })
+
+      // When a request is accepted, automatically sync seller's inventory in Redux!
+      .addCase(respondToRequest.fulfilled, (state, action) => {
+        const accepted = action.payload?.acceptedRequest || (action.payload?.status === 'accepted' ? action.payload : null);
+        if (accepted && accepted.medicineId) {
+          const idx = state.inventory.findIndex((m) => m.id === accepted.medicineId);
+          if (idx !== -1) {
+            state.inventory[idx].quantity = Math.max(0, state.inventory[idx].quantity - accepted.quantity);
+          }
+        }
       });
   }
 });
 
-export const { clearHospitalError } = hospitalSlice.actions;
+export const { clearHospitalError, decrementInventoryStock } = hospitalSlice.actions;
 export default hospitalSlice.reducer;

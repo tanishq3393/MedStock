@@ -36,6 +36,15 @@ export const logoutUser = createAsyncThunk('auth/logout', async () => {
   return null;
 });
 
+export const switchHospitalAction = createAsyncThunk('auth/switchHospital', async (hospitalId, { rejectWithValue }) => {
+  try {
+    const data = await authService.switchHospital(hospitalId);
+    return data;
+  } catch (err) {
+    return rejectWithValue(err.message || 'Failed to switch hospital');
+  }
+});
+
 const authSlice = createSlice({
   name: 'auth',
   initialState: {
@@ -58,6 +67,13 @@ const authSlice = createSlice({
     }
   },
   extraReducers: (builder) => {
+    // Switch hospital
+    builder.addCase(switchHospitalAction.fulfilled, (state, action) => {
+      state.user = action.payload.user;
+      state.token = action.payload.token;
+      state.role = 'hospital';
+      state.isAuthenticated = true;
+    });
     // Login
     builder.addCase(loginUser.pending, (state) => {
       state.isLoading = true;

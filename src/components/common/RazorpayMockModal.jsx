@@ -12,6 +12,7 @@ import {
   FileText
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { calculateOrderPricing } from '../../utils/pricingUtils';
 import toast from 'react-hot-toast';
 
 export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }) => {
@@ -27,9 +28,15 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
 
   if (!request) return null;
 
-  const baseAmount = Number(request.totalAmount || 0);
-  const gstAmount = Math.round(baseAmount * 0.12);
-  const totalPayable = baseAmount + gstAmount;
+  const pricing = calculateOrderPricing({
+    unitOriginalPrice: request.unitOriginalPrice || request.unitFinalPrice || 500,
+    concessionPercent: request.concessionPercent || 0,
+    quantity: request.quantity || 1,
+    storageType: request.storageType || 'Cold Storage'
+  });
+
+  const totalPayable = request.totalAmount ? Number(request.totalAmount) : pricing.totalPayable;
+  const gstAmount = pricing.gstAmount;
 
   const handlePay = async (e) => {
     e.preventDefault();
@@ -84,8 +91,13 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
             R
           </div>
           <div>
-            <span className="font-extrabold text-sm tracking-wide">Razorpay</span>
-            <span className="text-[10px] text-blue-300 ml-1.5 font-medium">B2B Healthcare Checkout</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-sm tracking-wide">Razorpay</span>
+              <span className="text-[9px] font-mono font-bold bg-amber-400 text-slate-900 px-1.5 py-0.5 rounded uppercase">
+                Demo Simulator
+              </span>
+            </div>
+            <span className="text-[10px] text-blue-300 font-medium">B2B Healthcare Escrow Gateway</span>
           </div>
         </div>
         <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-white/10 px-2.5 py-1 rounded-full border border-white/10">
@@ -97,20 +109,42 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
       {!paymentDone ? (
         <div className="pt-4 space-y-4">
           
-          {/* Order Summary Card */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+          {/* Order Summary Card with Itemized Breakdown */}
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
             <div className="flex justify-between items-start">
               <div>
                 <p className="text-xs text-slate-500 font-semibold">Paying To Provider:</p>
                 <h4 className="text-sm font-bold text-slate-800">{request.toHospitalName}</h4>
-                <p className="text-xs text-slate-600 mt-1">
+                <p className="text-xs text-slate-600 mt-0.5">
                   Item: <span className="font-medium text-slate-900">{request.medicineName}</span> ({request.quantity} units)
                 </p>
               </div>
               <div className="text-right">
-                <span className="text-xs text-slate-400">Total Payable</span>
+                <span className="text-xs text-slate-400">Total Escrow Payable</span>
                 <p className="text-lg font-extrabold text-primary-700">₹{totalPayable.toLocaleString()}</p>
-                <span className="text-[10px] text-slate-500 block">Incl. 12% GST (₹{gstAmount})</span>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200/80 text-[11px] font-mono text-slate-600 space-y-1">
+              <div className="flex justify-between">
+                <span>Base Subtotal ({request.quantity} × ₹{pricing.unitOriginalPrice}):</span>
+                <span>₹{pricing.subtotal.toLocaleString()}</span>
+              </div>
+              {pricing.concessionSavings > 0 && (
+                <div className="flex justify-between text-amber-700 font-semibold">
+                  <span>Automated Near-Expiry Concession:</span>
+                  <span>-₹{pricing.concessionSavings.toLocaleString()}</span>
+                </div>
+              )}
+              {pricing.logisticsFee > 0 && (
+                <div className="flex justify-between text-cyan-700 font-semibold">
+                  <span>Cold-Chain Telemetry & Transit Fee:</span>
+                  <span>+₹{pricing.logisticsFee.toLocaleString()}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span>GST (12% Central/State Pharma):</span>
+                <span>+₹{gstAmount.toLocaleString()}</span>
               </div>
             </div>
           </div>

@@ -21,7 +21,8 @@ import {
 import { 
   fetchHospitals, 
   verifyHospitalAction, 
-  rejectHospitalAction 
+  rejectHospitalAction,
+  setReviewStatusAction 
 } from '../../store/slices/adminSlice';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
@@ -34,12 +35,15 @@ export const AdminVerification = () => {
   const navigate = useNavigate();
   const { hospitals, isLoading } = useSelector((state) => state.admin);
 
-  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'verified' | 'rejected' | 'suspended'
+  const [activeTab, setActiveTab] = useState('pending'); // 'pending' | 'under_review' | 'documents_missing' | 'verified' | 'rejected' | 'suspended' | 'all'
   const [searchTerm, setSearchTerm] = useState('');
 
   const [verifyTarget, setVerifyTarget] = useState(null);
   const [rejectTarget, setRejectTarget] = useState(null);
   const [rejectReason, setRejectReason] = useState('');
+  const [reviewTarget, setReviewTarget] = useState(null);
+  const [reviewStatusChoice, setReviewStatusChoice] = useState('under_review');
+  const [reviewNote, setReviewNote] = useState('');
   const [inspectDoc, setInspectDoc] = useState(null);
 
   useEffect(() => {
@@ -49,7 +53,7 @@ export const AdminVerification = () => {
   const handleConfirmVerify = async () => {
     if (!verifyTarget) return;
     try {
-      await dispatch(verifyHospitalAction(verifyTarget.id));
+      await dispatch(verifyHospitalAction(verifyTarget.id)).unwrap();
       toast.success(`${verifyTarget.name} has been verified and granted trade privileges.`);
       setVerifyTarget(null);
     } catch (err) {
@@ -64,12 +68,40 @@ export const AdminVerification = () => {
       await dispatch(rejectHospitalAction({
         hospitalId: rejectTarget.id,
         reason: rejectReason || 'Documentation audit incomplete or statutory compliance missing.'
-      }));
+      })).unwrap();
       toast.success(`Application rejected for ${rejectTarget.name}`);
       setRejectTarget(null);
       setRejectReason('');
     } catch (err) {
       toast.error('Failed to record rejection');
+    }
+  };
+
+  const handleConfirmReview = async (e) => {
+    e.preventDefault();
+    if (!reviewTarget) return;
+    try {
+      if (reviewStatusChoice === 'verified') {
+        await dispatch(verifyHospitalAction(reviewTarget.id)).unwrap();
+        toast.success(`${reviewTarget.name} has been verified.`);
+      } else if (reviewStatusChoice === 'rejected') {
+        await dispatch(rejectHospitalAction({
+          hospitalId: reviewTarget.id,
+          reason: reviewNote || 'Documentation audit incomplete or statutory compliance missing.'
+        })).unwrap();
+        toast.success(`Application rejected for ${reviewTarget.name}`);
+      } else {
+        await dispatch(setReviewStatusAction({
+          hospitalId: reviewTarget.id,
+          status: reviewStatusChoice,
+          note: reviewNote,
+        })).unwrap();
+        toast.success(`Updated status to ${reviewStatusChoice.replace('_', ' ')} for ${reviewTarget.name}`);
+      }
+      setReviewTarget(null);
+      setReviewNote('');
+    } catch (err) {
+      toast.error('Failed to update verification status');
     }
   };
 
@@ -85,6 +117,8 @@ export const AdminVerification = () => {
   );
 
   const pendingCount = hospitals.filter((h) => h.status === 'pending').length;
+  const underReviewCount = hospitals.filter((h) => h.status === 'under_review').length;
+  const docsMissingCount = hospitals.filter((h) => h.status === 'documents_missing').length;
   const verifiedCount = hospitals.filter((h) => h.status === 'verified').length;
   const rejectedCount = hospitals.filter((h) => h.status === 'rejected').length;
   const suspendedCount = hospitals.filter((h) => h.status === 'suspended').length;
@@ -97,12 +131,15 @@ export const AdminVerification = () => {
         <div className="absolute right-0 top-0 w-80 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(10,110,121,0.25),transparent_70%)] pointer-events-none" />
         
         <div className="relative z-10 space-y-1">
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-teal-500/20 text-teal-300 border border-teal-500/30">
               <Award className="w-3 h-3 text-teal-400" />
               Drugs & Cosmetics Act 1940
             </span>
-            <span className="text-xs text-slate-400 font-mono">Statutory Accreditation Desk</span>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-wider uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+              <ShieldCheck className="w-3 h-3 text-cyan-400" />
+              ABDM HFR Registry Simulator • Ready
+            </span>
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">Hospital Compliance & Verification</h1>
           <p className="text-xs text-slate-300 max-w-xl font-normal">
@@ -114,7 +151,7 @@ export const AdminVerification = () => {
           <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md text-right">
             <div className="text-[10px] uppercase font-bold text-teal-400 tracking-wider">Awaiting Audit</div>
             <div className="text-lg font-black text-white font-mono flex items-center justify-end gap-1.5">
-              <span>{pendingCount} Applications</span>
+              <span>{pendingCount + underReviewCount} In Queue</span>
               <span className="w-2 h-2 rounded-full bg-amber-400 animate-ping" />
             </div>
           </div>
@@ -122,55 +159,88 @@ export const AdminVerification = () => {
       </div>
 
       {/* Tabs & Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+        <div className="flex flex-wrap items-center gap-2">
           
           <button
             onClick={() => setActiveTab('pending')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'pending'
                 ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
             }`}
           >
             <Clock className="w-3.5 h-3.5" />
-            <span>Pending Audit ({pendingCount})</span>
+            <span>Pending ({pendingCount})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('under_review')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'under_review'
+                ? 'bg-cyan-600 text-white shadow-md shadow-cyan-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+            }`}
+          >
+            <span>Under Review ({underReviewCount})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('documents_missing')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'documents_missing'
+                ? 'bg-orange-600 text-white shadow-md shadow-orange-600/20'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+            }`}
+          >
+            <span>Docs Missing ({docsMissingCount})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('verified')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'verified'
                 ? 'bg-teal-600 text-white shadow-md shadow-teal-600/20'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Verified Institutions ({verifiedCount})</span>
+            <span>Verified ({verifiedCount})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('rejected')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'rejected'
                 ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
             }`}
           >
             <X className="w-3.5 h-3.5" />
-            <span>Non-Compliant ({rejectedCount})</span>
+            <span>Rejected ({rejectedCount})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('suspended')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'suspended'
-                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/20'
+                ? 'bg-slate-800 text-white shadow-md'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
             }`}
           >
             <AlertTriangle className="w-3.5 h-3.5" />
             <span>Suspended ({suspendedCount})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('all')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+              activeTab === 'all'
+                ? 'bg-primary-700 text-white shadow-md'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
+            }`}
+          >
+            <span>All ({hospitals.length})</span>
           </button>
         </div>
 
@@ -213,12 +283,16 @@ export const AdminVerification = () => {
                       onClick={() => navigate(`/admin/hospital-details?hospitalId=${encodeURIComponent(hosp.id)}`)}
                       className="hover:bg-teal-50/20 transition-colors group cursor-pointer"
                     >
-                      
-                      {/* Hospital Identity */}
+                                            {/* Hospital Identity */}
                       <td className="px-5 py-4">
                         <div className="font-bold text-slate-900 group-hover:text-teal-700 transition-colors">{hosp.name}</div>
                         <div className="text-[11px] text-teal-800 font-mono font-bold mt-0.5">Reg: {hosp.registrationNo}</div>
-                        <span className="text-[10px] text-slate-400 block">{hosp.city}, {hosp.state}</span>
+                        <div className="inline-flex items-center gap-1.5 text-[10px] text-teal-800 bg-teal-50 px-2 py-0.5 rounded font-mono mt-1 border border-teal-200">
+                          <ShieldCheck className="w-3 h-3 text-teal-600" />
+                          <span>ABDM: <strong>IN-{(hosp.city || 'MH').substring(0, 2).toUpperCase()}-{(hosp.id || '01').replace('hosp-', 'FAC-')}</strong></span>
+                          <span className="text-[9px] text-emerald-600 font-bold ml-0.5">● HFR Simulator</span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">{hosp.city}, {hosp.state}</span>
                       </td>
 
                       {/* Date */}
@@ -252,22 +326,41 @@ export const AdminVerification = () => {
                       {/* Status */}
                       <td className="px-4 py-4 text-center">
                         <StatusBadge status={hosp.status} />
+                        {hosp.reviewNote && (
+                          <p className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 mt-1 max-w-[170px] mx-auto text-left truncate" title={hosp.reviewNote}>
+                            Note: {hosp.reviewNote}
+                          </p>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="px-5 py-4 text-center">
-                        {hosp.status === 'pending' ? (
-                          <div className="flex items-center justify-center gap-2">
+                        {['pending', 'under_review', 'documents_missing'].includes(hosp.status) ? (
+                          <div className="flex items-center justify-center gap-1.5 flex-wrap">
                             <button
                               onClick={(event) => { event.stopPropagation(); setVerifyTarget(hosp); }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-sm transition-all"
+                              title="Authorize trade access"
                             >
                               <Check className="w-3.5 h-3.5" />
                               <span>Authorize</span>
                             </button>
                             <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setReviewTarget(hosp);
+                                setReviewStatusChoice(hosp.status === 'under_review' ? 'documents_missing' : 'under_review');
+                                setReviewNote(hosp.reviewNote || '');
+                              }}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs border border-slate-200 transition-all"
+                              title="Update review lifecycle stage"
+                            >
+                              <span>Update Stage</span>
+                            </button>
+                            <button
                               onClick={(event) => { event.stopPropagation(); setRejectTarget(hosp); }}
-                              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs transition-all"
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs transition-all"
+                              title="Reject application"
                             >
                               <X className="w-3.5 h-3.5" />
                               <span>Reject</span>
@@ -340,6 +433,72 @@ export const AdminVerification = () => {
               </button>
             </div>
           </div>
+        </Modal>
+      )}
+
+      {/* Review Stage Modal */}
+      {reviewTarget && (
+        <Modal
+          isOpen={!!reviewTarget}
+          onClose={() => { setReviewTarget(null); setReviewNote(''); }}
+          title="Update Verification Stage"
+          subtitle={`Manage statutory review progress for ${reviewTarget.name}`}
+          maxWidth="max-w-md"
+        >
+          <form onSubmit={handleConfirmReview} className="space-y-4 pt-1">
+            <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs">
+              <div className="font-bold text-slate-800">{reviewTarget.name}</div>
+              <div className="text-[11px] text-slate-500 font-mono">Reg No: {reviewTarget.registrationNo}</div>
+              <div className="text-[10px] text-teal-700 font-mono mt-1">
+                ABDM Sandbox: IN-{(reviewTarget.city || 'MH').substring(0, 2).toUpperCase()}-{(reviewTarget.id || '01').replace('hosp-', 'FAC-')}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Select Lifecycle State <span className="text-rose-500">*</span>
+              </label>
+              <select
+                value={reviewStatusChoice}
+                onChange={(e) => setReviewStatusChoice(e.target.value)}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white font-medium focus:ring-2 focus:ring-teal-500"
+              >
+                <option value="under_review">Under Review (Statutory team auditing Form 20B/21B)</option>
+                <option value="documents_missing">Documents Missing (Awaiting updated license/dossier)</option>
+                <option value="verified">Verified (Authorize full trade access)</option>
+                <option value="rejected">Rejected (Non-compliant)</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 mb-1">
+                Reviewer Auditor Notes / Missing Requirements
+              </label>
+              <textarea
+                rows="3"
+                placeholder="e.g. Form 20B cold chain storage license page 2 missing signature..."
+                value={reviewNote}
+                onChange={(e) => setReviewNote(e.target.value)}
+                className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => { setReviewTarget(null); setReviewNote(''); }}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 text-xs font-bold text-white bg-teal-600 hover:bg-teal-700 rounded-xl shadow-sm"
+              >
+                Save Review Stage
+              </button>
+            </div>
+          </form>
         </Modal>
       )}
 

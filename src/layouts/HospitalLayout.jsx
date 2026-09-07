@@ -18,7 +18,8 @@ export const HospitalLayout = () => {
     { to: '/hospital/incoming-requests', label: 'Incoming' },
     { to: '/hospital/track', label: 'Live Track' },
     { to: '/hospital/history', label: 'Trade History' },
-    { to: '/hospital/payment-history', label: 'Payments' },
+    { to: '/hospital/payment-history', label: 'Payment History' },
+    { to: '/hospital/waste-management', label: 'Waste Disposal' },
     { to: '/hospital/feedback', label: 'Feedback' },
   ];
 

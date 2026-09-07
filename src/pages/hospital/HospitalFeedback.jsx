@@ -29,8 +29,10 @@ export const HospitalFeedback = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    dispatch(fetchHospitalFeedbacks(user?.id || 'hosp-1'));
-  }, [dispatch, user]);
+    if (user?.id) {
+      dispatch(fetchHospitalFeedbacks(user.id));
+    }
+  }, [dispatch, user?.id]);
 
   const ratingDescriptions = {
     1: 'Substandard - Failed Logistics or Cold-Chain SLA',
@@ -46,12 +48,16 @@ export const HospitalFeedback = () => {
       toast.error('Please enter your feedback comments');
       return;
     }
+    if (!user?.id) {
+      toast.error('Hospital authentication session required');
+      return;
+    }
 
     setIsSubmitting(true);
     try {
       await dispatch(submitHospitalFeedback({
-        hospitalId: user?.id || 'hosp-1',
-        hospitalName: user?.name || 'Apollo Hospital',
+        hospitalId: user.id,
+        hospitalName: user.name || 'Partner Hospital',
         rating,
         category,
         feedbackText,

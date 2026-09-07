@@ -20,12 +20,13 @@ import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { isHospitalSuspended } from '../../services/storage';
+import { getRequestRemainingTime } from '../../utils/expiryUtils';
 
 export const IncomingRequests = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
-  const { incomingRequests, isLoading } = useSelector((state) => state.requests);
-  const isSuspended = isHospitalSuspended(user?.id || 'hosp-1');
+  const { incomingRequests, isLoading, isResponding } = useSelector((state) => state.requests);
+  const isSuspended = isHospitalSuspended(user?.id);
 
   const [acceptModalReq, setAcceptModalReq] = useState(null);
   const [rejectModalReq, setRejectModalReq] = useState(null);
@@ -34,17 +35,19 @@ export const IncomingRequests = () => {
   const [filterTab, setFilterTab] = useState('pending'); // 'pending' | 'accepted' | 'all'
 
   useEffect(() => {
-    dispatch(fetchIncomingRequests(user?.id || 'hosp-1'));
-  }, [dispatch, user]);
+    if (user?.id) {
+      dispatch(fetchIncomingRequests(user.id));
+    }
+  }, [dispatch, user?.id]);
 
   const handleConfirmAccept = async () => {
     if (!acceptModalReq) return;
     try {
-      await dispatch(respondToRequest({ requestId: acceptModalReq.id, action: 'accept', hospitalId: user?.id || 'hosp-1' })).unwrap();
+      await dispatch(respondToRequest({ requestId: acceptModalReq.id, action: 'accept', hospitalId: user?.id })).unwrap();
       toast.success(`Accepted requisition from ${acceptModalReq.fromHospitalName}. Earmarked inventory lot.`);
       setAcceptModalReq(null);
     } catch (err) {
-      toast.error('Failed to accept request');
+      toast.error('Failed to accept request: ' + (err.message || 'Error occurred'));
     }
   };
 
@@ -56,7 +59,7 @@ export const IncomingRequests = () => {
         requestId: rejectModalReq.id, 
         action: 'reject', 
         reason: rejectReason || 'Stock reserved for critical inpatient use.',
-        hospitalId: user?.id || 'hosp-1'
+        hospitalId: user?.id
       })).unwrap();
       toast.success(`Declined requisition from ${rejectModalReq.fromHospitalName}`);
       setRejectModalReq(null);
@@ -179,7 +182,7 @@ export const IncomingRequests = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3">
                     <div className="text-right">
                       <span className="text-[10px] uppercase font-mono text-slate-400 block">Receivable Total</span>
                       <span className="text-lg font-mono font-extrabold text-primary-800">
@@ -187,18 +190,51 @@ export const IncomingRequests = () => {
                       </span>
                     </div>
 
-                    <StatusBadge status={req.status} />
+                    <div className="flex flex-col items-end gap-1">
+                      <StatusBadge status={req.status} />
+                      {(() => {
+                        const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
+                        if (req.status === 'expired' || (req.status === 'pending' && sla.isExpired)) {
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              48h SLA EXPIRED
+                            </span>
+                          );
+                        }
+                        if (req.status === 'pending') {
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5 text-amber-600" />
+                              {sla.formattedRemaining} left
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
 
                     {isPending ? (
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => !isSuspended && setAcceptModalReq(req)}
-                          disabled={isSuspended}
-                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-105"
-                        >
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Accept & Earmark</span>
-                        </button>
+                        {(() => {
+                          const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
+                          const isExpiredReq = req.status === 'expired' || sla.isExpired;
+
+                          return (
+                            <button
+                              onClick={() => !isSuspended && !isExpiredReq && setAcceptModalReq(req)}
+                              disabled={isSuspended || isExpiredReq}
+                              title={isExpiredReq ? 'This requisition has expired after 48h SLA' : 'Accept and earmark stock'}
+                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all ${
+                                isExpiredReq 
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 hover:scale-105'
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Accept & Earmark</span>
+                            </button>
+                          );
+                        })()}
 
                         <button
                           onClick={() => !isSuspended && setRejectModalReq(req)}
@@ -267,11 +303,14 @@ export const IncomingRequests = () => {
             <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs space-y-2">
               <div className="flex items-center gap-1.5 font-bold text-emerald-900">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Inventory Earmark Confirmation</span>
+                <span>Inventory Earmark & First-Acceptance Confirmation</span>
               </div>
               <p className="text-emerald-800 leading-relaxed text-[11px]">
                 Acceptance immediately locks <strong>{acceptModalReq.quantity} units</strong> of {acceptModalReq.medicineName} in your central pharmacy inventory and enables buyer checkout via Razorpay Escrow.
               </p>
+              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-medium leading-tight">
+                <strong>First Acceptance Wins:</strong> If the buyer submitted competing requests to multiple peer hospitals for this requirement, confirming acceptance here fulfills the request and automatically withdraws competing requisitions across the network.
+              </div>
             </div>
 
             <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1 font-mono">
@@ -295,11 +334,12 @@ export const IncomingRequests = () => {
               </button>
               <button
                 type="button"
+                disabled={isResponding}
                 onClick={handleConfirmAccept}
-                className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm"
+                className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm disabled:opacity-75"
               >
                 <Check className="w-3.5 h-3.5" />
-                <span>Confirm & Earmark Stock</span>
+                <span>{isResponding ? 'Earmarking...' : 'Confirm & Earmark Stock'}</span>
               </button>
             </div>
           </div>

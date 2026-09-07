@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useSelector, useDispatch } from 'react-redux';
 import { 
@@ -22,8 +22,9 @@ import {
   Clock,
   ArrowRight
 } from 'lucide-react';
-import { logoutUser, setUserSession } from '../../store/slices/authSlice';
+import { logoutUser, setUserSession, switchHospitalAction } from '../../store/slices/authSlice';
 import { getStoredItem, setStoredItem, KEYS } from '../../services/storage';
+import { alertService } from '../../services/alertService';
 import toast from 'react-hot-toast';
 
 export const Navbar = () => {
@@ -37,45 +38,35 @@ export const Navbar = () => {
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [editFormData, setEditFormData] = useState({});
+  const [alerts, setAlerts] = useState([]);
 
-  const notifications = [
-    {
-      id: 1,
-      type: 'warning',
-      title: 'Near-Expiry Concession Alert',
-      desc: '84 units of Ceftriaxone 1g expire in 21 days. Automated 40% discount concession live.',
-      time: '10m ago',
-      urgent: true,
-      link: '/hospital/inventory'
-    },
-    {
-      id: 2,
-      type: 'success',
-      title: 'Requisition Accepted',
-      desc: 'Fortis Hospital accepted your request for Enoxaparin (50 units). Escrow payment ready.',
-      time: '25m ago',
-      urgent: false,
-      link: '/hospital/my-requests'
-    },
-    {
-      id: 3,
-      type: 'info',
-      title: 'Cold-Chain IoT Telemetry',
-      desc: 'Shipment MS-48291 is now in transit via Vadodara bypass. Chamber: 4.2°C compliant.',
-      time: '1h ago',
-      urgent: false,
-      link: '/hospital/track?txn=TXN-773120'
-    },
-    {
-      id: 4,
-      type: 'success',
-      title: 'Savings Milestone Achieved',
-      desc: '₹84,200 procurement funds saved this month through inter-hospital concessions.',
-      time: '3h ago',
-      urgent: false,
-      link: '/hospital/dashboard'
+  const refreshAlerts = () => {
+    if (user?.id) {
+      const activeAlerts = alertService.getHospitalAlerts(user.id);
+      setAlerts(activeAlerts);
+    } else {
+      setAlerts([]);
     }
-  ];
+  };
+
+  useEffect(() => {
+    refreshAlerts();
+  }, [user?.id, notificationOpen]);
+
+  const handleDismissAlert = (e, alertId) => {
+    e.preventDefault();
+    e.stopPropagation();
+    alertService.dismissAlert(alertId);
+    refreshAlerts();
+  };
+
+  const handleMarkAllRead = () => {
+    if (user?.id) {
+      alertService.markAllAsRead(user.id);
+      refreshAlerts();
+      toast.success('All alerts marked as read');
+    }
+  };
 
   const handleLogout = async () => {
     await dispatch(logoutUser());
@@ -84,17 +75,8 @@ export const Navbar = () => {
     setUserDropdownOpen(false);
   };
 
-  const handleSwitchHospital = (hospitalName, hospitalId) => {
-    dispatch(setUserSession({
-      user: {
-        ...user,
-        id: hospitalId,
-        name: hospitalName,
-        role: 'hospital',
-      },
-      token: 'mock-jwt-token'
-    }));
-    toast.success(`Switched active portal to ${hospitalName}`);
+  const handleSwitchHospital = (hospitalId) => {
+    dispatch(switchHospitalAction(hospitalId));
     setUserDropdownOpen(false);
   };
 
@@ -202,7 +184,9 @@ export const Navbar = () => {
                   title="Notifications"
                 >
                   <Bell className="w-4 h-4" />
-                  <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white" />
+                  {alerts.filter((a) => !a.read).length > 0 && (
+                    <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-rose-500 ring-2 ring-white animate-pulse" />
+                  )}
                 </button>
 
                 {/* Notifications Drawer */}
@@ -216,33 +200,68 @@ export const Navbar = () => {
                         <Bell className="w-3.5 h-3.5 text-primary-600" />
                         <span>Institutional Activity Alerts</span>
                       </div>
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary-50 text-primary-700">
-                        4 Unread
-                      </span>
+                      <div className="flex items-center gap-2">
+                        {alerts.filter((a) => !a.read).length > 0 && (
+                          <button
+                            onClick={handleMarkAllRead}
+                            className="text-[10px] font-bold text-primary-600 hover:text-primary-800"
+                          >
+                            Mark all read
+                          </button>
+                        )}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary-50 text-primary-700">
+                          {alerts.filter((a) => !a.read).length} Unread
+                        </span>
+                      </div>
                     </div>
 
                     <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 text-xs">
-                      {notifications.map((n) => (
-                        <Link
-                          key={n.id}
-                          to={n.link}
-                          onClick={() => setNotificationOpen(false)}
-                          className="p-3.5 hover:bg-slate-50/80 transition-colors block space-y-1"
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-1.5 font-bold text-slate-900">
-                              {n.urgent && (
-                                <AlertTriangle className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
-                              )}
-                              <span>{n.title}</span>
+                      {alerts.length === 0 ? (
+                        <div className="p-6 text-center text-slate-400 space-y-1">
+                          <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-500" />
+                          <p className="text-xs font-bold text-slate-700">All Systems Nominal</p>
+                          <p className="text-[11px] text-slate-500">No active inventory, request, or disposal alerts.</p>
+                        </div>
+                      ) : (
+                        alerts.map((n) => (
+                          <div
+                            key={n.id}
+                            className={`p-3.5 hover:bg-slate-50/80 transition-colors block space-y-1 ${
+                              !n.read ? 'bg-primary-50/20' : ''
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <Link
+                                to={n.link || '/hospital/dashboard'}
+                                onClick={() => setNotificationOpen(false)}
+                                className="flex items-center gap-1.5 font-bold text-slate-900 hover:text-primary-600 flex-1"
+                              >
+                                {n.urgent ? (
+                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+                                ) : (
+                                  <Sparkles className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
+                                )}
+                                <span className="line-clamp-1">{n.title}</span>
+                              </Link>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                <span className="text-[10px] text-slate-400 font-mono">
+                                  {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                </span>
+                                <button
+                                  onClick={(e) => handleDismissAlert(e, n.id)}
+                                  className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
+                                  title="Dismiss alert"
+                                >
+                                  ✕
+                                </button>
+                              </div>
                             </div>
-                            <span className="text-[10px] text-slate-400 font-mono whitespace-nowrap">{n.time}</span>
+                            <p className="text-[11px] text-slate-600 leading-relaxed">
+                              {n.message}
+                            </p>
                           </div>
-                          <p className="text-[11px] text-slate-600 leading-relaxed">
-                            {n.desc}
-                          </p>
-                        </Link>
-                      ))}
+                        ))
+                      )}
                     </div>
 
                     <div className="pt-2 px-4 border-t border-slate-100 text-center">
@@ -265,10 +284,6 @@ export const Navbar = () => {
               <div className="relative">
                 <button
                   onClick={() => {
-                    if (role === 'hospital') {
-                      navigate('/hospital/profile');
-                      return;
-                    }
                     setUserDropdownOpen(!userDropdownOpen);
                     setNotificationOpen(false);
                   }}
@@ -326,50 +341,74 @@ export const Navbar = () => {
                       </Link>
 
                       {role === 'hospital' && (
-                        <Link
-                          to="/hospital/inventory"
-                          onClick={() => setUserDropdownOpen(false)}
-                          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-primary-600 transition-colors"
-                        >
-                          <Pill className="w-4 h-4 text-emerald-600" />
-                          <span>Pharmacy Inventory</span>
-                        </Link>
-                      )}
-
-                      {role === 'hospital' && (
-                        <button
-                          type="button"
-                          onClick={openEditProfile}
-                          className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-primary-600 transition-colors text-left"
-                        >
-                          <Building2 className="w-4 h-4 text-cyan-600" />
-                          <span>View & Edit Hospital Profile</span>
-                        </button>
+                        <>
+                          <Link
+                            to="/hospital/inventory"
+                            onClick={() => setUserDropdownOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-primary-600 transition-colors"
+                          >
+                            <Pill className="w-4 h-4 text-emerald-600" />
+                            <span>Pharmacy Inventory</span>
+                          </Link>
+                          <Link
+                            to="/hospital/waste-management"
+                            onClick={() => setUserDropdownOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-rose-600 transition-colors"
+                          >
+                            <AlertTriangle className="w-4 h-4 text-rose-500" />
+                            <span>Bio-Waste & Destruction</span>
+                          </Link>
+                          <Link
+                            to="/hospital/profile"
+                            onClick={() => setUserDropdownOpen(false)}
+                            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-primary-600 transition-colors"
+                          >
+                            <Building2 className="w-4 h-4 text-cyan-600" />
+                            <span>Hospital Public Profile</span>
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              openEditProfile();
+                              setUserDropdownOpen(false);
+                            }}
+                            className="w-full flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-primary-600 transition-colors text-left"
+                          >
+                            <Building2 className="w-4 h-4 text-indigo-600" />
+                            <span>Edit Hospital Details</span>
+                          </button>
+                        </>
                       )}
                     </div>
 
-                    {/* Quick Hospital Switcher for Testing */}
-                    <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60">
-                      <p className="text-[10px] font-mono text-slate-400 uppercase font-bold mb-1.5">
-                        Switch Demo Hospital
-                      </p>
-                      <div className="grid grid-cols-2 gap-1 text-[11px]">
-                        <button
-                          type="button"
-                          onClick={() => handleSwitchHospital('Apollo Hospital', 'hosp-1')}
-                          className="px-2 py-1 rounded bg-white border border-slate-200 hover:border-primary-400 text-left font-medium truncate"
-                        >
-                          🏥 Apollo Hosp
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSwitchHospital('Fortis Memorial', 'hosp-2')}
-                          className="px-2 py-1 rounded bg-white border border-slate-200 hover:border-primary-400 text-left font-medium truncate"
-                        >
-                          🏥 Fortis Hosp
-                        </button>
+                    {/* Quick Hospital Switcher for Multi-Hospital Testing */}
+                    {role === 'hospital' && (
+                      <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/60">
+                        <p className="text-[10px] font-mono text-slate-400 uppercase font-bold mb-1.5">
+                          Switch Active Hospital
+                        </p>
+                        <div className="space-y-1 max-h-36 overflow-y-auto text-[11px]">
+                          {getStoredItem(KEYS.HOSPITALS, []).map((h) => {
+                            const isCurrent = h.id === user?.id;
+                            return (
+                              <button
+                                key={h.id}
+                                type="button"
+                                onClick={() => handleSwitchHospital(h.id)}
+                                className={`w-full px-2 py-1 rounded border text-left font-medium truncate flex items-center justify-between ${
+                                  isCurrent
+                                    ? 'bg-primary-50 border-primary-300 text-primary-900 font-bold'
+                                    : 'bg-white border-slate-200 hover:border-primary-400 text-slate-700'
+                                }`}
+                              >
+                                <span className="truncate">🏥 {h.name}</span>
+                                {isCurrent && <span className="text-[9px] text-primary-600 font-mono">ACTIVE</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
+                    )}
 
                     <div className="border-t border-slate-100 pt-1">
                       <button

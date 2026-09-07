@@ -22,12 +22,13 @@ import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { isHospitalSuspended } from '../../services/storage';
+import { getRequestRemainingTime } from '../../utils/expiryUtils';
 
 export const MyRequests = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { outgoingRequests, isLoading } = useSelector((state) => state.requests);
-  const isSuspended = isHospitalSuspended(user?.id || 'hosp-1');
+  const isSuspended = isHospitalSuspended(user?.id);
 
   const [activePaymentReq, setActivePaymentReq] = useState(null);
   const [rejectReasonModal, setRejectReasonModal] = useState(null);
@@ -35,8 +36,10 @@ export const MyRequests = () => {
   const [activeFilter, setActiveFilter] = useState('all');
 
   useEffect(() => {
-    dispatch(fetchOutgoingRequests(user?.id || 'hosp-1'));
-  }, [dispatch, user]);
+    if (user?.id) {
+      dispatch(fetchOutgoingRequests(user.id));
+    }
+  }, [dispatch, user?.id]);
 
   const handlePaymentSuccess = async ({ requestId, paymentMethod }) => {
     const result = await dispatch(payForRequest({ requestId, paymentMethod }));
@@ -165,7 +168,6 @@ export const MyRequests = () => {
                       <h3 className="text-base font-extrabold text-slate-900">
                         {req.medicineName}
                       </h3>
-                      <StatusBadge status={req.status} />
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-mono">
                       <span>TXN: <strong className="text-slate-800">{req.transactionId || 'TXN-000000'}</strong></span>
@@ -174,14 +176,39 @@ export const MyRequests = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Settlement</span>
-                      <span className="text-lg font-mono font-extrabold text-slate-900">
-                        ₹{(req.totalAmount || 0).toLocaleString()}
-                      </span>
-                    </div>
+                  <div className="flex flex-col items-end gap-1">
+                      <StatusBadge status={req.status} />
+                      {(() => {
+                        const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
+                        if (req.status === 'expired' || (req.status === 'pending' && sla.isExpired)) {
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              48h SLA EXPIRED
+                            </span>
+                          );
+                        }
+                        if (req.status === 'pending') {
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5 text-amber-600" />
+                              {sla.formattedRemaining} left
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                  </div>
+                </div>
 
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-left">
+                    <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Settlement</span>
+                    <span className="text-lg font-mono font-extrabold text-slate-900">
+                      ₹{(req.totalAmount || 0).toLocaleString()}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-3">
                     {req.status === 'accepted' && (
                       <button
                         onClick={() => !isSuspended && setActivePaymentReq(req)}
@@ -202,21 +229,11 @@ export const MyRequests = () => {
                         <span>Track Live Telemetry</span>
                       </Link>
                     )}
-
-                    {isRejected && (
-                      <button
-                        onClick={() => setRejectReasonModal(req)}
-                        className="inline-flex items-center gap-1 text-xs text-rose-600 hover:underline font-bold"
-                      >
-                        <AlertCircle className="w-3.5 h-3.5" />
-                        <span>View Rejection Reason</span>
-                      </button>
-                    )}
                   </div>
                 </div>
 
                 {/* Workflow Stepper Pipeline */}
-                {!isRejected ? (
+                {!isRejected && req.status !== 'expired' ? (
                   <div className="pt-2">
                     <div className="grid grid-cols-6 gap-1 sm:gap-2">
                       {stages.map((stg, sIdx) => {
@@ -246,12 +263,25 @@ export const MyRequests = () => {
                       })}
                     </div>
                   </div>
+                ) : req.status === 'expired' ? (
+                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
+                    <span>Requisition expired after the 48-hour peer fulfillment window. No funds deducted.</span>
+                    <span className="text-[10px] font-mono font-bold text-amber-800">SLA EXPIRED</span>
+                  </div>
                 ) : (
                   <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
-                    <span>Requisition declined by supplying facility. Funds are fully unlocked.</span>
+                    <div>
+                      {req.rejectReason?.toLowerCase().includes('first-acceptance') ? (
+                        <p className="font-semibold text-amber-900">
+                          ⚡ <strong>Auto-Resolved:</strong> {req.rejectReason}
+                        </p>
+                      ) : (
+                        <span>Requisition declined: {req.rejectReason || 'Stock reserved for critical inpatient use.'}</span>
+                      )}
+                    </div>
                     <button
                       onClick={() => setRejectReasonModal(req)}
-                      className="text-xs font-bold underline"
+                      className="text-xs font-bold underline ml-2 flex-shrink-0"
                     >
                       Audit Details
                     </button>

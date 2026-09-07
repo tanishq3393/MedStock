@@ -89,7 +89,7 @@ export const AdminDashboard = () => {
             <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.totalHospitals} Institutions</h3>
             <div className="flex items-center gap-1 text-[10px] text-teal-700 font-bold mt-1">
               <ArrowUpRight className="w-3 h-3" />
-              <span>4 awaiting statutory verification</span>
+              <span>{stats.pendingVerifications ?? 0} awaiting statutory verification</span>
             </div>
           </div>
         </div>
@@ -97,15 +97,15 @@ export const AdminDashboard = () => {
         {/* Card 2: Monthly Transfers */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Monthly Consignments</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Exchange Operations</span>
             <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center">
               <RefreshCw className="w-5 h-5" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.monthlyTransfers} Transits</h3>
+            <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.monthlyTransfers} Requests</h3>
             <div className="flex items-center gap-1 text-[10px] text-blue-700 font-bold mt-1">
-              <span>99.2% on-time SLA fulfillment</span>
+              <span>{stats.avgFulfillmentRate || '99.2%'} fulfillment rate</span>
             </div>
           </div>
         </div>
@@ -119,10 +119,10 @@ export const AdminDashboard = () => {
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.totalMedicinesTransferred.toLocaleString('en-IN')} Units</h3>
+            <h3 className="text-2xl font-black text-slate-900 font-mono">{Number(stats.totalMedicinesTransferred || 0).toLocaleString('en-IN')} Units</h3>
             <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-bold mt-1">
               <ArrowUpRight className="w-3 h-3" />
-              <span>₹2.14 Cr waste eradicated</span>
+              <span>{stats.totalPlatformVolume || '₹2.14 Cr'} platform volume</span>
             </div>
           </div>
         </div>
@@ -138,7 +138,7 @@ export const AdminDashboard = () => {
           <div>
             <h3 className="text-2xl font-black text-slate-900 font-mono">100% In-Range</h3>
             <div className="flex items-center gap-1 text-[10px] text-sky-700 font-bold mt-1">
-              <span>2°C - 8°C Zero temperature breach</span>
+              <span>2°C - 8°C Zero temperature breach (Demo Simulator)</span>
             </div>
           </div>
         </div>
