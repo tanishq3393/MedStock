@@ -116,6 +116,7 @@ export const App = () => {
           <Route path="track" element={<TrackPage />} />
           <Route path="payment-history" element={<PaymentHistory />} />
           <Route path="waste-management" element={<HospitalWasteManagement />} />
+          <Route path="bio-waste-disposal" element={<HospitalWasteManagement />} />
           <Route path="feedback" element={<HospitalFeedback />} />
           <Route path="profile" element={<HospitalProfilePage />} />
         </Route>

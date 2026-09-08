@@ -181,9 +181,17 @@ export const hospitalService = {
     const newMed = {
       id: 'med-' + Date.now(),
       ...medicineData,
+      brandName: medicineData.brandName || medicineData.medicineName || 'Medicine',
+      genericName: medicineData.genericName || '',
+      power: medicineData.power || medicineData.dosage || '',
+      form: medicineData.form || medicineData.dosageForm || 'Tablet',
+      batchNo: medicineData.batchNo || 'BAT-' + Math.floor(10000 + Math.random() * 90000),
+      mfgDate: medicineData.mfgDate || new Date().toISOString().split('T')[0],
+      expiryDate: medicineData.expiryDate,
       hospitalName: hosp.name,
       quantity: qty,
       unitOriginalPrice: unitPrice,
+      minStockLevel: Number(medicineData.minStockLevel || medicineData.minimumStockLevel || 20),
       concessionPercent: Math.max(0, Math.min(90, Number(medicineData.concessionPercent || 0))),
       dateAdded: new Date().toISOString().split('T')[0],
       status: medicineData.status || 'active',
@@ -200,7 +208,7 @@ export const hospitalService = {
       entityId: newMed.id,
       hospitalId: newMed.hospitalId,
       hospitalName: newMed.hospitalName,
-      summary: `Added ${newMed.brandName} (${newMed.quantity} units) to verified inventory.`,
+      summary: `Added ${newMed.brandName} (${newMed.quantity} units, Batch: ${newMed.batchNo}) to hospital inventory.`,
       resultingStatus: 'active',
       metadata: { quantity: newMed.quantity, batchNo: newMed.batchNo, unitOriginalPrice: newMed.unitOriginalPrice },
     });
@@ -226,6 +234,7 @@ export const hospitalService = {
       ...updatedData,
       quantity: updatedQty,
       unitOriginalPrice: updatedPrice,
+      minStockLevel: updatedData.minStockLevel !== undefined ? Number(updatedData.minStockLevel) : (medicines[index].minStockLevel || 20),
       concessionPercent: Math.max(0, Math.min(90, Number(updatedData.concessionPercent ?? medicines[index].concessionPercent ?? 0))),
     };
 
@@ -243,6 +252,88 @@ export const hospitalService = {
     });
 
     return medicines[index];
+  },
+
+  async disposeMedicine({ hospitalId: hospitalIdParam, medicineId, reason, facilityName }) {
+    await new Promise((r) => setTimeout(r, 200));
+    const hospitalId = resolveHospitalId(hospitalIdParam);
+    const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const medIdx = medicines.findIndex((m) => m.id === medicineId);
+    if (medIdx === -1) throw new Error('Medicine not found in inventory');
+
+    const med = medicines[medIdx];
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === hospitalId) || { name: med.hospitalName || 'Hospital Pharmacy' };
+
+    // Format current date/time
+    const now = new Date();
+    const formattedDateTime = now.toLocaleDateString('en-GB', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+    }) + ' ' + now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+
+    // Calculate days expired
+    const daysExpired = med.expiryDate 
+      ? Math.max(1, Math.ceil((Date.now() - new Date(med.expiryDate).getTime()) / (1000 * 60 * 60 * 24)))
+      : 0;
+
+    // 1. Mark as disposed in single source of truth (Inventory)
+    medicines[medIdx] = {
+      ...med,
+      status: 'disposed',
+      disposedDate: formattedDateTime,
+      usableQuantity: 0,
+    };
+    setStoredItem(KEYS.MEDICINES, medicines);
+
+    // 2. Append to Disposal History
+    const disposals = getStoredItem(KEYS.DISPOSALS, []);
+    const disposalCentre = facilityName || 'GreenBio Medical Waste Centre';
+    const newDisposal = {
+      id: 'disp-' + Date.now(),
+      hospitalId: hospitalId || med.hospitalId,
+      hospitalName: hosp.name || med.hospitalName,
+      medicineId: med.id,
+      medicineName: med.brandName,
+      brandName: med.brandName,
+      genericName: med.genericName || '',
+      power: med.power || '',
+      form: med.form || 'Tablet',
+      batchNo: med.batchNo || 'BAT-EXP-01',
+      quantity: med.quantity,
+      unit: 'units',
+      expiryDate: med.expiryDate,
+      daysExpired,
+      wasteCategory: 'Expired Pharmaceuticals (Bio-Medical Waste)',
+      reason: reason || 'Statutory Expiration Safe Bio-Disposal',
+      facilityName: disposalCentre,
+      bioCentreName: disposalCentre,
+      bioCentreAddress: 'Plot G-14, Medical Waste Treatment Zone, Taloja MIDC, Navi Mumbai 410208',
+      treatmentMethod: 'High-Temperature Thermal Incineration (1100°C)',
+      status: 'Disposed',
+      disposalDate: formattedDateTime,
+      certificateId: 'CPCB-DISP-' + Math.floor(100000 + Math.random() * 900000),
+      manifestNumber: 'GBW-BMW-' + Math.floor(10000 + Math.random() * 90000),
+      isDemoSimulation: true,
+    };
+
+    disposals.unshift(newDisposal);
+    setStoredItem(KEYS.DISPOSALS, disposals);
+
+    // 3. Log audit event
+    auditService.logEvent({
+      action: 'BIO_WASTE_DISPOSED',
+      entityType: 'WASTE',
+      entityId: newDisposal.id,
+      hospitalId: newDisposal.hospitalId,
+      hospitalName: newDisposal.hospitalName,
+      summary: `Disposed ${newDisposal.quantity} units of expired ${newDisposal.medicineName} (Batch: ${newDisposal.batchNo}) at ${disposalCentre}.`,
+      resultingStatus: 'Disposed',
+      metadata: { medicineId: med.id, batchNo: newDisposal.batchNo, quantity: newDisposal.quantity }
+    });
+
+    return { updatedMedicine: medicines[medIdx], newDisposal };
   },
 
   async deleteMedicine(id) {

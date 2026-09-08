@@ -26,6 +26,79 @@ import PurchaseInvoiceViewer from '../hospital/PurchaseInvoiceViewer';
 import { calculateOrderPricing } from '../../utils/pricingUtils';
 import { findAlternatives, extractMedicineComposition, CLINICAL_SAFETY_DISCLAIMER } from '../../services/medicineAlternativeService';
 
+// ============================================================
+// SAFE NUMERIC & CURRENCY HELPERS
+// Ensures drawer NEVER crashes when numeric fields are missing/undefined
+// ============================================================
+
+function formatNumber(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? number.toLocaleString('en-IN')
+    : fallback.toLocaleString('en-IN');
+}
+
+function formatCurrency(value) {
+  const number = Number(value);
+  return Number.isFinite(number)
+    ? `₹${number.toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`
+    : '₹0.00';
+}
+
+function formatDecimal(value, fractionDigits = 2) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toFixed(fractionDigits) : '0.00';
+}
+
+function normalizeMedicine(med) {
+  if (!med) return null;
+
+  const rawPrice = med.unitOriginalPrice ?? med.price ?? med.unitPrice ?? 0;
+  const numPrice = Number(rawPrice);
+  const safePrice = Number.isFinite(numPrice) ? Math.max(0, numPrice) : 0;
+
+  const rawQty = med.quantity ?? med.stock ?? 0;
+  const numQty = Number(rawQty);
+  const safeQty = Number.isFinite(numQty) ? Math.max(0, Math.floor(numQty)) : 0;
+
+  const rawConcession = med.concessionPercent ?? med.discountPercent ?? 0;
+  const numConcession = Number(rawConcession);
+  const safeConcession = Number.isFinite(numConcession) ? Math.max(0, Math.min(100, numConcession)) : 0;
+
+  const rawDistance = med.distanceKm ?? med.distance ?? 12;
+  const numDistance = Number(rawDistance);
+  const safeDistance = Number.isFinite(numDistance) ? Math.max(0, numDistance) : 12;
+
+  return {
+    ...med,
+    id: med.id || `med-${Math.random().toString(36).substr(2, 9)}`,
+    brandName: med.brandName || med.medicineName || med.name || 'Not available',
+    genericName: med.genericName || med.composition || 'Not available',
+    power: med.power || med.strength || med.dosage || 'Not available',
+    dosageForm: med.dosageForm || med.form || 'Tablet',
+    route: med.route || 'Oral',
+    hospitalName: med.hospitalName || med.hospital || med.seller || 'Authorized Hospital',
+    location: med.location || med.city || 'Not available',
+    distanceKm: safeDistance,
+    batchNo: med.batchNo || med.batchNumber || med.batch || 'Not available',
+    mfgDate: med.mfgDate || med.manufacturingDate || 'Not available',
+    expiryDate: med.expiryDate || med.expiry || 'Not available',
+    manufacturer: med.manufacturer || 'Not available',
+    packSize: med.packSize || med.unit || 'Not available',
+    storageType: med.storageType || 'Room Temperature',
+    category: med.category || 'Pharmaceutical',
+    quantity: safeQty,
+    stock: safeQty,
+    unitOriginalPrice: safePrice,
+    price: safePrice,
+    unitPrice: safePrice,
+    concessionPercent: safeConcession,
+  };
+}
+
 /**
  * MedicineDetailDrawer
  * 
@@ -49,8 +122,8 @@ export const MedicineDetailDrawer = ({
   onOpenAlternatives,
   marketplace = []
 }) => {
-  // Allow switching viewed medicine internally when user clicks an alternative
-  const [activeMed, setActiveMed] = useState(medicine);
+  // Raw medicine object tracked internally for alternative switching
+  const [activeMedRaw, setActiveMedRaw] = useState(medicine);
   const [requestQty, setRequestQty] = useState(1);
   const [requestNotes, setRequestNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,15 +131,23 @@ export const MedicineDetailDrawer = ({
 
   // Sync internal medicine when incoming prop changes
   useEffect(() => {
-    setActiveMed(medicine);
+    setActiveMedRaw(medicine);
     setShow3DView(false);
   }, [medicine]);
 
+  // Normalized safe medicine object guaranteed to never produce undefined field crashes
+  const activeMed = useMemo(() => normalizeMedicine(activeMedRaw), [activeMedRaw]);
+
   useEffect(() => {
-    if (activeMed?.quantity) {
-      setRequestQty(Math.min(10, activeMed.quantity));
+    if (activeMed) {
+      const available = activeMed.quantity;
+      if (available > 0) {
+        setRequestQty(Math.min(10, available));
+      } else {
+        setRequestQty(0);
+      }
     }
-  }, [activeMed]);
+  }, [activeMedRaw]);
 
   // Composition-matched alternatives for the currently viewed medicine
   const alternatives = useMemo(() => {
@@ -80,36 +161,84 @@ export const MedicineDetailDrawer = ({
     return extractMedicineComposition(activeMed);
   }, [activeMed]);
 
+  // Safe pricing calculation with resilient fallback guarantees
+  const pricing = useMemo(() => {
+    if (!activeMed) {
+      return {
+        unitOriginalPrice: 0,
+        unitSellingPrice: 0,
+        unitFinalPrice: 0,
+        unitDiscount: 0,
+        quantity: 0,
+        originalSubtotal: 0,
+        totalSavings: 0,
+        concessionSavings: 0,
+        medicineSubtotal: 0,
+        subtotal: 0,
+        distanceKm: 12,
+        isColdChain: false,
+        logisticsFee: 0,
+        gstRate: 0.12,
+        gstAmount: 0,
+        totalPayable: 0,
+        tierLabel: '',
+      };
+    }
+
+    const calculated = calculateOrderPricing({
+      unitOriginalPrice: activeMed.unitOriginalPrice,
+      expiryDate: activeMed.expiryDate !== 'Not available' ? activeMed.expiryDate : null,
+      concessionPercent: activeMed.concessionPercent,
+      quantity: requestQty > 0 ? requestQty : 1,
+      distanceKm: activeMed.distanceKm,
+      isColdChain: String(activeMed.storageType || '').toLowerCase().includes('cold')
+    });
+
+    const subtotal = Number(calculated.medicineSubtotal ?? calculated.subtotal ?? 0);
+    const savings = Number(calculated.totalSavings ?? calculated.concessionSavings ?? 0);
+    const gst = Number(calculated.gstAmount ?? 0);
+    const total = Number(calculated.totalPayable ?? 0);
+    const sellingPrice = Number(calculated.unitSellingPrice ?? calculated.unitFinalPrice ?? activeMed.unitOriginalPrice);
+
+    return {
+      ...calculated,
+      subtotal,
+      medicineSubtotal: subtotal,
+      totalSavings: savings,
+      concessionSavings: savings,
+      gstAmount: gst,
+      totalPayable: total,
+      unitSellingPrice: sellingPrice,
+      unitFinalPrice: sellingPrice,
+    };
+  }, [activeMed, requestQty]);
+
   if (!isOpen || !activeMed) return null;
 
   const concession = activeMed.concessionPercent || 0;
-
-  const pricing = calculateOrderPricing({
-    unitOriginalPrice: activeMed.unitOriginalPrice,
-    concessionPercent: concession,
-    quantity: requestQty,
-    storageType: activeMed.storageType
-  });
-
   const finalUnitPrice = pricing.unitFinalPrice;
   const totalAmount = pricing.totalPayable;
-  const isColdChain = activeMed.storageType?.toLowerCase().includes('cold');
+  const isColdChain = String(activeMed.storageType || '').toLowerCase().includes('cold');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!activeMed || activeMed.quantity <= 0) return;
     setIsSubmitting(true);
-    await onRequestSubmit({
-      medicine: activeMed,
-      quantity: requestQty,
-      notes: requestNotes,
-      finalUnitPrice,
-      totalAmount,
-    });
-    setIsSubmitting(false);
+    try {
+      await onRequestSubmit({
+        medicine: activeMed,
+        quantity: requestQty,
+        notes: requestNotes,
+        finalUnitPrice,
+        totalAmount,
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleSelectAlternative = (altMedicine) => {
-    setActiveMed(altMedicine);
+    setActiveMedRaw(altMedicine);
     // Smoothly scroll container to top
     const container = document.getElementById('medicine-detail-modal-body');
     if (container) {
@@ -155,14 +284,14 @@ export const MedicineDetailDrawer = ({
               <span className="text-slate-300">•</span>
               <span>{activeMed.genericName}</span>
               <span className="text-slate-300">•</span>
-              <span className="font-semibold text-slate-500">{activeMed.dosageForm || 'Tablet'}</span>
+              <span className="font-semibold text-slate-500">{activeMed.dosageForm}</span>
             </div>
           </div>
 
           <button
             type="button"
             onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0"
+            className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors flex-shrink-0 cursor-pointer"
             title="Close detail view"
           >
             <X className="w-5 h-5" />
@@ -187,7 +316,7 @@ export const MedicineDetailDrawer = ({
                   <button
                     type="button"
                     onClick={() => setShow3DView(!show3DView)}
-                    className="text-[11px] font-bold text-primary-700 hover:text-primary-800 transition-colors flex items-center gap-1"
+                    className="text-[11px] font-bold text-primary-700 hover:text-primary-800 transition-colors flex items-center gap-1 cursor-pointer"
                   >
                     <Box className="w-3.5 h-3.5" />
                     <span>{show3DView ? 'Show Photo Gallery' : 'View 3D Hologram'}</span>
@@ -231,14 +360,14 @@ export const MedicineDetailDrawer = ({
                       <MapPin className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
                       <span>{activeMed.location}</span>
                       <span className="text-slate-300">•</span>
-                      <span className="font-mono text-emerald-700 font-bold">{activeMed.distanceKm || 12} km away</span>
+                      <span className="font-mono text-emerald-700 font-bold">{formatNumber(activeMed.distanceKm, 12)} km away</span>
                     </div>
                   </div>
 
                   <div className="sm:text-right">
                     <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-mono font-extrabold shadow-xs">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>In Stock: {activeMed.quantity} units</span>
+                      <span>In Stock: {formatNumber(activeMed.quantity, 0)} units</span>
                     </span>
                   </div>
                 </div>
@@ -247,15 +376,15 @@ export const MedicineDetailDrawer = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 text-xs pt-1 font-mono">
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[9px] text-slate-400 block font-bold uppercase">Batch Lot</span>
-                    <span className="font-bold text-slate-800 text-xs">{activeMed.batchNo || 'PCM2401'}</span>
+                    <span className="font-bold text-slate-800 text-xs">{activeMed.batchNo}</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[9px] text-slate-400 block font-bold uppercase">Mfg Date</span>
-                    <span className="font-semibold text-slate-700 text-xs">{activeMed.mfgDate || '2024-04-12'}</span>
+                    <span className="font-semibold text-slate-700 text-xs">{activeMed.mfgDate}</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[9px] text-slate-400 block font-bold uppercase">Expiry Date</span>
-                    <span className="font-bold text-amber-700 text-xs">{activeMed.expiryDate || '2027-04-30'}</span>
+                    <span className="font-bold text-amber-700 text-xs">{activeMed.expiryDate}</span>
                   </div>
                   <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100">
                     <span className="text-[9px] text-slate-400 block font-bold uppercase">Storage</span>
@@ -268,7 +397,7 @@ export const MedicineDetailDrawer = ({
                 </div>
               </div>
 
-              {/* COMPOSITION SPECIFICATIONS TABLE (REQUIREMENT 11) */}
+              {/* COMPOSITION SPECIFICATIONS TABLE */}
               <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-3">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
                   <h3 className="text-xs font-black uppercase tracking-wider text-slate-900 font-mono flex items-center gap-1.5">
@@ -298,25 +427,25 @@ export const MedicineDetailDrawer = ({
                       <tr>
                         <td className="py-2 text-slate-500 font-semibold">Dosage Formulation</td>
                         <td className="py-2 text-slate-900 font-bold">
-                          {compositionSpecs?.dosageForm || activeMed.dosageForm || 'Tablet'}
+                          {compositionSpecs?.dosageForm || activeMed.dosageForm}
                         </td>
                       </tr>
                       <tr>
                         <td className="py-2 text-slate-500 font-semibold">Administration Route</td>
                         <td className="py-2 text-slate-900 font-bold">
-                          {compositionSpecs?.route || activeMed.route || 'Oral'}
+                          {compositionSpecs?.route || activeMed.route}
                         </td>
                       </tr>
                       <tr>
                         <td className="py-2 text-slate-500 font-semibold">Manufacturer</td>
                         <td className="py-2 text-slate-900 font-bold">
-                          {activeMed.manufacturer || 'Authorized Manufacturer'}
+                          {activeMed.manufacturer}
                         </td>
                       </tr>
                       <tr>
                         <td className="py-2 text-slate-500 font-semibold">Packaging Unit</td>
                         <td className="py-2 text-slate-900 font-bold">
-                          {activeMed.packSize || '15 tablets / strip'}
+                          {activeMed.packSize}
                         </td>
                       </tr>
                     </tbody>
@@ -329,10 +458,10 @@ export const MedicineDetailDrawer = ({
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                   <div>
                     <span className="text-[10px] font-mono text-slate-400 line-through block">
-                      Standard MRP ₹{activeMed.unitOriginalPrice} / unit
+                      Standard MRP {formatCurrency(activeMed.unitOriginalPrice)} / unit
                     </span>
                     <div className="text-2xl font-black font-mono text-primary-800 leading-tight">
-                      ₹{finalUnitPrice} <span className="text-xs font-normal text-slate-500">/ unit</span>
+                      {formatCurrency(finalUnitPrice)} <span className="text-xs font-normal text-slate-500">/ unit</span>
                     </div>
                   </div>
 
@@ -347,16 +476,21 @@ export const MedicineDetailDrawer = ({
                   <div>
                     <div className="flex justify-between text-xs font-bold text-slate-700 mb-1">
                       <span>Quantity Required:</span>
-                      <span className="text-slate-400 font-normal">Max: {activeMed.quantity}</span>
+                      <span className="text-slate-400 font-normal">Max: {formatNumber(activeMed.quantity, 0)}</span>
                     </div>
                     <input
                       type="number"
-                      min="1"
-                      max={activeMed.quantity}
+                      min={activeMed.quantity > 0 ? 1 : 0}
+                      max={Math.max(1, activeMed.quantity)}
                       required
+                      disabled={activeMed.quantity <= 0}
                       value={requestQty}
-                      onChange={(e) => setRequestQty(Math.max(1, Math.min(activeMed.quantity, Number(e.target.value))))}
-                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 font-mono font-bold focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                      onChange={(e) => {
+                        const val = Number(e.target.value);
+                        const max = Math.max(1, activeMed.quantity);
+                        setRequestQty(Math.max(1, Math.min(max, Number.isFinite(val) ? val : 1)));
+                      }}
+                      className="w-full px-3 py-2 text-sm rounded-xl border border-slate-300 font-mono font-bold focus:ring-2 focus:ring-primary-500 focus:outline-none disabled:bg-slate-100 disabled:text-slate-400"
                     />
                   </div>
 
@@ -377,34 +511,34 @@ export const MedicineDetailDrawer = ({
                 {/* ESCROW BREAKDOWN */}
                 <div className="p-3.5 rounded-xl bg-slate-900 text-white space-y-1.5 text-xs font-mono">
                   <div className="flex justify-between text-slate-400 text-[11px]">
-                    <span>Base Subtotal ({requestQty} units):</span>
-                    <span>₹{pricing.subtotal.toLocaleString()}</span>
+                    <span>Base Subtotal ({formatNumber(requestQty, 0)} units):</span>
+                    <span>{formatCurrency(pricing.subtotal)}</span>
                   </div>
-                  {pricing.concessionSavings > 0 && (
+                  {Number(pricing.concessionSavings) > 0 && (
                     <div className="flex justify-between text-amber-400 text-[11px]">
                       <span>Concession Savings:</span>
-                      <span>-₹{pricing.concessionSavings.toLocaleString()}</span>
+                      <span>-{formatCurrency(pricing.concessionSavings)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-slate-400 text-[11px]">
                     <span>GST (12% Pharma):</span>
-                    <span>+₹{pricing.gstAmount.toLocaleString()}</span>
+                    <span>+{formatCurrency(pricing.gstAmount)}</span>
                   </div>
                   <div className="pt-2 border-t border-slate-700 flex items-center justify-between font-bold">
                     <span className="text-slate-300">Total Escrow Value:</span>
                     <span className="text-base text-cyan-300">
-                      ₹{pricing.totalPayable.toLocaleString()}
+                      {formatCurrency(pricing.totalPayable)}
                     </span>
                   </div>
                 </div>
 
                 <button
                   type="submit"
-                  disabled={isSubmitting || isRequestDisabled}
-                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-lg shadow-primary-600/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 cursor-pointer"
+                  disabled={isSubmitting || isRequestDisabled || activeMed.quantity <= 0}
+                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-lg shadow-primary-600/25 transition-all flex items-center justify-center gap-2 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <Send className="w-4 h-4" />
-                  <span>Request This Medicine</span>
+                  <span>{activeMed.quantity <= 0 ? 'Out of Stock' : 'Request This Medicine'}</span>
                 </button>
               </form>
 
@@ -412,7 +546,7 @@ export const MedicineDetailDrawer = ({
 
           </div>
 
-          {/* SECTION 12: COMPOSITION-BASED ALTERNATIVES (MAIN HIGHLIGHT) */}
+          {/* SECTION: COMPOSITION-BASED ALTERNATIVES */}
           <div className="p-5 sm:p-6 rounded-3xl bg-white border border-slate-200 shadow-sm space-y-4">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -441,12 +575,14 @@ export const MedicineDetailDrawer = ({
             {alternatives.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-2">
                 {alternatives.map((alt) => {
-                  const hasSavings = (alt.savingsPerUnit || 0) > 0;
-                  const priceDiff = (alt.discountedPrice - finalUnitPrice);
+                  const safeAlt = normalizeMedicine(alt);
+                  const altUnitPrice = Number(safeAlt.discountedPrice ?? safeAlt.unitSellingPrice ?? safeAlt.unitOriginalPrice);
+                  const hasSavings = (Number(safeAlt.savingsPerUnit) || 0) > 0;
+                  const priceDiff = altUnitPrice - Number(finalUnitPrice || 0);
 
                   return (
                     <div 
-                      key={alt.id}
+                      key={safeAlt.id}
                       className="p-4 rounded-2xl bg-white border border-slate-200 hover:border-primary-400 hover:shadow-card-hover transition-all flex flex-col justify-between space-y-3 group"
                     >
                       <div className="space-y-2">
@@ -458,19 +594,19 @@ export const MedicineDetailDrawer = ({
                           </span>
 
                           <span className="text-[10px] font-mono text-slate-500">
-                            {alt.quantity} available
+                            {formatNumber(safeAlt.quantity, 0)} available
                           </span>
                         </div>
 
                         <div>
                           <h4 className="text-sm font-extrabold text-slate-900 group-hover:text-primary-700 transition-colors">
-                            {alt.brandName}
+                            {safeAlt.brandName}
                           </h4>
                           <p className="text-xs text-slate-600 font-medium mt-0.5">
-                            {alt.genericName} • {alt.power}
+                            {safeAlt.genericName} • {safeAlt.power}
                           </p>
                           <p className="text-[10px] text-slate-400 font-mono mt-0.5">
-                            Mfd by: {alt.manufacturer || 'Authorized Pharma'}
+                            Mfd by: {safeAlt.manufacturer}
                           </p>
                         </div>
 
@@ -479,17 +615,17 @@ export const MedicineDetailDrawer = ({
                           <div>
                             <span className="text-[9px] text-slate-400 block">Unit Price</span>
                             <span className="font-extrabold text-slate-900 text-sm">
-                              ₹{alt.discountedPrice} <span className="text-[9px] font-normal text-slate-500">/ unit</span>
+                              {formatCurrency(altUnitPrice)} <span className="text-[9px] font-normal text-slate-500">/ unit</span>
                             </span>
                           </div>
 
                           {hasSavings ? (
                             <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-1 rounded border border-emerald-200">
-                              ₹{alt.savingsPerUnit.toFixed(2)} cheaper
+                              ₹{formatDecimal(safeAlt.savingsPerUnit, 2)} cheaper
                             </span>
                           ) : priceDiff > 0 ? (
                             <span className="text-[10px] font-semibold text-slate-500 bg-white px-2 py-1 rounded border border-slate-200">
-                              +₹{priceDiff.toFixed(2)} / unit
+                              +₹{formatDecimal(priceDiff, 2)} / unit
                             </span>
                           ) : (
                             <span className="text-[10px] font-bold text-slate-700 bg-slate-100 px-2 py-1 rounded">
@@ -502,14 +638,14 @@ export const MedicineDetailDrawer = ({
                         <div className="text-[11px] text-slate-600 flex items-center justify-between">
                           <span className="truncate font-semibold flex items-center gap-1">
                             <Building2 className="w-3.5 h-3.5 text-primary-600 flex-shrink-0" />
-                            <span className="truncate">{alt.hospitalName}</span>
+                            <span className="truncate">{safeAlt.hospitalName}</span>
                           </span>
                           <span className="text-[10px] font-mono text-slate-500 flex-shrink-0">
-                            {alt.distanceKm || 12} km
+                            {formatNumber(safeAlt.distanceKm, 12)} km
                           </span>
                         </div>
 
-                        {/* WHY IS THIS AN ALTERNATIVE? CHECKLIST (REQUIREMENT 14) */}
+                        {/* WHY IS THIS AN ALTERNATIVE? CHECKLIST */}
                         <div className="p-2.5 rounded-xl bg-primary-50/50 border border-primary-100 text-[10px] space-y-1 text-slate-700">
                           <div className="font-bold text-primary-900 flex items-center gap-1">
                             <CheckCircle2 className="w-3 h-3 text-primary-600" />
@@ -517,9 +653,9 @@ export const MedicineDetailDrawer = ({
                           </div>
                           <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-600 font-medium">
                             <div>✓ Same active ingredient</div>
-                            <div>✓ Same strength ({alt.power})</div>
-                            <div>✓ Same dosage form ({alt.dosageForm || 'Tablet'})</div>
-                            <div>✓ Same route ({alt.route || 'Oral'})</div>
+                            <div>✓ Same strength ({safeAlt.power})</div>
+                            <div>✓ Same dosage form ({safeAlt.dosageForm})</div>
+                            <div>✓ Same route ({safeAlt.route})</div>
                           </div>
                         </div>
                       </div>
@@ -527,7 +663,7 @@ export const MedicineDetailDrawer = ({
                       {/* SWITCH VIEW TRIGGER BUTTON */}
                       <button
                         type="button"
-                        onClick={() => handleSelectAlternative(alt)}
+                        onClick={() => handleSelectAlternative(safeAlt)}
                         className="w-full py-2 px-3 rounded-xl bg-slate-100 hover:bg-primary-600 hover:text-white text-slate-800 text-xs font-bold transition-all flex items-center justify-center gap-1.5 group-hover:bg-primary-600 group-hover:text-white cursor-pointer"
                       >
                         <span>View This Alternative</span>

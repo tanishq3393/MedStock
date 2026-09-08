@@ -1,396 +1,950 @@
-import React, { useState, useEffect } from 'react';
-import { useDispatch, useSelector } from 'react-redux';
-import { 
-  Inbox, 
-  Check, 
-  X, 
-  Building2, 
-  Calendar, 
-  Boxes, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ShieldCheck,
+import React, { useMemo, useState } from "react";
+import {
+  AlertCircle,
+  Calendar,
+  CheckCircle,
+  Clock,
+  Eye,
+  Hospital,
+  MapPin,
+  Package,
   Search,
-  Truck,
-  Sparkles
-} from 'lucide-react';
-import { fetchIncomingRequests, respondToRequest } from '../../store/slices/requestSlice';
-import StatusBadge from '../../components/common/StatusBadge';
-import Modal from '../../components/common/Modal';
-import LoadingSpinner from '../../components/common/LoadingSpinner';
-import toast from 'react-hot-toast';
-import { isHospitalSuspended } from '../../services/storage';
-import { getRequestRemainingTime } from '../../utils/expiryUtils';
+  X,
+  XCircle,
+} from "lucide-react";
+import "./IncomingRequests.css";
 
-export const IncomingRequests = () => {
-  const dispatch = useDispatch();
-  const { user } = useSelector((state) => state.auth);
-  const { incomingRequests, isLoading, isResponding } = useSelector((state) => state.requests);
-  const isSuspended = isHospitalSuspended(user?.id);
+/*
+  ============================================================
+  INCOMING REQUESTS
+  ============================================================
 
-  const [acceptModalReq, setAcceptModalReq] = useState(null);
-  const [rejectModalReq, setRejectModalReq] = useState(null);
-  const [rejectReason, setRejectReason] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterTab, setFilterTab] = useState('pending'); // 'pending' | 'accepted' | 'all'
+  Frontend-safe implementation.
 
-  useEffect(() => {
-    if (user?.id) {
-      dispatch(fetchIncomingRequests(user.id));
-    }
-  }, [dispatch, user?.id]);
+  Features:
+  - Search requests
+  - Filter by status
+  - View request details
+  - Approve request
+  - Reject request
+  - Confirmation modals
+  - Loading/empty states
+  - No undefined Lucide icons
+  - No conditional hooks
+  - Local mock state only
 
-  const handleConfirmAccept = async () => {
-    if (!acceptModalReq) return;
-    try {
-      await dispatch(respondToRequest({ requestId: acceptModalReq.id, action: 'accept', hospitalId: user?.id })).unwrap();
-      toast.success(`Accepted requisition from ${acceptModalReq.fromHospitalName}. Earmarked inventory lot.`);
-      setAcceptModalReq(null);
-    } catch (err) {
-      toast.error('Failed to accept request: ' + (err.message || 'Error occurred'));
-    }
+  Backend/API integration can be connected later.
+*/
+
+const INITIAL_REQUESTS = [
+  {
+    id: "REQ-2026-014",
+    hospital: "Apollo Care Hospital",
+    hospitalCode: "ACH-2048",
+    medicine: "Paracetamol 500mg",
+    genericName: "Paracetamol",
+    composition: "Paracetamol 500 mg",
+    form: "Tablet",
+    quantity: 100,
+    unit: "tablets",
+    requestedPrice: 3.5,
+    totalAmount: 350,
+    requestedDate: "13 Aug 2026",
+    requestedTime: "10:30 AM",
+    status: "Pending",
+    priority: "Normal",
+    delivery: "Standard",
+    distance: "8.4 km",
+    notes: "Required for general ward stock.",
+    batch: "PCM-A123",
+    expiry: "15 Sep 2026",
+  },
+  {
+    id: "REQ-2026-015",
+    hospital: "Green Valley Hospital",
+    hospitalCode: "GVH-1092",
+    medicine: "Amoxicillin 250mg",
+    genericName: "Amoxicillin",
+    composition: "Amoxicillin 250 mg",
+    form: "Capsule",
+    quantity: 150,
+    unit: "capsules",
+    requestedPrice: 5.2,
+    totalAmount: 780,
+    requestedDate: "13 Aug 2026",
+    requestedTime: "09:15 AM",
+    status: "Pending",
+    priority: "High",
+    delivery: "Express",
+    distance: "12.7 km",
+    notes: "Urgent requirement for inpatient department.",
+    batch: "AMX-B205",
+    expiry: "20 Dec 2026",
+  },
+  {
+    id: "REQ-2026-011",
+    hospital: "LifeCare Hospital",
+    hospitalCode: "LCH-3318",
+    medicine: "Ceftriaxone 1g",
+    genericName: "Ceftriaxone",
+    composition: "Ceftriaxone 1 g",
+    form: "Injection",
+    quantity: 50,
+    unit: "vials",
+    requestedPrice: 42,
+    totalAmount: 2100,
+    requestedDate: "12 Aug 2026",
+    requestedTime: "04:20 PM",
+    status: "Accepted",
+    priority: "Normal",
+    delivery: "Standard",
+    distance: "5.2 km",
+    notes: "Routine stock replenishment.",
+    batch: "CEF-E109",
+    expiry: "05 Oct 2026",
+  },
+  {
+    id: "REQ-2026-010",
+    hospital: "City Medical Centre",
+    hospitalCode: "CMC-8871",
+    medicine: "Azithromycin 500mg",
+    genericName: "Azithromycin",
+    composition: "Azithromycin 500 mg",
+    form: "Tablet",
+    quantity: 80,
+    unit: "tablets",
+    requestedPrice: 7.5,
+    totalAmount: 600,
+    requestedDate: "11 Aug 2026",
+    requestedTime: "01:45 PM",
+    status: "Rejected",
+    priority: "Normal",
+    delivery: "Standard",
+    distance: "18.1 km",
+    notes: "Requested quantity unavailable.",
+    batch: "AZI-D221",
+    expiry: "30 Oct 2026",
+  },
+  {
+    id: "REQ-2026-009",
+    hospital: "Metro Hospital",
+    hospitalCode: "MTH-4412",
+    medicine: "Insulin Injection",
+    genericName: "Human Insulin",
+    composition: "Human Insulin 40 IU/ml",
+    form: "Injection",
+    quantity: 25,
+    unit: "vials",
+    requestedPrice: 145,
+    totalAmount: 3625,
+    requestedDate: "10 Aug 2026",
+    requestedTime: "11:10 AM",
+    status: "Pending",
+    priority: "High",
+    delivery: "Express",
+    distance: "3.9 km",
+    notes: "Critical stock requirement.",
+    batch: "INS-I778",
+    expiry: "18 Nov 2026",
+  },
+];
+
+const STATUS_OPTIONS = ["All", "Pending", "Accepted", "Rejected"];
+
+function formatCurrency(value) {
+  return `₹${Number(value || 0).toLocaleString("en-IN")}`;
+}
+
+function getStatusClass(status) {
+  return status.toLowerCase();
+}
+
+function StatusBadge({ status }) {
+  const icons = {
+    Pending: <Clock size={14} />,
+    Accepted: <CheckCircle size={14} />,
+    Rejected: <XCircle size={14} />,
   };
-
-  const handleConfirmReject = async (e) => {
-    e.preventDefault();
-    if (!rejectModalReq) return;
-    try {
-      await dispatch(respondToRequest({ 
-        requestId: rejectModalReq.id, 
-        action: 'reject', 
-        reason: rejectReason || 'Stock reserved for critical inpatient use.',
-        hospitalId: user?.id
-      })).unwrap();
-      toast.success(`Declined requisition from ${rejectModalReq.fromHospitalName}`);
-      setRejectModalReq(null);
-      setRejectReason('');
-    } catch (err) {
-      toast.error('Failed to reject request');
-    }
-  };
-
-  const filtered = incomingRequests.filter((r) => {
-    const matchesSearch = r.fromHospitalName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.medicineName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.transactionId?.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    if (filterTab === 'all') return matchesSearch;
-    if (filterTab === 'pending') return matchesSearch && r.status === 'pending';
-    if (filterTab === 'accepted') return matchesSearch && (r.status === 'accepted' || r.status === 'paid');
-    return matchesSearch;
-  });
-
-  const pendingCount = incomingRequests.filter((r) => r.status === 'pending').length;
 
   return (
-    <div className="space-y-6">
-      
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+    <span className={`incoming-status-badge ${getStatusClass(status)}`}>
+      {icons[status]}
+      {status}
+    </span>
+  );
+}
+
+function PriorityBadge({ priority }) {
+  return (
+    <span
+      className={`incoming-priority-badge ${priority.toLowerCase()}`}
+    >
+      {priority}
+    </span>
+  );
+}
+
+export default function IncomingRequests() {
+  const [requests, setRequests] = useState(INITIAL_REQUESTS);
+
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+
+  const [selectedRequest, setSelectedRequest] = useState(null);
+
+  const [actionRequest, setActionRequest] = useState(null);
+  const [actionType, setActionType] = useState(null);
+
+  const [actionLoading, setActionLoading] = useState(false);
+
+  const filteredRequests = useMemo(() => {
+    const query = search.trim().toLowerCase();
+
+    return requests.filter((request) => {
+      const matchesStatus =
+        statusFilter === "All" ||
+        request.status === statusFilter;
+
+      const matchesSearch =
+        !query ||
+        request.id.toLowerCase().includes(query) ||
+        request.hospital.toLowerCase().includes(query) ||
+        request.medicine.toLowerCase().includes(query) ||
+        request.genericName.toLowerCase().includes(query) ||
+        request.composition.toLowerCase().includes(query);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [requests, search, statusFilter]);
+
+  const pendingCount = requests.filter(
+    (request) => request.status === "Pending"
+  ).length;
+
+  const acceptedCount = requests.filter(
+    (request) => request.status === "Accepted"
+  ).length;
+
+  const rejectedCount = requests.filter(
+    (request) => request.status === "Rejected"
+  ).length;
+
+  const totalRequestedUnits = requests
+    .filter((request) => request.status === "Pending")
+    .reduce((sum, request) => sum + request.quantity, 0);
+
+  function openAction(request, type) {
+    setActionRequest(request);
+    setActionType(type);
+  }
+
+  function closeAction() {
+    if (actionLoading) return;
+
+    setActionRequest(null);
+    setActionType(null);
+  }
+
+  function handleAction() {
+    if (!actionRequest || !actionType) return;
+
+    setActionLoading(true);
+
+    setTimeout(() => {
+      const newStatus =
+        actionType === "approve" ? "Accepted" : "Rejected";
+
+      setRequests((currentRequests) =>
+        currentRequests.map((request) =>
+          request.id === actionRequest.id
+            ? {
+              ...request,
+              status: newStatus,
+            }
+            : request
+        )
+      );
+
+      if (selectedRequest?.id === actionRequest.id) {
+        setSelectedRequest((current) =>
+          current
+            ? {
+              ...current,
+              status: newStatus,
+            }
+            : current
+        );
+      }
+
+      setActionLoading(false);
+      setActionRequest(null);
+      setActionType(null);
+    }, 500);
+  }
+
+  function clearFilters() {
+    setSearch("");
+    setStatusFilter("All");
+  }
+
+  return (
+    <div className="incoming-requests-page">
+      {/* =====================================================
+          PAGE HEADER
+      ===================================================== */}
+
+      <div className="incoming-page-header">
         <div>
-          <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-extrabold text-secondary-900 tracking-tight">
-              Incoming Medicine Requisitions
-            </h1>
-            {pendingCount > 0 && (
-              <span className="px-2 py-0.5 text-[10px] font-mono font-bold text-amber-800 bg-amber-50 border border-amber-200 rounded-full">
-                {pendingCount} PENDING ACTION
-              </span>
-            )}
+          <div className="incoming-eyebrow">
+            HOSPITAL PORTAL
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Review and authorize stock purchase requisitions submitted by peer healthcare institutions in your cluster.
+
+          <h1>Incoming Requests</h1>
+
+          <p>
+            Review medicine requests from other verified
+            hospitals and decide whether to approve or reject
+            them.
           </p>
         </div>
+
+        <div className="incoming-header-summary">
+          <div className="incoming-header-summary-icon">
+            <Package size={22} />
+          </div>
+
+          <div>
+            <strong>{pendingCount}</strong>
+            <span>Pending requests</span>
+          </div>
+        </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+      {/* =====================================================
+          STATS
+      ===================================================== */}
+
+      <div className="incoming-stats-grid">
+        <div className="incoming-stat-card pending">
+          <div className="incoming-stat-icon">
+            <Clock size={22} />
+          </div>
+
+          <div>
+            <span>Pending</span>
+            <strong>{pendingCount}</strong>
+            <small>Awaiting your decision</small>
+          </div>
+        </div>
+
+        <div className="incoming-stat-card accepted">
+          <div className="incoming-stat-icon">
+            <CheckCircle size={22} />
+          </div>
+
+          <div>
+            <span>Accepted</span>
+            <strong>{acceptedCount}</strong>
+            <small>Approved requests</small>
+          </div>
+        </div>
+
+        <div className="incoming-stat-card rejected">
+          <div className="incoming-stat-icon">
+            <XCircle size={22} />
+          </div>
+
+          <div>
+            <span>Rejected</span>
+            <strong>{rejectedCount}</strong>
+            <small>Declined requests</small>
+          </div>
+        </div>
+
+        <div className="incoming-stat-card units">
+          <div className="incoming-stat-icon">
+            <Package size={22} />
+          </div>
+
+          <div>
+            <span>Pending Units</span>
+            <strong>
+              {totalRequestedUnits.toLocaleString("en-IN")}
+            </strong>
+            <small>Medicine units requested</small>
+          </div>
+        </div>
+      </div>
+
+      {/* =====================================================
+          FILTER TOOLBAR
+      ===================================================== */}
+
+      <div className="incoming-toolbar">
+        <div className="incoming-search-box">
+          <Search size={18} />
+
           <input
             type="text"
-            placeholder="Search requesting hospital or medicine..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search hospital, medicine or request ID..."
           />
+
+          {search && (
+            <button
+              type="button"
+              className="incoming-search-clear"
+              onClick={() => setSearch("")}
+              aria-label="Clear search"
+            >
+              <X size={16} />
+            </button>
+          )}
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs font-bold">
-          <button
-            onClick={() => setFilterTab('pending')}
-            className={`px-3 py-1.5 rounded-xl transition-all ${
-              filterTab === 'pending'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Pending Decision ({pendingCount})
-          </button>
-          <button
-            onClick={() => setFilterTab('accepted')}
-            className={`px-3 py-1.5 rounded-xl transition-all ${
-              filterTab === 'accepted'
-                ? 'bg-emerald-600 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            Authorized Orders
-          </button>
-          <button
-            onClick={() => setFilterTab('all')}
-            className={`px-3 py-1.5 rounded-xl transition-all ${
-              filterTab === 'all'
-                ? 'bg-slate-900 text-white shadow-sm'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            All Requisitions
-          </button>
+        <div className="incoming-filter-group">
+          {STATUS_OPTIONS.map((status) => (
+            <button
+              key={status}
+              type="button"
+              className={`incoming-filter-button ${statusFilter === status ? "active" : ""
+                }`}
+              onClick={() => setStatusFilter(status)}
+            >
+              {status}
+            </button>
+          ))}
         </div>
       </div>
 
-      {/* Incoming Requests Cards */}
-      {isLoading && incomingRequests.length === 0 ? (
-        <LoadingSpinner text="Querying pending requisitions..." />
-      ) : filtered.length > 0 ? (
-        <div className="space-y-4">
-          {filtered.map((req) => {
-            const isPending = req.status === 'pending';
+      {/* =====================================================
+          REQUEST LIST
+      ===================================================== */}
 
-            return (
-              <div
-                key={req.id}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all p-5 space-y-4"
-              >
-                {/* Header info */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold">
-                        <Building2 className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
-                          {req.fromHospitalName}
-                        </h3>
-                        <p className="text-[10px] font-mono text-slate-400">
-                          ID: {req.transactionId || req.id} • Received: {new Date(req.requestDate).toLocaleDateString()}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+      <div className="incoming-list-card">
+        <div className="incoming-list-header">
+          <div>
+            <h2>Medicine Requests</h2>
+            <p>
+              {filteredRequests.length} request
+              {filteredRequests.length !== 1 ? "s" : ""} found
+            </p>
+          </div>
 
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <span className="text-[10px] uppercase font-mono text-slate-400 block">Receivable Total</span>
-                      <span className="text-lg font-mono font-extrabold text-primary-800">
-                        ₹{(req.totalAmount || 0).toLocaleString()}
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-end gap-1">
-                      <StatusBadge status={req.status} />
-                      {(() => {
-                        const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
-                        if (req.status === 'expired' || (req.status === 'pending' && sla.isExpired)) {
-                          return (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                              48h SLA EXPIRED
-                            </span>
-                          );
-                        }
-                        if (req.status === 'pending') {
-                          return (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-                              <Clock className="w-2.5 h-2.5 text-amber-600" />
-                              {sla.formattedRemaining} left
-                            </span>
-                          );
-                        }
-                        return null;
-                      })()}
-                    </div>
-
-                    {isPending ? (
-                      <div className="flex items-center gap-2">
-                        {(() => {
-                          const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
-                          const isExpiredReq = req.status === 'expired' || sla.isExpired;
-
-                          return (
-                            <button
-                              onClick={() => !isSuspended && !isExpiredReq && setAcceptModalReq(req)}
-                              disabled={isSuspended || isExpiredReq}
-                              title={isExpiredReq ? 'This requisition has expired after 48h SLA' : 'Accept and earmark stock'}
-                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all ${
-                                isExpiredReq 
-                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
-                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 hover:scale-105'
-                              }`}
-                            >
-                              <Check className="w-3.5 h-3.5" />
-                              <span>Accept & Earmark</span>
-                            </button>
-                          );
-                        })()}
-
-                        <button
-                          onClick={() => !isSuspended && setRejectModalReq(req)}
-                          disabled={isSuspended}
-                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs transition-all"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          <span>Decline</span>
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="text-xs font-mono font-bold text-slate-500 capitalize">
-                        {req.status === 'paid' ? 'Payment Escrowed' : `Status: ${req.status}`}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Requested Item Detail */}
-                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                  <div className="space-y-0.5">
-                    <span className="font-extrabold text-slate-900 text-sm">{req.medicineName}</span>
-                    <span className="text-[11px] font-mono text-slate-500 block font-semibold">{req.power}</span>
-                    {req.notes && (
-                      <p className="text-[11px] text-slate-600 italic mt-1">"{req.notes}"</p>
-                    )}
-                  </div>
-
-                  <div className="flex items-center gap-6 font-mono text-xs">
-                    <div>
-                      <span className="text-[10px] uppercase text-slate-400 block">Quantity Requested</span>
-                      <span className="font-extrabold text-slate-900 text-sm">{req.quantity} units</span>
-                    </div>
-
-                    <div>
-                      <span className="text-[10px] uppercase text-slate-400 block">Cold Chain Protocol</span>
-                      <span className="font-bold text-emerald-700 flex items-center gap-1">
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        2°C - 8°C Verified
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-              </div>
-            );
-          })}
+          {(search || statusFilter !== "All") && (
+            <button
+              type="button"
+              className="incoming-clear-filters"
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          )}
         </div>
-      ) : (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center text-slate-400">
-          <Inbox className="w-10 h-10 mx-auto mb-2 opacity-40" />
-          <p className="font-bold text-sm text-slate-700">No incoming requisitions currently in this queue</p>
+
+        {filteredRequests.length === 0 ? (
+          <div className="incoming-empty-state">
+            <div className="incoming-empty-icon">
+              <Package size={32} />
+            </div>
+
+            <h3>No requests found</h3>
+
+            <p>
+              No incoming medicine requests match your current
+              search or filter.
+            </p>
+
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="incoming-primary-button"
+            >
+              Clear Filters
+            </button>
+          </div>
+        ) : (
+          <div className="incoming-table-wrapper">
+            <table className="incoming-table">
+              <thead>
+                <tr>
+                  <th>Request</th>
+                  <th>Requesting Hospital</th>
+                  <th>Medicine</th>
+                  <th>Quantity</th>
+                  <th>Requested</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {filteredRequests.map((request) => (
+                  <tr key={request.id}>
+                    <td>
+                      <div className="incoming-request-id">
+                        <strong>{request.id}</strong>
+
+                        <span>
+                          <Calendar size={13} />
+                          {request.requestedDate}
+                        </span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="incoming-hospital-cell">
+                        <div className="incoming-hospital-icon">
+                          <Hospital size={17} />
+                        </div>
+
+                        <div>
+                          <strong>{request.hospital}</strong>
+
+                          <span>
+                            {request.hospitalCode}
+                          </span>
+                        </div>
+                      </div>
+                    </td>
+
+                    <td>
+                      <div className="incoming-medicine-cell">
+                        <strong>{request.medicine}</strong>
+
+                        <span>{request.form}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <strong className="incoming-quantity">
+                        {request.quantity.toLocaleString("en-IN")}
+                      </strong>
+
+                      <span className="incoming-unit">
+                        {request.unit}
+                      </span>
+                    </td>
+
+                    <td>
+                      <div className="incoming-date-cell">
+                        <strong>
+                          {request.requestedDate}
+                        </strong>
+
+                        <span>{request.requestedTime}</span>
+                      </div>
+                    </td>
+
+                    <td>
+                      <PriorityBadge
+                        priority={request.priority}
+                      />
+                    </td>
+
+                    <td>
+                      <StatusBadge status={request.status} />
+                    </td>
+
+                    <td>
+                      <div className="incoming-actions">
+                        <button
+                          type="button"
+                          className="incoming-view-button"
+                          onClick={() =>
+                            setSelectedRequest(request)
+                          }
+                          title="View request details"
+                        >
+                          <Eye size={16} />
+                          View
+                        </button>
+
+                        {request.status === "Pending" && (
+                          <>
+                            <button
+                              type="button"
+                              className="incoming-approve-button"
+                              onClick={() =>
+                                openAction(
+                                  request,
+                                  "approve"
+                                )
+                              }
+                              title="Approve request"
+                            >
+                              <CheckCircle size={16} />
+                              Approve
+                            </button>
+
+                            <button
+                              type="button"
+                              className="incoming-reject-button"
+                              onClick={() =>
+                                openAction(
+                                  request,
+                                  "reject"
+                                )
+                              }
+                              title="Reject request"
+                            >
+                              <XCircle size={16} />
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* =====================================================
+          DETAILS MODAL
+      ===================================================== */}
+
+      {selectedRequest && (
+        <div
+          className="incoming-modal-overlay"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setSelectedRequest(null);
+            }
+          }}
+        >
+          <div
+            className="incoming-modal incoming-details-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="incoming-request-details-title"
+          >
+            <div className="incoming-modal-header">
+              <div>
+                <span className="incoming-modal-eyebrow">
+                  REQUEST DETAILS
+                </span>
+
+                <h2 id="incoming-request-details-title">
+                  {selectedRequest.id}
+                </h2>
+              </div>
+
+              <button
+                type="button"
+                className="incoming-modal-close"
+                onClick={() => setSelectedRequest(null)}
+                aria-label="Close details"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="incoming-modal-body">
+              {/* Requesting hospital */}
+
+              <section className="incoming-detail-section">
+                <div className="incoming-detail-section-title">
+                  <Hospital size={18} />
+                  <h3>Requesting Hospital</h3>
+                </div>
+
+                <div className="incoming-hospital-detail">
+                  <div className="incoming-large-hospital-icon">
+                    <Hospital size={24} />
+                  </div>
+
+                  <div>
+                    <strong>
+                      {selectedRequest.hospital}
+                    </strong>
+
+                    <span>
+                      Hospital Code:{" "}
+                      {selectedRequest.hospitalCode}
+                    </span>
+
+                    <span>
+                      <MapPin size={14} />
+                      {selectedRequest.distance} away
+                    </span>
+                  </div>
+                </div>
+              </section>
+
+              {/* Medicine */}
+
+              <section className="incoming-detail-section">
+                <div className="incoming-detail-section-title">
+                  <Package size={18} />
+                  <h3>Medicine Details</h3>
+                </div>
+
+                <div className="incoming-detail-grid">
+                  <div>
+                    <span>Medicine</span>
+                    <strong>
+                      {selectedRequest.medicine}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Generic Name</span>
+                    <strong>
+                      {selectedRequest.genericName}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Composition</span>
+                    <strong>
+                      {selectedRequest.composition}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Dosage Form</span>
+                    <strong>{selectedRequest.form}</strong>
+                  </div>
+
+                  <div>
+                    <span>Batch</span>
+                    <strong>{selectedRequest.batch}</strong>
+                  </div>
+
+                  <div>
+                    <span>Expiry</span>
+                    <strong>{selectedRequest.expiry}</strong>
+                  </div>
+                </div>
+              </section>
+
+              {/* Request */}
+
+              <section className="incoming-detail-section">
+                <div className="incoming-detail-section-title">
+                  <Clock size={18} />
+                  <h3>Request Information</h3>
+                </div>
+
+                <div className="incoming-detail-grid">
+                  <div>
+                    <span>Quantity</span>
+                    <strong>
+                      {selectedRequest.quantity.toLocaleString(
+                        "en-IN"
+                      )}{" "}
+                      {selectedRequest.unit}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Requested Price</span>
+                    <strong>
+                      {formatCurrency(
+                        selectedRequest.requestedPrice
+                      )}{" "}
+                      / unit
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Total Amount</span>
+                    <strong>
+                      {formatCurrency(
+                        selectedRequest.totalAmount
+                      )}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Delivery</span>
+                    <strong>
+                      {selectedRequest.delivery}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span>Priority</span>
+                    <PriorityBadge
+                      priority={selectedRequest.priority}
+                    />
+                  </div>
+
+                  <div>
+                    <span>Status</span>
+                    <StatusBadge
+                      status={selectedRequest.status}
+                    />
+                  </div>
+                </div>
+              </section>
+
+              {/* Notes */}
+
+              <section className="incoming-note-box">
+                <AlertCircle size={18} />
+
+                <div>
+                  <strong>Request note</strong>
+                  <p>{selectedRequest.notes}</p>
+                </div>
+              </section>
+            </div>
+
+            {selectedRequest.status === "Pending" && (
+              <div className="incoming-modal-footer">
+                <button
+                  type="button"
+                  className="incoming-reject-large"
+                  onClick={() => {
+                    const request = selectedRequest;
+                    setSelectedRequest(null);
+                    openAction(request, "reject");
+                  }}
+                >
+                  <XCircle size={18} />
+                  Reject Request
+                </button>
+
+                <button
+                  type="button"
+                  className="incoming-approve-large"
+                  onClick={() => {
+                    const request = selectedRequest;
+                    setSelectedRequest(null);
+                    openAction(request, "approve");
+                  }}
+                >
+                  <CheckCircle size={18} />
+                  Approve Request
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
-      {/* Confirm Accept Modal with Stock Check */}
-      {acceptModalReq && (
-        <Modal
-          isOpen={!!acceptModalReq}
-          onClose={() => setAcceptModalReq(null)}
-          title="Authorize Requisition Acceptance"
-          subtitle={`Supply ${acceptModalReq.quantity} units to ${acceptModalReq.fromHospitalName}`}
-          maxWidth="max-w-md"
+      {/* =====================================================
+          APPROVE / REJECT CONFIRMATION
+      ===================================================== */}
+
+      {actionRequest && (
+        <div
+          className="incoming-modal-overlay"
+          onMouseDown={(event) => {
+            if (
+              event.target === event.currentTarget &&
+              !actionLoading
+            ) {
+              closeAction();
+            }
+          }}
         >
-          <div className="space-y-4 pt-1">
-            <div className="p-3.5 bg-emerald-50 rounded-xl border border-emerald-200 text-xs space-y-2">
-              <div className="flex items-center gap-1.5 font-bold text-emerald-900">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>Inventory Earmark & First-Acceptance Confirmation</span>
+          <div
+            className="incoming-modal incoming-confirm-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="incoming-confirm-title"
+          >
+            <div
+              className={`incoming-confirm-icon ${actionType === "approve"
+                  ? "approve"
+                  : "reject"
+                }`}
+            >
+              {actionType === "approve" ? (
+                <CheckCircle size={30} />
+              ) : (
+                <XCircle size={30} />
+              )}
+            </div>
+
+            <h2 id="incoming-confirm-title">
+              {actionType === "approve"
+                ? "Approve this request?"
+                : "Reject this request?"}
+            </h2>
+
+            <p>
+              {actionType === "approve"
+                ? `You are approving ${actionRequest.quantity} ${actionRequest.unit} of ${actionRequest.medicine} for ${actionRequest.hospital}.`
+                : `You are rejecting the request for ${actionRequest.quantity} ${actionRequest.unit} of ${actionRequest.medicine} from ${actionRequest.hospital}.`}
+            </p>
+
+            <div className="incoming-confirm-summary">
+              <div>
+                <span>Request ID</span>
+                <strong>{actionRequest.id}</strong>
               </div>
-              <p className="text-emerald-800 leading-relaxed text-[11px]">
-                Acceptance immediately locks <strong>{acceptModalReq.quantity} units</strong> of {acceptModalReq.medicineName} in your central pharmacy inventory and enables buyer checkout via Razorpay Escrow.
-              </p>
-              <div className="p-2 rounded-lg bg-amber-50 border border-amber-200 text-[10px] text-amber-900 font-medium leading-tight">
-                <strong>First Acceptance Wins:</strong> If the buyer submitted competing requests to multiple peer hospitals for this requirement, confirming acceptance here fulfills the request and automatically withdraws competing requisitions across the network.
+
+              <div>
+                <span>Medicine</span>
+                <strong>{actionRequest.medicine}</strong>
+              </div>
+
+              <div>
+                <span>Quantity</span>
+                <strong>
+                  {actionRequest.quantity}{" "}
+                  {actionRequest.unit}
+                </strong>
+              </div>
+
+              <div>
+                <span>Total</span>
+                <strong>
+                  {formatCurrency(actionRequest.totalAmount)}
+                </strong>
               </div>
             </div>
 
-            <div className="p-3 bg-slate-50 rounded-xl text-xs space-y-1 font-mono">
-              <div className="flex justify-between">
-                <span className="text-slate-500">Escrow Settlement Receivable:</span>
-                <span className="font-extrabold text-slate-900">₹{(acceptModalReq.totalAmount || 0).toLocaleString()}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-slate-500">Logistics Fulfillment:</span>
-                <span className="font-bold text-primary-700">Cold Chain Courier dispatch within 24h</span>
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="incoming-confirm-actions">
               <button
                 type="button"
-                onClick={() => setAcceptModalReq(null)}
-                className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-lg"
+                className="incoming-cancel-button"
+                onClick={closeAction}
+                disabled={actionLoading}
               >
                 Cancel
               </button>
+
               <button
                 type="button"
-                disabled={isResponding}
-                onClick={handleConfirmAccept}
-                className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-lg shadow-sm disabled:opacity-75"
+                className={
+                  actionType === "approve"
+                    ? "incoming-confirm-approve"
+                    : "incoming-confirm-reject"
+                }
+                onClick={handleAction}
+                disabled={actionLoading}
               >
-                <Check className="w-3.5 h-3.5" />
-                <span>{isResponding ? 'Earmarking...' : 'Confirm & Earmark Stock'}</span>
+                {actionLoading ? (
+                  <>
+                    <span className="incoming-spinner" />
+                    Processing...
+                  </>
+                ) : actionType === "approve" ? (
+                  <>
+                    <CheckCircle size={17} />
+                    Confirm Approval
+                  </>
+                ) : (
+                  <>
+                    <XCircle size={17} />
+                    Confirm Rejection
+                  </>
+                )}
               </button>
             </div>
           </div>
-        </Modal>
+        </div>
       )}
-
-      {/* Reject Modal with Reason input */}
-      {rejectModalReq && (
-        <Modal
-          isOpen={!!rejectModalReq}
-          onClose={() => setRejectModalReq(null)}
-          title="Decline Medicine Requisition"
-          subtitle={`Provide clinical or stock allocation reason to ${rejectModalReq.fromHospitalName}`}
-          maxWidth="max-w-md"
-        >
-          <form onSubmit={handleConfirmReject} className="space-y-4 pt-1">
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
-                Reason for Rejection <span className="text-rose-500">*</span>
-              </label>
-              <textarea
-                rows="3"
-                required
-                placeholder="e.g. Batch is reserved for internal surgical emergencies / Buffer quota reached..."
-                value={rejectReason}
-                onChange={(e) => setRejectReason(e.target.value)}
-                className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-rose-500"
-              />
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={() => setRejectModalReq(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm"
-              >
-                Confirm Decline
-              </button>
-            </div>
-          </form>
-        </Modal>
-      )}
-
     </div>
   );
-};
-
-export default IncomingRequests;
+}

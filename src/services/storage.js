@@ -76,14 +76,26 @@ export const initializeStorage = () => {
             med.invoice = match.invoice;
             modified = true;
           }
-          if (!med.packSize && match.packSize) {
-            med.packSize = match.packSize;
-            modified = true;
-          }
           if (!med.mfgDate && match.mfgDate) {
             med.mfgDate = match.mfgDate;
             modified = true;
           }
+          if (!med.form && match.form) {
+            med.form = match.form;
+            modified = true;
+          }
+          if (med.minStockLevel === undefined && match.minStockLevel !== undefined) {
+            med.minStockLevel = match.minStockLevel;
+            modified = true;
+          }
+        }
+        if (!med.form) {
+          med.form = 'Tablet';
+          modified = true;
+        }
+        if (med.minStockLevel === undefined) {
+          med.minStockLevel = 20;
+          modified = true;
         }
         if (!med.mfgDate) {
           if (med.expiryDate) {

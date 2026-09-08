@@ -123,6 +123,14 @@ export const createHospitalWasteRequest = createAsyncThunk('hospital/createWaste
   }
 });
 
+export const disposeMedicineItem = createAsyncThunk('hospital/disposeMedicine', async (payload, { rejectWithValue }) => {
+  try {
+    return await hospitalService.disposeMedicine(payload);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 const hospitalSlice = createSlice({
   name: 'hospital',
   initialState: {
@@ -234,10 +242,21 @@ const hospitalSlice = createSlice({
       })
       .addCase(createHospitalWasteRequest.fulfilled, (state, action) => {
         state.disposals.unshift(action.payload);
-        // If an inventory medicine was associated, mark it pending disposal
         if (action.payload.medicineId) {
           const idx = state.inventory.findIndex((m) => m.id === action.payload.medicineId);
           if (idx !== -1) state.inventory[idx].status = 'pending_disposal';
+        }
+      })
+      .addCase(disposeMedicineItem.fulfilled, (state, action) => {
+        const { updatedMedicine, newDisposal } = action.payload;
+        if (updatedMedicine) {
+          const idx = state.inventory.findIndex((m) => m.id === updatedMedicine.id);
+          if (idx !== -1) {
+            state.inventory[idx] = updatedMedicine;
+          }
+        }
+        if (newDisposal) {
+          state.disposals.unshift(newDisposal);
         }
       })
 

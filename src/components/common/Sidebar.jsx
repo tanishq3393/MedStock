@@ -42,7 +42,7 @@ export const Sidebar = ({ role = 'hospital' }) => {
       items: [
         { to: '/hospital/inventory', icon: Boxes, label: 'My Inventory' },
         { to: '/hospital/marketplace', icon: ShoppingBag, label: 'Marketplace' },
-        { to: '/hospital/waste-management', icon: Trash2, label: 'Waste Disposal' },
+        { to: '/hospital/waste-management', icon: Trash2, label: 'Bio-Waste Disposal' },
       ]
     },
     {

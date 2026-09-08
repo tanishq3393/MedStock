@@ -1,14 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import Modal from '../common/Modal';
-import { Calculator, Sparkles, AlertTriangle, ShieldCheck, ThermometerSnowflake } from 'lucide-react';
+import { Calculator, Sparkles, AlertTriangle, ShieldCheck, ThermometerSnowflake, Package, Layers, Info } from 'lucide-react';
 import { calculateConcessionRate } from '../../utils/pricingUtils';
+import { calculateMedicineExpiry } from '../../utils/expiryUtils';
 import toast from 'react-hot-toast';
 
 export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, isEdit = false }) => {
   const [formData, setFormData] = useState({
+    medicineName: '',
     brandName: '',
     genericName: '',
     power: '',
+    form: 'Tablet',
     category: 'Critical Care / Antibiotic',
     storageType: 'Room Temperature (15°C - 25°C)',
     mfgDate: '',
@@ -17,6 +20,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     manufacturer: '',
     quantity: 100,
     unitOriginalPrice: 500,
+    minStockLevel: 20,
     concessionPercent: 20,
     notes: '',
   });
@@ -26,9 +30,11 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
   useEffect(() => {
     if (initialData) {
       setFormData({
+        medicineName: initialData.brandName || initialData.medicineName || '',
         brandName: initialData.brandName || '',
         genericName: initialData.genericName || '',
         power: initialData.power || '',
+        form: initialData.form || initialData.dosageForm || 'Tablet',
         category: initialData.category || 'Critical Care / Antibiotic',
         storageType: initialData.storageType || 'Room Temperature (15°C - 25°C)',
         mfgDate: initialData.mfgDate || '',
@@ -37,23 +43,29 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         manufacturer: initialData.manufacturer || '',
         quantity: initialData.quantity || 100,
         unitOriginalPrice: initialData.unitOriginalPrice || 500,
+        minStockLevel: initialData.minStockLevel || 20,
         concessionPercent: initialData.concessionPercent ?? 20,
         notes: initialData.notes || '',
       });
     } else {
+      const today = new Date().toISOString().split('T')[0];
+      const futureDate = new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
       setFormData({
+        medicineName: '',
         brandName: '',
         genericName: '',
         power: '',
+        form: 'Tablet',
         category: 'Critical Care / Antibiotic',
         storageType: 'Room Temperature (15°C - 25°C)',
-        mfgDate: '',
-        expiryDate: '',
+        mfgDate: today,
+        expiryDate: futureDate,
         batchNo: 'BAT-' + Math.floor(10000 + Math.random() * 90000),
         manufacturer: '',
         quantity: 50,
-        unitOriginalPrice: 400,
-        concessionPercent: 20,
+        unitOriginalPrice: 350,
+        minStockLevel: 20,
+        concessionPercent: 15,
         notes: '',
       });
       setAutoSuggestedConcession(null);
@@ -67,7 +79,6 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
     const suggested = calculateConcessionRate(dateVal);
     setAutoSuggestedConcession(suggested);
-    // Auto apply if creating fresh
     if (!isEdit) {
       setFormData((prev) => ({ ...prev, concessionPercent: suggested }));
     }
@@ -79,17 +90,27 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
   const totalLotValue = Math.round(finalUnitPrice * formData.quantity);
 
+  const expiryEvaluation = formData.expiryDate ? calculateMedicineExpiry(formData.expiryDate, formData.quantity) : null;
+
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!formData.brandName || !formData.power || !formData.expiryDate) {
-      toast.error('Please fill all mandatory fields (Brand, Power, Expiry Date)');
+    const effectiveBrand = formData.brandName || formData.medicineName;
+    if (!effectiveBrand || !formData.power || !formData.expiryDate) {
+      toast.error('Please fill all mandatory fields (Medicine/Brand Name, Strength/Dosage, Expiry Date)');
       return;
     }
-    if (new Date(formData.expiryDate) < new Date()) {
-      toast.error('Cannot add an already expired medicine to active trade inventory. Please log it under Bio-Waste & Disposal.');
-      return;
-    }
-    onSubmit(formData);
+
+    const payload = {
+      ...formData,
+      brandName: effectiveBrand,
+      medicineName: effectiveBrand,
+      quantity: Number(formData.quantity),
+      unitOriginalPrice: Number(formData.unitOriginalPrice),
+      minStockLevel: Number(formData.minStockLevel || 20),
+      concessionPercent: Number(formData.concessionPercent || 0),
+    };
+
+    onSubmit(payload);
     onClose();
   };
 
@@ -97,56 +118,80 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isEdit ? 'Edit Medicine Inventory' : 'Add Medicine to Verified Inventory'}
-      subtitle="Enter pharmaceutical batch specifications, cold-chain storage parameters, and expiry discount."
+      title={isEdit ? 'Edit Medicine Record' : 'Add Medicine to Hospital Inventory'}
+      subtitle="Enter pharmaceutical specifications, batch identification, cold chain conditions, and inventory thresholds."
       maxWidth="max-w-3xl"
     >
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form onSubmit={handleSubmit} className="space-y-4 pt-1">
         
-        {/* Row 1: Brand & Generic */}
+        {/* Field 1 & 2: Medicine Name / Brand Name & Generic Name */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Brand Name <span className="text-rose-500">*</span>
+              Medicine / Brand Name <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
               required
-              placeholder="e.g. Meropenem IV, Augmentin"
+              placeholder="e.g. Augmentin 625 Duo, Meropenem IV"
               value={formData.brandName}
-              onChange={(e) => setFormData({ ...formData, brandName: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              onChange={(e) => setFormData({ ...formData, brandName: e.target.value, medicineName: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-semibold text-slate-900"
             />
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Generic Composition / Formulation
+              Generic / Composition Name
             </label>
             <input
               type="text"
-              placeholder="e.g. Meropenem Trihydrate IP"
+              placeholder="e.g. Amoxicillin + Clavulanic Acid"
               value={formData.genericName}
               onChange={(e) => setFormData({ ...formData, genericName: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
             />
           </div>
         </div>
 
-        {/* Row 2: Power & Category */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Field 3 & 4 & 5: Dosage/Strength, Form & Category */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Strength / Power <span className="text-rose-500">*</span>
+              Dosage / Strength <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
               required
-              placeholder="e.g. 1g IV Vial, 625mg Tab, 40mg/0.4ml"
+              placeholder="e.g. 625mg, 1g IV Vial, 40mg/0.4ml"
               value={formData.power}
               onChange={(e) => setFormData({ ...formData, power: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
             />
           </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Dosage Form <span className="text-rose-500">*</span>
+            </label>
+            <select
+              value={formData.form}
+              onChange={(e) => setFormData({ ...formData, form: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white font-medium text-slate-800"
+            >
+              <option value="Tablet">Tablet</option>
+              <option value="Capsule">Capsule</option>
+              <option value="Syrup">Syrup</option>
+              <option value="Injection / Vial">Injection / Vial</option>
+              <option value="Infusion Bottle">Infusion Bottle</option>
+              <option value="Pre-filled Syringe / Pen">Pre-filled Syringe / Pen</option>
+              <option value="Ampoule">Ampoule</option>
+              <option value="Suspension">Suspension</option>
+              <option value="Ointment / Gel">Ointment / Gel</option>
+              <option value="Inhaler">Inhaler</option>
+              <option value="Drops">Drops</option>
+            </select>
+          </div>
+
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
               Therapeutic Category
@@ -154,7 +199,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
             <select
               value={formData.category}
               onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white"
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white text-xs"
             >
               <option value="Critical Care / Antibiotic">Critical Care / Antibiotic</option>
               <option value="Cardiology / Hematology">Cardiology / Hematology</option>
@@ -168,16 +213,43 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
           </div>
         </div>
 
-        {/* Row 3: Storage Type & Batch No */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        {/* Field 6 & 7 & 8: Batch No, Manufacturer & Storage Condition */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
-              Storage Condition / Cold Chain <span className="text-rose-500">*</span>
+              Batch / Lot Number <span className="text-rose-500">*</span>
+            </label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. BAT-88210"
+              value={formData.batchNo}
+              onChange={(e) => setFormData({ ...formData, batchNo: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono font-bold"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Manufacturer Pharma
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Cipla, Sun Pharma, GSK"
+              value={formData.manufacturer}
+              onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Storage Condition
             </label>
             <select
               value={formData.storageType}
               onChange={(e) => setFormData({ ...formData, storageType: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white font-medium"
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none bg-white font-medium"
             >
               <option value="Room Temperature (15°C - 25°C)">Room Temperature (15°C - 25°C)</option>
               <option value="Cold Storage (2°C - 8°C)">Cold Storage (2°C - 8°C)</option>
@@ -186,35 +258,9 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
               <option value="Dry & Cool (<25°C)">Dry & Cool (&lt;25°C)</option>
             </select>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">
-              Batch / Lot Number
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. MP23G418"
-              value={formData.batchNo}
-              onChange={(e) => setFormData({ ...formData, batchNo: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono"
-            />
-          </div>
         </div>
 
-        {/* Row 4: Manufacturer */}
-        <div>
-          <label className="block text-xs font-bold text-slate-700 mb-1">
-            Manufacturer Pharma House
-          </label>
-          <input
-            type="text"
-            placeholder="e.g. Sanofi India, AstraZeneca, Cipla"
-            value={formData.manufacturer}
-            onChange={(e) => setFormData({ ...formData, manufacturer: e.target.value })}
-            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
-          />
-        </div>
-
-        {/* Row 5: Manufacturing Date beside Expiry Date */}
+        {/* Field 9 & 10: Manufacturing Date & Expiry Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">
@@ -224,7 +270,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
               type="date"
               value={formData.mfgDate}
               onChange={(e) => setFormData({ ...formData, mfgDate: e.target.value })}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono"
             />
           </div>
           <div>
@@ -236,19 +282,46 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
               required
               value={formData.expiryDate}
               onChange={(e) => handleDateChange(e.target.value)}
-              className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono font-bold"
             />
           </div>
         </div>
 
-        {/* Concession Calculator Panel */}
-        <div className="p-4 rounded-xl bg-gradient-to-br from-primary-50/70 to-slate-50 border border-primary-200/80 space-y-3">
+        {/* Expiry Evaluation Callout */}
+        {expiryEvaluation && (
+          <div className={`p-3 rounded-xl border flex items-center justify-between text-xs ${
+            expiryEvaluation.isExpired 
+              ? 'bg-rose-50 border-rose-200 text-rose-800' 
+              : expiryEvaluation.isNearExpiry
+                ? 'bg-amber-50 border-amber-200 text-amber-900'
+                : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+          }`}>
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 flex-shrink-0" />
+              <span>
+                {expiryEvaluation.isExpired ? (
+                  <><strong>Expiry Status:</strong> Expired ({Math.abs(expiryEvaluation.daysRemaining)} days ago). This batch will be tracked in inventory and available in <strong>Bio-Waste Disposal</strong>.</>
+                ) : expiryEvaluation.isNearExpiry ? (
+                  <><strong>Expiry Status:</strong> Expiring soon in {expiryEvaluation.daysRemaining} days. Eligible for redistribution discount.</>
+                ) : (
+                  <><strong>Expiry Status:</strong> Valid active stock ({expiryEvaluation.daysRemaining} days shelf life remaining).</>
+                )}
+              </span>
+            </div>
+            <span className="font-bold uppercase text-[10px] tracking-wider px-2 py-0.5 rounded-full bg-white/70">
+              {expiryEvaluation.label}
+            </span>
+          </div>
+        )}
+
+        {/* Field 11, Quantity, Unit Price & Minimum Stock Level */}
+        <div className="p-4 rounded-2xl bg-gradient-to-br from-primary-50/70 to-slate-50 border border-primary-200/80 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calculator className="w-4 h-4 text-primary-600" />
-              <span className="text-xs font-bold text-primary-800">Smart Concession Calculator</span>
+              <span className="text-xs font-bold text-primary-900">Stock Quantity & Unit Price Parameters</span>
             </div>
-            {autoSuggestedConcession !== null && (
+            {autoSuggestedConcession !== null && !expiryEvaluation?.isExpired && (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
                 <Sparkles className="w-3 h-3 text-emerald-600" />
                 Algorithm Suggestion: {autoSuggestedConcession}%
@@ -258,8 +331,8 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Available Quantity (Units)
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Stock Quantity (Units) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -267,13 +340,13 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
                 required
                 value={formData.quantity}
                 onChange={(e) => setFormData({ ...formData, quantity: Math.max(1, Number(e.target.value)) })}
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-mono font-bold"
               />
             </div>
 
             <div>
-              <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                Original MRP / Bill (₹ / unit)
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Unit Price (₹ / unit) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -281,39 +354,39 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
                 required
                 value={formData.unitOriginalPrice}
                 onChange={(e) => setFormData({ ...formData, unitOriginalPrice: Math.max(1, Number(e.target.value)) })}
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 bg-white"
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-mono font-bold"
               />
             </div>
 
             <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="text-[11px] font-semibold text-slate-600">
-                  Concession Offered
-                </label>
-                <span className="text-xs font-bold text-primary-700">{formData.concessionPercent}%</span>
-              </div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Minimum Stock Level (Buffer)
+              </label>
               <input
-                type="range"
+                type="number"
                 min="0"
-                max="80"
-                step="1"
-                value={formData.concessionPercent}
-                onChange={(e) => setFormData({ ...formData, concessionPercent: Number(e.target.value) })}
-                className="w-full accent-primary-600 cursor-pointer"
+                value={formData.minStockLevel}
+                onChange={(e) => setFormData({ ...formData, minStockLevel: Math.max(0, Number(e.target.value)) })}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-mono font-bold"
+                placeholder="e.g. 20 units"
               />
             </div>
           </div>
 
-          {/* Pricing Preview Pill */}
+          {/* Pricing Summary Row */}
           <div className="flex flex-wrap items-center justify-between pt-2 border-t border-primary-200/60 text-xs">
             <div>
-              <span className="text-slate-500">Discounted Unit Price: </span>
-              <span className="font-bold text-slate-800">₹{finalUnitPrice}</span>
-              <span className="text-slate-400 line-through text-[11px] ml-1.5">₹{formData.unitOriginalPrice}</span>
+              <span className="text-slate-500">Unit MRP: </span>
+              <span className="font-bold text-slate-900 font-mono">₹{formData.unitOriginalPrice}</span>
+              {formData.concessionPercent > 0 && !expiryEvaluation?.isExpired && (
+                <span className="text-emerald-700 font-bold ml-2">({formData.concessionPercent}% discount: ₹{finalUnitPrice}/unit)</span>
+              )}
             </div>
             <div>
-              <span className="text-slate-500">Total Lot Settlement: </span>
-              <span className="font-extrabold text-primary-700 text-sm">₹{totalLotValue.toLocaleString()}</span>
+              <span className="text-slate-500">Total Lot Value: </span>
+              <span className="font-extrabold text-primary-700 font-mono text-sm">
+                ₹{(formData.unitOriginalPrice * formData.quantity).toLocaleString()}
+              </span>
             </div>
           </div>
         </div>
@@ -321,14 +394,14 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         {/* Notes */}
         <div>
           <label className="block text-xs font-bold text-slate-700 mb-1">
-            Storage & Quality Verification Notes
+            Storage & Quality Notes
           </label>
           <textarea
             rows="2"
-            placeholder="e.g. Original packaging sealed, digital data logger temperature verified at 4°C."
+            placeholder="e.g. Original packaging sealed, temperature data logger verified, hospital central pharmacy bay A-3."
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-            className="w-full px-3 py-2 text-xs rounded-lg border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+            className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none"
           />
         </div>
 
@@ -337,15 +410,15 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-colors"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="px-5 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-lg shadow-md shadow-primary-500/20 transition-all"
+            className="px-5 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-xl shadow-md shadow-primary-500/20 transition-all"
           >
-            {isEdit ? 'Save Changes' : 'Publish to Inventory'}
+            {isEdit ? 'Save Changes' : 'Add to Hospital Inventory'}
           </button>
         </div>
 

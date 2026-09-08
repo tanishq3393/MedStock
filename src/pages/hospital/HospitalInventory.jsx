@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { 
   PlusCircle, 
   Search, 
@@ -24,7 +24,9 @@ import {
   Sparkles,
   Package,
   Layers,
-  Upload
+  Upload,
+  ExternalLink,
+  ChevronDown
 } from 'lucide-react';
 import { 
   fetchInventory, 
@@ -51,7 +53,7 @@ export const HospitalInventory = () => {
   // Filter & Search states
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatusFilter, setSelectedStatusFilter] = useState('all');
-  const [selectedTypeFilter, setSelectedTypeFilter] = useState('all');
+  const [selectedFormFilter, setSelectedFormFilter] = useState('all');
   const [sortBy, setSortBy] = useState('expiry_asc');
 
   // Modal / Drawer states
@@ -67,147 +69,158 @@ export const HospitalInventory = () => {
     }
   }, [dispatch, user?.id]);
 
-  const getMfgDate = (med) => {
-    if (med.mfgDate) return med.mfgDate;
-    if (med.expiryDate) {
-      try {
-        const d = new Date(med.expiryDate);
-        d.setFullYear(d.getFullYear() - 1);
-        return d.toISOString().split('T')[0];
-      } catch {
-        return '2023-11-15';
-      }
-    }
-    return '2023-11-15';
-  };
-
-  // Helper for medicine classification
-  const getMedicineType = (med) => {
+  // Helper for medicine form classification
+  const getMedicineForm = (med) => {
+    if (med.form) return med.form;
     const p = (med.power || '').toLowerCase();
     const b = (med.brandName || '').toLowerCase();
-    if (p.includes('tablet') || p.includes('strip') || b.includes('tablet')) return 'Tablet';
-    if (p.includes('vial') || b.includes('vial') || b.includes('injection')) return 'Injection / Vial';
-    if (p.includes('infusion') || p.includes('bottle')) return 'Infusion';
+    if (p.includes('tablet') || p.includes('tab') || b.includes('tablet')) return 'Tablet';
+    if (p.includes('capsule') || p.includes('cap')) return 'Capsule';
+    if (p.includes('syrup') || p.includes('suspension')) return 'Syrup / Suspension';
+    if (p.includes('vial') || b.includes('vial') || b.includes('injection') || p.includes('inj')) return 'Injection / Vial';
+    if (p.includes('infusion') || p.includes('bottle')) return 'Infusion Bottle';
     if (p.includes('syringe') || p.includes('pen')) return 'Pre-filled Syringe / Pen';
     if (p.includes('ampoule')) return 'Ampoule';
     return 'General Formulation';
   };
 
-  // Summary Metrics
+  // Summary Metrics across all hospital inventory
   const metrics = useMemo(() => {
-    const totalUnits = inventory.reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
     const totalBatches = inventory.length;
+    const totalUnits = inventory.reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
 
-    let nearExpiryCount = 0;
+    let availableUnits = 0;
+    let expiringSoonCount = 0;
     let expiredCount = 0;
     let lowStockCount = 0;
-    let healthyCount = 0;
+    let disposedCount = 0;
+    let activeAvailableCount = 0;
 
     inventory.forEach((med) => {
-      const exp = calculateMedicineExpiry(med.expiryDate, med.quantity);
-      if (exp.status === 'expired') {
+      const isDisposed = med.status === 'disposed';
+      const minStock = Number(med.minStockLevel || 20);
+      const qty = Number(med.quantity) || 0;
+      const exp = calculateMedicineExpiry(med.expiryDate, qty);
+
+      if (isDisposed) {
+        disposedCount++;
+      } else if (exp.isExpired) {
         expiredCount++;
-      } else if (exp.status === 'critical' || exp.status === 'near-expiry') {
-        nearExpiryCount++;
-      } else if (exp.status === 'low-stock') {
-        lowStockCount++;
       } else {
-        healthyCount++;
+        availableUnits += qty;
+        if (exp.isNearExpiry || exp.isCritical) {
+          expiringSoonCount++;
+        }
+        if (qty <= minStock) {
+          lowStockCount++;
+        }
+        if (!exp.isNearExpiry && !exp.isCritical && qty > minStock) {
+          activeAvailableCount++;
+        }
       }
     });
 
-    const availableUnits = inventory
-      .filter((m) => {
-        const exp = calculateMedicineExpiry(m.expiryDate, m.quantity);
-        return exp.status !== 'expired';
-      })
-      .reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
-
     return {
-      totalUnits,
       totalBatches,
+      totalUnits,
       availableUnits,
-      nearExpiryCount,
+      expiringSoonCount,
       expiredCount,
       lowStockCount,
-      healthyCount,
+      disposedCount,
+      activeAvailableCount,
     };
   }, [inventory]);
 
-  // "Needs Attention" List (Expired, Near-Expiry, Low-Stock)
-  const attentionMedicines = useMemo(() => {
-    return inventory
-      .map((med) => ({
+  // Evaluated inventory with statuses
+  const evaluatedInventory = useMemo(() => {
+    return inventory.map((med) => {
+      const isDisposed = med.status === 'disposed';
+      const isDisposalRequested = med.status === 'pending_disposal' || med.status === 'disposal_requested';
+      const minStock = Number(med.minStockLevel || 20);
+      const qty = Number(med.quantity) || 0;
+      const expiryMeta = calculateMedicineExpiry(med.expiryDate, qty);
+      const form = getMedicineForm(med);
+
+      let computedStatus = 'Available';
+      if (isDisposed) {
+        computedStatus = 'Disposed';
+      } else if (isDisposalRequested) {
+        computedStatus = 'Disposal Requested';
+      } else if (expiryMeta.isExpired) {
+        computedStatus = 'Expired';
+      } else if (expiryMeta.isNearExpiry || expiryMeta.isCritical) {
+        computedStatus = 'Expiring Soon';
+      } else if (qty <= minStock) {
+        computedStatus = 'Low Stock';
+      }
+
+      return {
         ...med,
-        expiryMeta: calculateMedicineExpiry(med.expiryDate, med.quantity),
-        type: getMedicineType(med),
-      }))
-      .filter((med) => ['expired', 'critical', 'near-expiry', 'low-stock'].includes(med.expiryMeta.status))
-      .sort((a, b) => {
-        // Expired first, then nearest expiry
-        if (a.expiryMeta.isExpired && !b.expiryMeta.isExpired) return -1;
-        if (!a.expiryMeta.isExpired && b.expiryMeta.isExpired) return 1;
-        return a.expiryMeta.daysRemaining - b.expiryMeta.daysRemaining;
-      });
+        form,
+        minStock,
+        expiryMeta,
+        computedStatus,
+      };
+    });
   }, [inventory]);
 
-  // Filtered Inventory List
+  // Filtered & Sorted Inventory List
   const filteredMedicines = useMemo(() => {
-    return inventory
-      .map((med) => ({
-        ...med,
-        expiryMeta: calculateMedicineExpiry(med.expiryDate, med.quantity),
-        type: getMedicineType(med),
-        finalPrice: Math.round(
-          med.unitOriginalPrice * (1 - (med.concessionPercent || 0) / 100) * 100
-        ) / 100,
-      }))
+    return evaluatedInventory
       .filter((med) => {
         const q = searchTerm.toLowerCase().trim();
         const matchesSearch =
           !q ||
-          med.brandName.toLowerCase().includes(q) ||
+          med.brandName?.toLowerCase().includes(q) ||
           med.genericName?.toLowerCase().includes(q) ||
           med.power?.toLowerCase().includes(q) ||
-          (med.batchNo && med.batchNo.toLowerCase().includes(q));
+          med.batchNo?.toLowerCase().includes(q) ||
+          med.manufacturer?.toLowerCase().includes(q);
 
         let matchesStatus = true;
-        if (selectedStatusFilter === 'healthy') {
-          matchesStatus = med.expiryMeta.status === 'healthy';
-        } else if (selectedStatusFilter === 'near_expiry') {
-          matchesStatus = med.expiryMeta.status === 'critical' || med.expiryMeta.status === 'near-expiry';
-        } else if (selectedStatusFilter === 'expired') {
-          matchesStatus = med.expiryMeta.status === 'expired';
-        } else if (selectedStatusFilter === 'low_stock') {
-          matchesStatus = med.expiryMeta.status === 'low-stock';
+        if (selectedStatusFilter !== 'all') {
+          if (selectedStatusFilter === 'available') {
+            matchesStatus = med.computedStatus === 'Available';
+          } else if (selectedStatusFilter === 'low_stock') {
+            matchesStatus = med.computedStatus === 'Low Stock';
+          } else if (selectedStatusFilter === 'expiring_soon') {
+            matchesStatus = med.computedStatus === 'Expiring Soon';
+          } else if (selectedStatusFilter === 'expired') {
+            matchesStatus = med.computedStatus === 'Expired';
+          } else if (selectedStatusFilter === 'disposal_requested') {
+            matchesStatus = med.computedStatus === 'Disposal Requested';
+          } else if (selectedStatusFilter === 'disposed') {
+            matchesStatus = med.computedStatus === 'Disposed';
+          }
         }
 
-        let matchesType = true;
-        if (selectedTypeFilter !== 'all') {
-          matchesType = med.type === selectedTypeFilter;
+        let matchesForm = true;
+        if (selectedFormFilter !== 'all') {
+          matchesForm = med.form.toLowerCase().includes(selectedFormFilter.toLowerCase());
         }
 
-        return matchesSearch && matchesStatus && matchesType;
+        return matchesSearch && matchesStatus && matchesForm;
       })
       .sort((a, b) => {
         if (sortBy === 'expiry_asc') {
-          return new Date(a.expiryDate) - new Date(b.expiryDate);
+          return new Date(a.expiryDate || '2099-01-01') - new Date(b.expiryDate || '2099-01-01');
         } else if (sortBy === 'expiry_desc') {
-          return new Date(b.expiryDate) - new Date(a.expiryDate);
+          return new Date(b.expiryDate || '2099-01-01') - new Date(a.expiryDate || '2099-01-01');
         } else if (sortBy === 'stock_high') {
           return b.quantity - a.quantity;
         } else if (sortBy === 'stock_low') {
           return a.quantity - b.quantity;
         } else if (sortBy === 'name') {
-          return a.brandName.localeCompare(b.brandName);
+          return (a.brandName || '').localeCompare(b.brandName || '');
         } else if (sortBy === 'price_asc') {
-          return a.finalPrice - b.finalPrice;
+          return (a.unitOriginalPrice || 0) - (b.unitOriginalPrice || 0);
         } else if (sortBy === 'price_desc') {
-          return b.finalPrice - a.finalPrice;
+          return (b.unitOriginalPrice || 0) - (a.unitOriginalPrice || 0);
         }
         return 0;
       });
-  }, [inventory, searchTerm, selectedStatusFilter, selectedTypeFilter, sortBy]);
+  }, [evaluatedInventory, searchTerm, selectedStatusFilter, selectedFormFilter, sortBy]);
 
   const handleOpenAdd = () => {
     if (isSuspended) {
@@ -231,20 +244,20 @@ export const HospitalInventory = () => {
     try {
       if (editingMedicine) {
         await dispatch(updateMedicineItem({ id: editingMedicine.id, data: formData }));
-        toast.success(`Updated ${formData.brandName} record`);
+        toast.success(`Updated ${formData.brandName} record in hospital inventory`);
       } else {
         const payload = {
           ...formData,
           hospitalId: user?.id,
-          hospitalName: user?.name || 'Hospital Pharmacy',
+          hospitalName: user?.name || 'Apollo Hospital Central Pharmacy',
         };
         await dispatch(addMedicineItem(payload));
-        toast.success(`Added ${formData.brandName} to verified inventory`);
+        toast.success(`Added ${formData.brandName} to hospital inventory`);
       }
       setAddEditModalOpen(false);
       setEditingMedicine(null);
     } catch (err) {
-      toast.error('Failed to save medicine record');
+      toast.error('Failed to save medicine record: ' + err.message);
     }
   };
 
@@ -252,13 +265,13 @@ export const HospitalInventory = () => {
     if (!deleteConfirmMed) return;
     try {
       await dispatch(deleteMedicineItem(deleteConfirmMed.id));
-      toast.success(`Removed ${deleteConfirmMed.brandName} from inventory`);
+      toast.success(`Removed ${deleteConfirmMed.brandName} from hospital inventory`);
       setDeleteConfirmMed(null);
       if (selectedMedicineForDetails?.id === deleteConfirmMed.id) {
         setSelectedMedicineForDetails(null);
       }
     } catch (err) {
-      toast.error('Failed to delete medicine');
+      toast.error('Failed to delete medicine: ' + err.message);
     }
   };
 
@@ -267,24 +280,39 @@ export const HospitalInventory = () => {
       toast.error('No medicines available to export');
       return;
     }
-    const headers = ['Brand Name', 'Generic Name', 'Formulation', 'Batch No', 'Storage', 'Expiry Date', 'Available Units', 'Unit Price', 'Concession %', 'Status'];
+    const headers = [
+      'Medicine / Brand Name',
+      'Generic Name',
+      'Dosage / Strength',
+      'Dosage Form',
+      'Batch Number',
+      'Manufacturing Date',
+      'Expiry Date',
+      'Quantity (Units)',
+      'Min Stock Buffer',
+      'Unit MRP (INR)',
+      'Storage Condition',
+      'Status'
+    ];
     const rows = filteredMedicines.map((m) => [
       `"${m.brandName}"`,
       `"${m.genericName || ''}"`,
       `"${m.power}"`,
+      `"${m.form}"`,
       `"${m.batchNo || 'N/A'}"`,
-      `"${m.storageType}"`,
+      `"${m.mfgDate || ''}"`,
       `"${m.expiryDate}"`,
       m.quantity,
+      m.minStock,
       m.unitOriginalPrice,
-      m.concessionPercent || 0,
-      `"${m.expiryMeta.label}"`
+      `"${m.storageType || ''}"`,
+      `"${m.computedStatus}"`
     ]);
     const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map((e) => e.join(','))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `MediStock_Inventory_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `Hospital_Inventory_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -294,7 +322,7 @@ export const HospitalInventory = () => {
   const resetFilters = () => {
     setSearchTerm('');
     setSelectedStatusFilter('all');
-    setSelectedTypeFilter('all');
+    setSelectedFormFilter('all');
     setSortBy('expiry_asc');
   };
 
@@ -304,11 +332,16 @@ export const HospitalInventory = () => {
       {/* 1. Page Header (WHERE AM I? + WHAT CAN I DO NEXT?) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
-            My Inventory
-          </h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight">
+              My Inventory
+            </h1>
+            <span className="px-2.5 py-0.5 rounded-full bg-primary-100 text-primary-800 text-[11px] font-mono font-bold">
+              {metrics.totalBatches} Batches Stored
+            </span>
+          </div>
           <p className="text-sm text-slate-500 mt-1 font-medium">
-            Manage available medicines, expiry dates and stock levels.
+            Add and manage all medicines stored in your hospital.
           </p>
         </div>
 
@@ -323,16 +356,16 @@ export const HospitalInventory = () => {
             }}
             disabled={isSuspended}
             className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-primary-200 bg-primary-50/70 hover:bg-primary-100 text-primary-800 text-xs font-bold transition-all shadow-sm disabled:opacity-50"
-            title="Import your existing hospital inventory from a CSV file."
+            title="Import existing hospital inventory from a CSV file"
           >
             <Upload className="w-4 h-4 text-primary-600" />
-            <span>Import Inventory</span>
+            <span>Import CSV</span>
           </button>
 
           <button
             onClick={handleExportCsv}
             className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all shadow-sm"
-            title="Download full inventory report"
+            title="Download complete inventory report"
           >
             <Download className="w-4 h-4 text-slate-500" />
             <span>Export CSV</span>
@@ -349,58 +382,69 @@ export const HospitalInventory = () => {
         </div>
       </div>
 
-      {/* 2. Compact Summary Row (5 Cards - Obvious Numbers & Explanations) */}
+      {/* 2. Inventory KPI Summary Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         
-        {/* Card 1: Total Medicines */}
+        {/* Card 1: Total Inventory */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-1">
           <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
-            Total Medicines
+            Total Inventory
           </span>
           <div className="text-2xl font-black text-slate-900 font-mono">
-            {metrics.totalUnits.toLocaleString()}
+            {metrics.totalUnits.toLocaleString()} <span className="text-xs font-normal text-slate-500">units</span>
           </div>
           <p className="text-[11px] text-slate-500 font-medium">
-            Across {metrics.totalBatches} batches
+            Across {metrics.totalBatches} total batches
           </p>
         </div>
 
-        {/* Card 2: Available Stock */}
+        {/* Card 2: Usable Available Stock */}
         <div className="bg-white p-4 rounded-2xl border border-emerald-200/70 bg-emerald-50/20 shadow-sm space-y-1">
           <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-700 block">
             Available Stock
           </span>
           <div className="text-2xl font-black text-emerald-800 font-mono">
-            {metrics.availableUnits.toLocaleString()}
+            {metrics.availableUnits.toLocaleString()} <span className="text-xs font-normal text-emerald-600">units</span>
           </div>
           <p className="text-[11px] text-emerald-600 font-medium">
-            Ready for dispensing
+            Active & valid shelf life
           </p>
         </div>
 
-        {/* Card 3: Near Expiry */}
+        {/* Card 3: Expiring Soon */}
         <div className="bg-white p-4 rounded-2xl border border-amber-200/90 bg-amber-50/25 shadow-sm space-y-1">
           <span className="text-[11px] font-bold uppercase tracking-wider text-amber-800 block">
-            Near Expiry
+            Expiring Soon
           </span>
           <div className="text-2xl font-black text-amber-700 font-mono">
-            {metrics.nearExpiryCount}
+            {metrics.expiringSoonCount} <span className="text-xs font-normal text-amber-600">batches</span>
           </div>
           <p className="text-[11px] text-amber-700 font-medium">
-            Needs attention (&lt;90 days)
+            Under 90 days shelf life
           </p>
         </div>
 
-        {/* Card 4: Expired */}
+        {/* Card 4: Expired Stock */}
         <div className="bg-white p-4 rounded-2xl border border-rose-200/90 bg-rose-50/25 shadow-sm space-y-1">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 block">
-            Expired
-          </span>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700 block">
+              Expired Stock
+            </span>
+            {metrics.expiredCount > 0 && (
+              <Link 
+                to="/hospital/waste-management" 
+                className="text-[10px] font-bold text-rose-700 hover:underline flex items-center gap-0.5"
+              >
+                <span>Bio-Waste</span>
+                <ArrowRight className="w-2.5 h-2.5" />
+              </Link>
+            )}
+          </div>
           <div className="text-2xl font-black text-rose-700 font-mono">
-            {metrics.expiredCount}
+            {metrics.expiredCount} <span className="text-xs font-normal text-rose-500">batches</span>
           </div>
           <p className="text-[11px] text-rose-600 font-medium">
-            Move to disposal
+            Tracked for Bio-Waste Disposal
           </p>
         </div>
 
@@ -410,144 +454,28 @@ export const HospitalInventory = () => {
             Low Stock
           </span>
           <div className="text-2xl font-black text-blue-700 font-mono">
-            {metrics.lowStockCount}
+            {metrics.lowStockCount} <span className="text-xs font-normal text-blue-500">batches</span>
           </div>
           <p className="text-[11px] text-blue-600 font-medium">
-            Below safety buffer
+            Below safety buffer level
           </p>
         </div>
 
       </div>
 
-      {/* 3. NEEDS ATTENTION SECTION (Surfaces problems immediately) */}
-      <div className="bg-slate-50/80 p-5 rounded-3xl border border-slate-200 space-y-3.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4 text-amber-600" />
-            <h2 className="text-base font-extrabold text-slate-900 tracking-tight">
-              Needs Attention
-            </h2>
-            <span className="px-2 py-0.5 text-[11px] font-bold rounded-full bg-amber-100 text-amber-800 font-mono">
-              {attentionMedicines.length} items
-            </span>
-          </div>
-          <p className="text-xs text-slate-400 hidden sm:block">
-            Take action on expiring or depleted medicines
-          </p>
-        </div>
-
-        {attentionMedicines.length === 0 ? (
-          <div className="p-4 rounded-2xl bg-white border border-emerald-200 text-center flex items-center justify-center gap-2 text-emerald-800 text-xs font-bold">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-            <span>All Stock Healthy: No medicines currently require urgent attention or disposal.</span>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {attentionMedicines.slice(0, 6).map((med) => {
-              const isExpired = med.expiryMeta.isExpired;
-              const isNearExpiry = med.expiryMeta.status === 'critical' || med.expiryMeta.status === 'near-expiry';
-              const isLowStock = med.expiryMeta.status === 'low-stock';
-
-              return (
-                <div 
-                  key={med.id}
-                  className={`p-4 rounded-2xl bg-white border transition-all shadow-sm flex flex-col justify-between space-y-3 ${
-                    isExpired 
-                      ? 'border-rose-300 bg-rose-50/10' 
-                      : isNearExpiry 
-                        ? 'border-amber-300 bg-amber-50/10' 
-                        : 'border-blue-200'
-                  }`}
-                >
-                  {/* Status Tag & Timing */}
-                  <div className="flex items-start justify-between gap-2">
-                    {isExpired ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800">
-                        ✕ Expired
-                      </span>
-                    ) : isNearExpiry ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900">
-                        ⚠ Near Expiry
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900">
-                        ! Low Stock
-                      </span>
-                    )}
-
-                    <span className="text-[11px] font-bold text-slate-500 font-mono">
-                      {isExpired 
-                        ? `Expired ${Math.abs(med.expiryMeta.daysRemaining)} days ago` 
-                        : `Expires in ${med.expiryMeta.daysRemaining} days`}
-                    </span>
-                  </div>
-
-                  {/* Medicine Info */}
-                  <div>
-                    <h4 className="text-sm font-extrabold text-slate-900 leading-tight">
-                      {med.brandName}
-                    </h4>
-                    <p className="text-xs text-slate-500 line-clamp-1 mt-0.5">
-                      {med.power} • Batch: <span className="font-mono text-slate-700">{med.batchNo || 'N/A'}</span>
-                    </p>
-                    <div className="flex items-center justify-between text-xs mt-2 pt-2 border-t border-slate-100 font-medium">
-                      <span className="text-slate-600">Stock: <strong className="text-slate-900 font-mono font-bold">{med.quantity} units</strong></span>
-                      {isExpired ? (
-                        <span className="text-[11px] text-rose-600 font-bold">Marketplace: Unavailable</span>
-                      ) : (
-                        <span className="text-[11px] text-amber-700 font-bold">{med.concessionPercent || 0}% concession</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Action Buttons */}
-                  <div className="flex items-center gap-2 pt-1">
-                    {isExpired ? (
-                      <button
-                        onClick={() => navigate(`/hospital/waste-management?name=${encodeURIComponent(med.brandName)}&batch=${encodeURIComponent(med.batchNo || '')}&qty=${med.quantity}&unit=units`)}
-                        className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all flex items-center justify-center gap-1.5 shadow-sm"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                        <span>Dispose via Waste Management</span>
-                      </button>
-                    ) : (
-                      <>
-                        <button
-                          onClick={() => setSelectedMedicineForDetails(med)}
-                          className="flex-1 py-1.5 px-3 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold transition-all text-center"
-                        >
-                          View Details
-                        </button>
-                        <button
-                          onClick={() => setSelectedMedicineForDetails(med)}
-                          className="flex-1 py-1.5 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all text-center"
-                        >
-                          List for Transfer
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* 4. Filters Bar (Obvious, clear, and visible) */}
+      {/* 3. Filter, Search & Sort Toolbar */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-3">
         <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
           
-          {/* Search Box */}
+          {/* Search Input */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
             <input
               type="text"
-              placeholder="Search medicine name, formulation, batch..."
+              placeholder="Search medicine name, generic composition, strength, batch..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-10 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
+              className="w-full pl-10 pr-8 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium text-slate-800"
             />
             {searchTerm && (
               <button 
@@ -559,38 +487,42 @@ export const HospitalInventory = () => {
             )}
           </div>
 
-          {/* Status Dropdown */}
-          <div className="w-full md:w-48">
+          {/* Status Filter */}
+          <div className="w-full md:w-44">
             <select
               value={selectedStatusFilter}
               onChange={(e) => setSelectedStatusFilter(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-bold text-slate-700 focus:outline-none"
             >
-              <option value="all">All Status</option>
-              <option value="healthy">✓ Healthy</option>
-              <option value="near_expiry">⚠ Near Expiry (&lt;90d)</option>
-              <option value="expired">✕ Expired (Needs Disposal)</option>
+              <option value="all">All Statuses</option>
+              <option value="available">✓ Available</option>
               <option value="low_stock">! Low Stock</option>
+              <option value="expiring_soon">⚠ Expiring Soon</option>
+              <option value="expired">✕ Expired</option>
+              <option value="disposal_requested">⌛ Disposal Requested</option>
+              <option value="disposed">🗑 Disposed</option>
             </select>
           </div>
 
-          {/* Type Dropdown */}
-          <div className="w-full md:w-48">
+          {/* Form Filter */}
+          <div className="w-full md:w-40">
             <select
-              value={selectedTypeFilter}
-              onChange={(e) => setSelectedTypeFilter(e.target.value)}
+              value={selectedFormFilter}
+              onChange={(e) => setSelectedFormFilter(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-bold text-slate-700 focus:outline-none"
             >
-              <option value="all">All Types</option>
-              <option value="Injection / Vial">Injection / Vial</option>
-              <option value="Tablet">Tablet</option>
-              <option value="Infusion">Infusion</option>
-              <option value="Pre-filled Syringe / Pen">Pre-filled Syringe / Pen</option>
-              <option value="Ampoule">Ampoule</option>
+              <option value="all">All Forms</option>
+              <option value="tablet">Tablet</option>
+              <option value="capsule">Capsule</option>
+              <option value="syrup">Syrup</option>
+              <option value="injection">Injection / Vial</option>
+              <option value="infusion">Infusion Bottle</option>
+              <option value="syringe">Pre-filled Syringe</option>
+              <option value="ampoule">Ampoule</option>
             </select>
           </div>
 
-          {/* Sort Dropdown */}
+          {/* Sort Filter */}
           <div className="w-full md:w-48">
             <select
               value={sortBy}
@@ -599,16 +531,16 @@ export const HospitalInventory = () => {
             >
               <option value="expiry_asc">Expiry (Soonest First)</option>
               <option value="expiry_desc">Expiry (Latest First)</option>
-              <option value="stock_high">Highest Stock</option>
-              <option value="stock_low">Lowest Stock</option>
-              <option value="name">Name (A-Z)</option>
+              <option value="stock_high">Stock Quantity (High to Low)</option>
+              <option value="stock_low">Stock Quantity (Low to High)</option>
+              <option value="name">Medicine Name (A-Z)</option>
               <option value="price_asc">Price (Low to High)</option>
               <option value="price_desc">Price (High to Low)</option>
             </select>
           </div>
 
-          {/* Clear Filters Button */}
-          {(searchTerm || selectedStatusFilter !== 'all' || selectedTypeFilter !== 'all') && (
+          {/* Reset Filters */}
+          {(searchTerm || selectedStatusFilter !== 'all' || selectedFormFilter !== 'all') && (
             <button
               onClick={resetFilters}
               className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-100 flex items-center gap-1 flex-shrink-0"
@@ -620,67 +552,82 @@ export const HospitalInventory = () => {
 
         </div>
 
-        {/* Result Count Indicator */}
+        {/* Result summary indicator */}
         <div className="text-xs text-slate-500 font-medium px-1 flex items-center justify-between">
-          <span>{filteredMedicines.length} medicines found</span>
-          {isSuspended && (
-            <span className="text-rose-600 font-bold">Account suspended: Read-only ledger</span>
+          <span>Showing {filteredMedicines.length} of {inventory.length} hospital medicines</span>
+          {metrics.expiredCount > 0 && (
+            <span className="text-rose-600 font-semibold text-[11px] flex items-center gap-1">
+              <AlertTriangle className="w-3.5 h-3.5" />
+              <span>{metrics.expiredCount} expired items are ready for disposal under Bio-Waste Disposal</span>
+            </span>
           )}
         </div>
       </div>
 
-      {/* 5. MAIN INVENTORY TABLE (Desktop) & CARDS (Mobile) */}
+      {/* 4. MAIN INVENTORY TABLE (Desktop) & CARDS (Mobile) */}
       <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
         {isLoading && inventory.length === 0 ? (
           <div className="p-12 text-center">
-            <LoadingSpinner text="Loading hospital inventory..." />
+            <LoadingSpinner text="Loading hospital inventory ledger..." />
           </div>
         ) : filteredMedicines.length === 0 ? (
           <div className="p-12 text-center space-y-3">
             <Boxes className="w-12 h-12 text-slate-300 mx-auto" />
             <h3 className="text-base font-bold text-slate-800">
-              No medicines in your inventory yet.
+              No medicines match your current filter criteria.
             </h3>
             <p className="text-xs text-slate-500 max-w-sm mx-auto">
-              Add batches to keep track of medicines, automate shelf-life concessions, and manage safe hospital bio-waste disposal.
+              Add new medicines to your hospital inventory or reset the active search filters.
             </p>
-            <button
-              onClick={handleOpenAdd}
-              className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-sm"
-            >
-              <PlusCircle className="w-4 h-4" />
-              <span>+ Add Medicine</span>
-            </button>
+            <div className="pt-2 flex items-center justify-center gap-2">
+              <button
+                onClick={resetFilters}
+                className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 text-xs font-bold hover:bg-slate-50"
+              >
+                Reset Filters
+              </button>
+              <button
+                onClick={handleOpenAdd}
+                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-sm"
+              >
+                <PlusCircle className="w-4 h-4" />
+                <span>+ Add Medicine</span>
+              </button>
+            </div>
           </div>
         ) : (
           <>
-            {/* Desktop Table View */}
+            {/* Desktop Table */}
             <div className="hidden lg:block overflow-x-auto">
               <table className="min-w-full divide-y divide-slate-200 text-xs">
                 <thead className="bg-slate-50 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
                   <tr>
-                    <th className="px-4 py-3.5 text-left">Medicine</th>
-                    <th className="px-3 py-3.5 text-left">Type</th>
-                    <th className="px-3 py-3.5 text-left">Batch</th>
-                    <th className="px-3 py-3.5 text-center">Available</th>
-                    <th className="px-3 py-3.5 text-left">Expiry</th>
+                    <th className="px-4 py-3.5 text-left">Medicine / Brand</th>
+                    <th className="px-3 py-3.5 text-left">Form / Strength</th>
+                    <th className="px-3 py-3.5 text-left">Batch Number</th>
+                    <th className="px-3 py-3.5 text-center">Stock Quantity</th>
+                    <th className="px-3 py-3.5 text-left">Expiry Date</th>
                     <th className="px-3 py-3.5 text-center">Status</th>
-                    <th className="px-4 py-3.5 text-right">Price</th>
-                    <th className="px-4 py-3.5 text-center">Action</th>
+                    <th className="px-4 py-3.5 text-right">Unit MRP</th>
+                    <th className="px-4 py-3.5 text-center">Actions</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                   {filteredMedicines.map((med) => {
-                    const isExpired = med.expiryMeta.isExpired;
+                    const isDisposed = med.status === 'disposed';
+                    const isExpired = med.expiryMeta.isExpired && !isDisposed;
+                    const isLow = med.quantity <= med.minStock && !isExpired && !isDisposed;
 
                     return (
                       <tr 
                         key={med.id} 
-                        className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        className={`hover:bg-slate-50/90 transition-colors cursor-pointer ${
+                          isDisposed ? 'opacity-60 bg-slate-50/50' : ''
+                        }`}
                         onClick={() => setSelectedMedicineForDetails(med)}
                       >
-                        {/* Medicine */}
+                        {/* Medicine / Brand */}
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-3">
                             <div className="w-8 h-8 rounded-xl bg-primary-50 text-primary-700 flex items-center justify-center font-bold flex-shrink-0">
@@ -697,28 +644,30 @@ export const HospitalInventory = () => {
                           </div>
                         </td>
 
-                        {/* Type */}
+                        {/* Form / Strength */}
                         <td className="px-3 py-3.5">
-                          <span className="font-semibold text-slate-800 block">{med.type}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">{med.power}</span>
+                          <span className="font-semibold text-slate-900 block">{med.form}</span>
+                          <span className="text-[11px] text-slate-500 font-mono">{med.power}</span>
                         </td>
 
-                        {/* Batch */}
+                        {/* Batch Number */}
                         <td className="px-3 py-3.5 font-mono font-bold text-slate-700">
                           {med.batchNo || 'N/A'}
                         </td>
 
-                        {/* Available */}
+                        {/* Stock Quantity */}
                         <td className="px-3 py-3.5 text-center">
-                          <span className="font-mono font-extrabold text-slate-900 text-sm">
+                          <div className="font-mono font-extrabold text-slate-900 text-sm">
                             {med.quantity}
-                          </span>
-                          <span className="text-[10px] text-slate-400 block">units</span>
+                          </div>
+                          <div className="text-[10px] text-slate-400">
+                            Min: {med.minStock} units
+                          </div>
                         </td>
 
-                        {/* Expiry */}
+                        {/* Expiry Date */}
                         <td className="px-3 py-3.5">
-                          <div className="font-mono font-bold text-slate-800 text-xs">
+                          <div className="font-mono font-bold text-slate-900 text-xs">
                             {med.expiryDate}
                           </div>
                           <span className={`text-[10px] font-bold ${
@@ -728,50 +677,47 @@ export const HospitalInventory = () => {
                           </span>
                         </td>
 
-                        {/* Status */}
+                        {/* Status Badge */}
                         <td className="px-3 py-3.5 text-center">
-                          <StatusBadge status={med.expiryMeta.label} />
+                          <StatusBadge status={med.computedStatus} />
                         </td>
 
-                        {/* Price */}
+                        {/* Unit MRP */}
                         <td className="px-4 py-3.5 text-right font-mono">
                           <div className="font-bold text-slate-900 text-sm">
-                            ₹{med.finalPrice}
+                            ₹{med.unitOriginalPrice}
                           </div>
                           <div className="text-[10px] text-slate-400">
-                            MRP ₹{med.unitOriginalPrice}
+                            per unit
                           </div>
                         </td>
 
-                        {/* Action */}
+                        {/* Actions */}
                         <td className="px-4 py-3.5 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1.5">
-                            {isExpired ? (
+                            <button
+                              onClick={() => setSelectedMedicineForDetails(med)}
+                              className="px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-primary-700 hover:bg-primary-50 transition-colors text-xs font-bold"
+                              title="View full record"
+                            >
+                              View
+                            </button>
+                            {!isDisposed && (
                               <button
-                                onClick={() => navigate(`/hospital/waste-management?name=${encodeURIComponent(med.brandName)}&batch=${encodeURIComponent(med.batchNo || '')}&qty=${med.quantity}&unit=units`)}
-                                className="px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 font-bold text-xs flex items-center gap-1 transition-all"
-                                title="Move to safe bio-medical disposal"
+                                onClick={() => handleOpenEdit(med)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+                                title="Edit medicine parameters"
                               >
-                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                                <span>Dispose</span>
+                                <Edit3 className="w-3.5 h-3.5" />
                               </button>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={() => setSelectedMedicineForDetails(med)}
-                                  className="px-2.5 py-1.5 rounded-lg text-slate-600 hover:text-primary-700 hover:bg-primary-50 transition-colors text-xs font-bold"
-                                >
-                                  View
-                                </button>
-                                <button
-                                  onClick={() => handleOpenEdit(med)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                                  title="Edit Medicine"
-                                >
-                                  <Edit3 className="w-3.5 h-3.5" />
-                                </button>
-                              </>
                             )}
+                            <button
+                              onClick={() => setDeleteConfirmMed(med)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Delete from inventory"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </td>
 
@@ -782,39 +728,42 @@ export const HospitalInventory = () => {
               </table>
             </div>
 
-            {/* Mobile Card View (No squeezed table) */}
+            {/* Mobile Cards */}
             <div className="block lg:hidden divide-y divide-slate-100 p-3 space-y-3">
               {filteredMedicines.map((med) => {
-                const isExpired = med.expiryMeta.isExpired;
+                const isDisposed = med.status === 'disposed';
 
                 return (
                   <div
                     key={med.id}
                     onClick={() => setSelectedMedicineForDetails(med)}
-                    className="p-4 rounded-2xl bg-white border border-slate-200 space-y-3 cursor-pointer hover:border-slate-300 transition-all"
+                    className={`p-4 rounded-2xl bg-white border border-slate-200 space-y-3 cursor-pointer hover:border-slate-300 transition-all ${
+                      isDisposed ? 'opacity-65' : ''
+                    }`}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <h4 className="text-sm font-extrabold text-slate-900">{med.brandName}</h4>
-                        <p className="text-xs text-slate-500 font-medium">{med.type} • Batch: {med.batchNo || 'N/A'}</p>
+                        <p className="text-xs text-slate-500 font-medium">{med.form} • {med.power}</p>
                       </div>
-                      <StatusBadge status={med.expiryMeta.label} />
+                      <StatusBadge status={med.computedStatus} />
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100">
                       <div>
-                        <span className="text-[10px] text-slate-400 block font-medium">AVAILABLE STOCK</span>
-                        <span className="text-sm font-bold text-slate-900 font-mono">{med.quantity} units</span>
+                        <span className="text-[10px] text-slate-400 block font-medium">BATCH & STOCK</span>
+                        <span className="text-xs font-bold text-slate-800 font-mono">{med.batchNo}</span>
+                        <span className="text-xs text-slate-600 font-bold block">{med.quantity} units</span>
                       </div>
                       <div className="text-right">
                         <span className="text-[10px] text-slate-400 block font-medium">UNIT PRICE</span>
-                        <span className="text-sm font-bold text-primary-700 font-mono">₹{med.finalPrice}</span>
+                        <span className="text-sm font-bold text-primary-700 font-mono">₹{med.unitOriginalPrice}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
                       <span className="text-slate-500 font-medium">
-                        Expires: <strong className="text-slate-800 font-mono">{med.expiryDate}</strong> ({med.expiryMeta.badge})
+                        Expires: <strong className="text-slate-800 font-mono">{med.expiryDate}</strong>
                       </span>
                       
                       <button
@@ -824,7 +773,7 @@ export const HospitalInventory = () => {
                         }}
                         className="text-xs font-bold text-primary-600 hover:text-primary-700 flex items-center gap-1"
                       >
-                        <span>View Details</span>
+                        <span>Details</span>
                         <ArrowRight className="w-3 h-3" />
                       </button>
                     </div>
@@ -837,7 +786,7 @@ export const HospitalInventory = () => {
         )}
       </div>
 
-      {/* 6. MEDICINE DETAIL DRAWER / MODAL (Clear, beginner-friendly layout) */}
+      {/* 5. MEDICINE DETAIL DRAWER */}
       {selectedMedicineForDetails && (
         <div className="fixed inset-0 z-50 flex justify-end bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
           <div className="absolute inset-0" onClick={() => setSelectedMedicineForDetails(null)} />
@@ -848,13 +797,13 @@ export const HospitalInventory = () => {
             <div className="p-5 border-b border-slate-200 flex items-start justify-between bg-slate-50 sticky top-0 z-10">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Medicine Information
+                  Hospital Inventory Record
                 </span>
                 <h2 className="text-xl font-black text-slate-900 leading-tight">
                   {selectedMedicineForDetails.brandName}
                 </h2>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {selectedMedicineForDetails.power}
+                  {selectedMedicineForDetails.form} • {selectedMedicineForDetails.power}
                 </p>
               </div>
 
@@ -872,25 +821,25 @@ export const HospitalInventory = () => {
               {/* STATUS BANNER */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex items-center justify-between">
                 <div>
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Current Status</span>
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Inventory Status</span>
                   <div className="mt-1">
-                    <StatusBadge status={selectedMedicineForDetails.expiryMeta?.label || 'Healthy'} />
+                    <StatusBadge status={selectedMedicineForDetails.computedStatus} />
                   </div>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Days to Expiry</span>
-                  <span className="text-base font-black font-mono text-slate-800">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block">Shelf Life Status</span>
+                  <span className="text-sm font-black font-mono text-slate-800">
                     {selectedMedicineForDetails.expiryMeta?.daysRemaining > 0 
-                      ? `${selectedMedicineForDetails.expiryMeta?.daysRemaining} days`
-                      : 'Expired'}
+                      ? `${selectedMedicineForDetails.expiryMeta?.daysRemaining} days left`
+                      : `Expired ${Math.abs(selectedMedicineForDetails.expiryMeta?.daysRemaining || 0)}d ago`}
                   </span>
                 </div>
               </div>
 
-              {/* SECTION 1: MEDICINE */}
+              {/* SECTION 1: MEDICINE SPECIFICATION */}
               <div className="space-y-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  1. Medicine Overview
+                  1. Medicine Specification
                 </h3>
                 <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <div>
@@ -898,16 +847,16 @@ export const HospitalInventory = () => {
                     <strong className="text-slate-800">{selectedMedicineForDetails.brandName}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Formulation / Type</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.type || 'Standard'}</strong>
+                    <span className="text-[10px] text-slate-400 block font-medium">Dosage Form</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.form}</strong>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-[10px] text-slate-400 block font-medium">Generic / Molecule</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.genericName || 'CDSCO Regulated Compound'}</strong>
+                    <span className="text-[10px] text-slate-400 block font-medium">Generic Composition</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.genericName || 'CDSCO Pharmaceutical Compound'}</strong>
                   </div>
                   <div className="col-span-2">
                     <span className="text-[10px] text-slate-400 block font-medium">Manufacturer</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.manufacturer || 'Approved Pharmaceutical Maker'}</strong>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.manufacturer || 'Approved Pharma House'}</strong>
                   </div>
                 </div>
               </div>
@@ -915,7 +864,7 @@ export const HospitalInventory = () => {
               {/* SECTION 2: BATCH & DATES */}
               <div className="space-y-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  2. Batch & Dates
+                  2. Batch & Shelf Life
                 </h3>
                 <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <div>
@@ -926,12 +875,12 @@ export const HospitalInventory = () => {
                     <span className="text-[10px] text-slate-400 block font-medium">Storage Requirement</span>
                     <strong className="text-slate-800 flex items-center gap-1">
                       <Thermometer className="w-3.5 h-3.5 text-cyan-600" />
-                      {selectedMedicineForDetails.storageType}
+                      {selectedMedicineForDetails.storageType || 'Room Temperature'}
                     </strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Manufacturing Date</span>
-                    <strong className="font-mono text-slate-700">{getMfgDate(selectedMedicineForDetails)}</strong>
+                    <strong className="font-mono text-slate-700">{selectedMedicineForDetails.mfgDate || 'N/A'}</strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Expiry Date</span>
@@ -940,107 +889,86 @@ export const HospitalInventory = () => {
                 </div>
               </div>
 
-              {/* SECTION 3: STOCK */}
+              {/* SECTION 3: STOCK LEVELS */}
               <div className="space-y-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  3. Stock & Availability
+                  3. Stock & Buffer Thresholds
                 </h3>
                 <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-center">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Available</span>
+                    <span className="text-[10px] text-slate-400 block font-medium">Stock Units</span>
                     <div className="text-base font-black text-slate-900 font-mono">
                       {selectedMedicineForDetails.quantity}
                     </div>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Reserved</span>
-                    <div className="text-base font-black text-slate-500 font-mono">0</div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Min Buffer</span>
+                    <div className="text-base font-black text-slate-600 font-mono">
+                      {selectedMedicineForDetails.minStock || 20}
+                    </div>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Minimum Buffer</span>
-                    <div className="text-base font-black text-slate-500 font-mono">10</div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Unit MRP</span>
+                    <div className="text-base font-black text-primary-700 font-mono">
+                      ₹{selectedMedicineForDetails.unitOriginalPrice}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* SECTION 4: PRICING */}
-              <div className="space-y-2.5">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  4. Pricing & Concession
-                </h3>
-                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100 space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Original MRP:</span>
-                    <span className="font-mono font-bold text-slate-700">₹{selectedMedicineForDetails.unitOriginalPrice} / unit</span>
+              {/* SECTION 4: EXPIRED ITEM BIO-WASTE NOTICE */}
+              {selectedMedicineForDetails.expiryMeta?.isExpired && selectedMedicineForDetails.status !== 'disposed' && (
+                <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-2">
+                  <div className="flex items-center gap-2 text-rose-800 font-bold">
+                    <AlertTriangle className="w-4 h-4 text-rose-600" />
+                    <span>Expired Batch Notice</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-slate-500">Shelf-Life Concession:</span>
-                    <span className="font-mono font-bold text-emerald-700">-{selectedMedicineForDetails.concessionPercent || 0}%</span>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-slate-200 text-sm font-extrabold text-slate-900">
-                    <span>Effective Selling Price:</span>
-                    <span className="font-mono text-primary-700">
-                      ₹{Math.round(selectedMedicineForDetails.unitOriginalPrice * (1 - (selectedMedicineForDetails.concessionPercent || 0) / 100) * 100) / 100} / unit
-                    </span>
-                  </div>
+                  <p className="text-[11px] text-rose-700 leading-relaxed">
+                    This medicine batch is past its expiration date. You can review and safely destroy it via the <strong>Bio-Waste Disposal</strong> section.
+                  </p>
+                  <Link
+                    to="/hospital/waste-management"
+                    onClick={() => setSelectedMedicineForDetails(null)}
+                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 hover:text-rose-900 underline pt-1"
+                  >
+                    <span>Open Bio-Waste Disposal</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
-              </div>
+              )}
 
             </div>
 
-            {/* ONE OBVIOUS NEXT ACTION */}
-            <div className="p-5 border-t border-slate-200 bg-white sticky bottom-0 space-y-2">
-              {selectedMedicineForDetails.expiryMeta?.isExpired ? (
-                <button
-                  onClick={() => {
-                    const m = selectedMedicineForDetails;
-                    setSelectedMedicineForDetails(null);
-                    navigate(`/hospital/waste-management?name=${encodeURIComponent(m.brandName)}&batch=${encodeURIComponent(m.batchNo || '')}&qty=${m.quantity}&unit=units`);
-                  }}
-                  className="w-full py-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20"
-                >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Dispose via Bio-Waste Management</span>
-                </button>
-              ) : selectedMedicineForDetails.expiryMeta?.status === 'near-expiry' || selectedMedicineForDetails.expiryMeta?.status === 'critical' ? (
-                <button
-                  onClick={() => {
-                    setSelectedMedicineForDetails(null);
-                    navigate('/marketplace');
-                  }}
-                  className="w-full py-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg shadow-amber-600/20"
-                >
-                  <Sparkles className="w-4 h-4" />
-                  <span>List for Inter-Hospital Redistribution</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => {
-                      const med = selectedMedicineForDetails;
-                      setSelectedMedicineForDetails(null);
-                      handleOpenEdit(med);
-                    }}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs text-center"
-                  >
-                    Edit Medicine Record
-                  </button>
-                  <button
-                    onClick={() => setDeleteConfirmMed(selectedMedicineForDetails)}
-                    className="py-2.5 px-3 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs"
-                    title="Delist from inventory"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              )}
+            {/* Actions Bottom Bar */}
+            <div className="p-5 border-t border-slate-200 bg-white sticky bottom-0 flex items-center justify-between gap-3">
+              <button
+                onClick={() => {
+                  const med = selectedMedicineForDetails;
+                  setSelectedMedicineForDetails(null);
+                  handleOpenEdit(med);
+                }}
+                disabled={selectedMedicineForDetails.status === 'disposed'}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs text-center disabled:opacity-50"
+              >
+                Edit Parameters
+              </button>
+              <button
+                onClick={() => {
+                  const med = selectedMedicineForDetails;
+                  setSelectedMedicineForDetails(null);
+                  setDeleteConfirmMed(med);
+                }}
+                className="py-2.5 px-4 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs"
+              >
+                Delete Record
+              </button>
             </div>
 
           </div>
         </div>
       )}
 
-      {/* Add / Edit Modal (Preserved form logic) */}
+      {/* Add / Edit Modal */}
       <MedicineModal
         isOpen={addEditModalOpen}
         onClose={() => setAddEditModalOpen(false)}
@@ -1071,21 +999,21 @@ export const HospitalInventory = () => {
           <div className="p-3.5 bg-rose-50 rounded-xl border border-rose-200 flex items-start gap-3">
             <AlertTriangle className="w-5 h-5 text-rose-600 flex-shrink-0 mt-0.5" />
             <p className="text-xs text-rose-800 leading-relaxed">
-              Are you sure you want to remove <strong className="font-bold">{deleteConfirmMed?.brandName}</strong>? It will be removed from your hospital ledger immediately.
+              Are you sure you want to remove <strong className="font-bold">{deleteConfirmMed?.brandName}</strong>? It will be removed from your hospital inventory ledger immediately.
             </p>
           </div>
           <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={() => setDeleteConfirmMed(null)}
-              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg"
+              className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleDelete}
-              className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-lg shadow-sm"
+              className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-sm"
             >
               Confirm Removal
             </button>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { 
@@ -20,9 +20,12 @@ import {
   CheckCircle2,
   ChevronRight,
   Layers,
-  Activity
+  Activity,
+  Trash2,
+  FileCheck2,
+  Building2
 } from 'lucide-react';
-import { fetchHospitalDashboard } from '../../store/slices/hospitalSlice';
+import { fetchHospitalDashboard, fetchInventory } from '../../store/slices/hospitalSlice';
 import PurchasesBarChart from '../../components/charts/PurchasesBarChart';
 import SalesBarChart from '../../components/charts/SalesBarChart';
 import ProfitabilityComboChart from '../../components/charts/ProfitabilityComboChart';
@@ -30,27 +33,68 @@ import FloatingNetworkHero from '../../components/spatial/FloatingNetworkHero';
 import SpatialInventoryOverview from '../../components/spatial/SpatialInventoryOverview';
 import LiveSupplyNetworkMap from '../../components/spatial/LiveSupplyNetworkMap';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+import { calculateMedicineExpiry } from '../../utils/expiryUtils';
 
 export const HospitalDashboard = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
-  const { dashboardData, isLoading } = useSelector((state) => state.hospital);
+  const { dashboardData, inventory = [], disposals = [], isLoading } = useSelector((state) => state.hospital);
 
   const [timeRange, setTimeRange] = useState('6M'); // 7D | 30D | 3M | 6M | 1Y
 
   useEffect(() => {
     if (user?.id) {
       dispatch(fetchHospitalDashboard(user.id));
+      dispatch(fetchInventory(user.id));
     }
   }, [dispatch, user?.id]);
 
-  if (isLoading && !dashboardData) {
+  // Derived real-time inventory statistics from single source of truth
+  const inventoryMetrics = useMemo(() => {
+    const totalBatches = inventory.length;
+    const totalUnits = inventory.reduce((sum, m) => sum + (Number(m.quantity) || 0), 0);
+
+    let expiredBatches = 0;
+    let expiredUnits = 0;
+    let requiringDisposalBatches = 0;
+    let requiringDisposalUnits = 0;
+    let availableUnits = 0;
+
+    inventory.forEach((m) => {
+      const isDisposed = m.status === 'disposed';
+      const qty = Number(m.quantity) || 0;
+      const exp = calculateMedicineExpiry(m.expiryDate, qty);
+
+      if (exp.isExpired) {
+        expiredBatches++;
+        expiredUnits += qty;
+        if (!isDisposed) {
+          requiringDisposalBatches++;
+          requiringDisposalUnits += qty;
+        }
+      } else if (!isDisposed) {
+        availableUnits += qty;
+      }
+    });
+
+    return {
+      totalBatches,
+      totalUnits,
+      expiredBatches,
+      expiredUnits,
+      requiringDisposalBatches,
+      requiringDisposalUnits,
+      availableUnits,
+    };
+  }, [inventory]);
+
+  if (isLoading && !dashboardData && inventory.length === 0) {
     return <LoadingSpinner text="Compiling Pharmacy Supply Chain Telemetry..." />;
   }
 
   const stats = dashboardData?.stats || {
-    totalMedicines: 0,
-    activeSkus: 0,
+    totalMedicines: inventoryMetrics.totalUnits,
+    activeSkus: inventoryMetrics.totalBatches,
     monthlyPurchases: 0,
     monthlySales: 0,
     profitabilityPercent: 0,
@@ -85,25 +129,38 @@ export const HospitalDashboard = () => {
             </h1>
 
             <p className="text-xs sm:text-sm text-slate-300 font-normal leading-relaxed max-w-xl">
-              Monitor inventory in real-time, discover verified medicine exchanges, recover near-expiry stock with automated discount concessions, and coordinate cold-chain logistics across peer hospitals.
+              Manage complete hospital inventory, discover peer exchanges with automated shelf-life discounts, safely destroy expired medicines via certified bio-waste disposal, and coordinate cold-chain logistics.
             </p>
 
-            {/* Two Primary Action Buttons */}
+            {/* Hero Action Buttons */}
             <div className="flex flex-wrap items-center gap-3 pt-2">
               <Link
-                to="/hospital/marketplace"
+                to="/hospital/inventory"
                 className="px-5 py-2.5 rounded-xl bg-primary-500 hover:bg-primary-400 text-secondary-950 font-extrabold text-xs shadow-lg shadow-primary-500/30 transition-all flex items-center gap-2 hover:scale-[1.02]"
               >
-                <ShoppingBag className="w-4 h-4" />
-                <span>Browse Marketplace</span>
+                <Boxes className="w-4 h-4" />
+                <span>My Inventory</span>
               </Link>
 
               <Link
-                to="/hospital/inventory"
-                className="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 transition-all flex items-center gap-2"
+                to="/hospital/waste-management"
+                className="px-5 py-2.5 rounded-xl bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 font-bold text-xs border border-rose-500/40 transition-all flex items-center gap-2"
               >
-                <PlusCircle className="w-4 h-4 text-cyan-300" />
-                <span>Manage Inventory</span>
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>Bio-Waste Disposal</span>
+                {inventoryMetrics.requiringDisposalBatches > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-white text-[10px] font-mono font-bold">
+                    {inventoryMetrics.requiringDisposalBatches}
+                  </span>
+                )}
+              </Link>
+
+              <Link
+                to="/hospital/marketplace"
+                className="px-4 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold text-xs border border-white/20 transition-all flex items-center gap-2"
+              >
+                <ShoppingBag className="w-4 h-4 text-cyan-300" />
+                <span>Marketplace</span>
               </Link>
             </div>
 
@@ -114,12 +171,12 @@ export const HospitalDashboard = () => {
                 <span className="text-slate-200 font-bold">48 Hospitals Active</span>
               </div>
               <div>
-                <span className="text-[10px] uppercase text-slate-500 block">Cold Chain SLA</span>
-                <span className="text-emerald-400 font-bold">99.8% Compliant</span>
+                <span className="text-[10px] uppercase text-slate-500 block">Bio-Centre Partner</span>
+                <span className="text-emerald-400 font-bold">GreenBio Medical Waste Centre</span>
               </div>
               <div>
-                <span className="text-[10px] uppercase text-slate-500 block">Wastage Eradication</span>
-                <span className="text-cyan-300 font-bold">₹2.14 Cr Saved</span>
+                <span className="text-[10px] uppercase text-slate-500 block">Cold Chain SLA</span>
+                <span className="text-cyan-300 font-bold">99.8% Compliant</span>
               </div>
             </div>
           </div>
@@ -132,17 +189,17 @@ export const HospitalDashboard = () => {
         </div>
       </div>
 
-      {/* 2. DYNAMIC KPI SYSTEM (Not 4 identical cards) */}
+      {/* 2. DYNAMIC KPI SYSTEM (Total Inventory, Expired Medicines, Disposal Required, Operating Margins) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* KPI 1: PRIMARY - TOTAL MEDICINES (With miniature 3D inventory stack) */}
+        {/* KPI 1: TOTAL INVENTORY */}
         <div className="p-5 rounded-2xl bg-gradient-to-br from-primary-900 to-secondary-900 text-white border border-primary-500/30 shadow-elevated flex flex-col justify-between relative overflow-hidden group">
           <div className="absolute top-0 right-0 w-28 h-28 bg-cyan-400/10 rounded-full blur-2xl pointer-events-none" />
           
           <div className="space-y-1">
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-mono uppercase font-bold text-cyan-300 tracking-wider">
-                Total Stocked Units
+                Total Inventory
               </span>
               <div className="w-8 h-8 rounded-lg bg-white/10 text-cyan-300 flex items-center justify-center">
                 <Boxes className="w-4 h-4" />
@@ -151,56 +208,57 @@ export const HospitalDashboard = () => {
 
             <div className="pt-2">
               <div className="text-3xl font-extrabold font-mono tracking-tight text-white">
-                {stats?.totalMedicines?.toLocaleString() || 0} <span className="text-sm font-normal text-slate-300">units</span>
+                {inventoryMetrics.totalUnits.toLocaleString()} <span className="text-sm font-normal text-slate-300">units</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-bold mt-1">
                 <ArrowUpRight className="w-3.5 h-3.5" />
-                <span>{stats?.activeSkus ?? 0} active listed SKUs</span>
+                <span>{inventoryMetrics.totalBatches} total stored batches</span>
               </div>
             </div>
           </div>
 
-          {/* Miniature 3D Warehouse Stack Visualizer */}
+          {/* Miniature Stock Pill */}
           <div className="pt-4 mt-2 border-t border-white/10 flex items-center justify-between text-[10px] font-mono text-slate-300">
-            <div className="flex gap-1 items-end h-5">
-              <span className="w-1.5 h-3 bg-cyan-400 rounded-t" />
-              <span className="w-1.5 h-4 bg-teal-400 rounded-t" />
-              <span className="w-1.5 h-5 bg-emerald-400 rounded-t" />
-              <span className="w-1.5 h-3 bg-amber-400 rounded-t" />
-              <span className="w-1.5 h-4 bg-primary-400 rounded-t" />
-            </div>
-            <span className="text-slate-400">Shipments: {stats?.activeShipmentsCount ?? 0} Active</span>
+            <span>Available: {inventoryMetrics.availableUnits.toLocaleString()} units</span>
+            <Link to="/hospital/inventory" className="text-cyan-300 hover:underline font-bold">
+              View Inventory →
+            </Link>
           </div>
         </div>
 
-        {/* KPI 2: MONTHLY PROCUREMENT */}
-        <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all flex flex-col justify-between space-y-3">
+        {/* KPI 2: MEDICINES REQUIRING DISPOSAL (Prominent Callout) */}
+        <div className="p-5 rounded-2xl bg-white border border-rose-200 shadow-card hover:shadow-card-hover transition-all flex flex-col justify-between space-y-3">
           <div className="flex justify-between items-start">
             <div>
-              <span className="text-[11px] font-mono uppercase font-bold text-slate-500 tracking-wider">
-                Monthly Procurement
+              <span className="text-[11px] font-mono uppercase font-bold text-rose-700 tracking-wider">
+                Medicines Requiring Disposal
               </span>
-              <div className="text-2xl font-extrabold font-mono tracking-tight text-slate-900 mt-1">
-                ₹{stats?.monthlyPurchases?.toLocaleString() || 0}
+              <div className="text-2xl font-extrabold font-mono tracking-tight text-rose-800 mt-1">
+                {inventoryMetrics.requiringDisposalBatches} <span className="text-sm font-normal text-rose-600">batches</span>
               </div>
             </div>
-            <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-              <ShoppingBag className="w-4 h-4" />
+            <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
+              <Trash2 className="w-4 h-4" />
             </div>
           </div>
 
-          <div className="p-2.5 rounded-xl bg-blue-50/70 border border-blue-100 text-xs text-blue-900 font-semibold space-y-0.5">
-            <div className="flex items-center gap-1 font-bold text-blue-700">
-              <Sparkles className="w-3.5 h-3.5 text-blue-600" />
-              <span>Concession Savings</span>
+          <div className="p-2.5 rounded-xl bg-rose-50/80 border border-rose-200 text-xs text-rose-900 font-semibold space-y-0.5">
+            <div className="flex items-center justify-between font-bold text-rose-800">
+              <span className="flex items-center gap-1">
+                <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                <span>{inventoryMetrics.requiringDisposalUnits} units expired</span>
+              </span>
+              <Link to="/hospital/waste-management" className="text-rose-700 hover:underline text-[11px] font-extrabold">
+                Dispose →
+              </Link>
             </div>
-            <p className="text-[11px] text-blue-800">
-              Automated shelf-life discounts applied
+            <p className="text-[10px] text-rose-700 font-normal">
+              Awaiting safe GreenBio incineration
             </p>
           </div>
         </div>
 
-        {/* KPI 3: REDISTRIBUTION REVENUE */}
+        {/* KPI 3: REDISTRIBUTION & PROCUREMENT SAVINGS */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all flex flex-col justify-between space-y-3">
           <div className="flex justify-between items-start">
             <div>
@@ -219,7 +277,7 @@ export const HospitalDashboard = () => {
           <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-100 text-xs text-emerald-900 font-semibold space-y-0.5">
             <div className="flex items-center gap-1 font-bold text-emerald-700">
               <ArrowUpRight className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Capital Recovered</span>
+              <span>Surplus Recovered</span>
             </div>
             <p className="text-[11px] text-emerald-800">
               {stats?.pendingRequestsCount ?? 0} incoming peer requests pending
@@ -227,7 +285,7 @@ export const HospitalDashboard = () => {
           </div>
         </div>
 
-        {/* KPI 4: PROFITABILITY % */}
+        {/* KPI 4: OPERATING MARGIN % */}
         <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all flex flex-col justify-between space-y-3">
           <div className="flex justify-between items-start">
             <div>
@@ -235,7 +293,7 @@ export const HospitalDashboard = () => {
                 Operating Margin
               </span>
               <div className="text-2xl font-extrabold font-mono tracking-tight text-slate-900 mt-1">
-                {stats?.profitabilityPercent ?? 0}%
+                {stats?.profitabilityPercent ?? 18.5}%
               </div>
             </div>
             <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
@@ -256,10 +314,79 @@ export const HospitalDashboard = () => {
 
       </div>
 
-      {/* 3. SPATIAL INVENTORY WAREHOUSE VISUALIZATION */}
+      {/* 3. QUICK ACTION TILES (Hospital Workflow Shortcuts) */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        
+        {/* Action 1: My Inventory */}
+        <Link
+          to="/hospital/inventory"
+          className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-primary-400 hover:shadow-md transition-all flex items-start gap-4 group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-primary-50 text-primary-700 group-hover:bg-primary-600 group-hover:text-white transition-all flex items-center justify-center font-bold flex-shrink-0">
+            <Boxes className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 font-bold text-sm text-slate-900 group-hover:text-primary-700">
+              <span>My Inventory</span>
+              <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Add and manage all medicines, stock levels, batches, and shelf life parameters.
+            </p>
+          </div>
+        </Link>
+
+        {/* Action 2: Bio-Waste Disposal */}
+        <Link
+          to="/hospital/waste-management"
+          className="p-5 rounded-2xl bg-white border border-rose-200 hover:border-rose-400 hover:shadow-md transition-all flex items-start gap-4 group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-700 group-hover:bg-rose-600 group-hover:text-white transition-all flex items-center justify-center font-bold flex-shrink-0">
+            <Trash2 className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-1 font-bold text-sm text-slate-900 group-hover:text-rose-700">
+                <span>Bio-Waste Disposal</span>
+                <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+              </div>
+              {inventoryMetrics.requiringDisposalBatches > 0 && (
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-extrabold bg-rose-100 text-rose-800">
+                  {inventoryMetrics.requiringDisposalBatches} Action
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Review expired medicines and send them for safe disposal at GreenBio Medical Waste Centre.
+            </p>
+          </div>
+        </Link>
+
+        {/* Action 3: Marketplace */}
+        <Link
+          to="/hospital/marketplace"
+          className="p-5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-400 hover:shadow-md transition-all flex items-start gap-4 group"
+        >
+          <div className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 group-hover:bg-emerald-600 group-hover:text-white transition-all flex items-center justify-center font-bold flex-shrink-0">
+            <ShoppingBag className="w-5 h-5" />
+          </div>
+          <div className="space-y-1">
+            <div className="flex items-center gap-1 font-bold text-sm text-slate-900 group-hover:text-emerald-700">
+              <span>Peer Marketplace</span>
+              <ChevronRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              Discover verified medicine exchanges and near-expiry stock discounts across peer hospitals.
+            </p>
+          </div>
+        </Link>
+
+      </div>
+
+      {/* 4. SPATIAL INVENTORY WAREHOUSE VISUALIZATION */}
       <SpatialInventoryOverview />
 
-      {/* 4. DATA VISUALIZATION SECTION WITH TIMEFRAME TOGGLE */}
+      {/* 5. DATA VISUALIZATION SECTION WITH TIMEFRAME TOGGLE */}
       <div className="space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
@@ -345,7 +472,7 @@ export const HospitalDashboard = () => {
         </div>
       </div>
 
-      {/* 5. LIVE SUPPLY NETWORK COMPONENT */}
+      {/* 6. LIVE SUPPLY NETWORK COMPONENT */}
       <LiveSupplyNetworkMap />
 
     </div>
