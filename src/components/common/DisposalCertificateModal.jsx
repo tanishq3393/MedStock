@@ -66,7 +66,6 @@ export const DisposalCertificateModal = ({ isOpen, onClose, disposal }) => {
         {/* Printable Certificate Body */}
         <div ref={printRef} className="p-8 sm:p-10 space-y-6 text-slate-800 bg-white">
           
-<<<<<<< HEAD
           {/* Mandatory Demo / Sample Document Disclaimer */}
           <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-center space-y-0.5">
             <span className="text-xs font-black uppercase tracking-widest text-amber-900 font-mono block">
@@ -74,27 +73,6 @@ export const DisposalCertificateModal = ({ isOpen, onClose, disposal }) => {
             </span>
             <p className="text-[10px] text-amber-800">
               Simulated Bio-Medical Waste Destruction Certificate for technical prototype demonstration only. Not an actual legal regulatory instrument.
-=======
-          {/* DEMO / SAMPLE NOTICE STRIP */}
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-center space-y-1">
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <span className="px-2.5 py-0.5 rounded text-[9px] font-mono font-black uppercase tracking-wider bg-amber-200 text-amber-950 border border-amber-300">
-                DEMO / SAMPLE DOCUMENT
-              </span>
-              <span className="px-2.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-primary-100 text-primary-900 border border-primary-200">
-                DISPOSAL RECORD
-              </span>
-              <span className={`px-2.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider ${
-                disposal.status === 'completed' || disposal.status === 'disposed'
-                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-200'
-                  : 'bg-amber-100 text-amber-900 border border-amber-200'
-              }`}>
-                {disposal.status === 'completed' || disposal.status === 'disposed' ? 'DISPOSED' : 'DISPOSAL REQUESTED'}
-              </span>
-            </div>
-            <p className="text-[10px] text-amber-800 font-medium">
-              Simulated bio-medical waste certificate for technical demonstration. Contains NO real patient data.
->>>>>>> 6ddff35 (Added Cancel)
             </p>
           </div>
 

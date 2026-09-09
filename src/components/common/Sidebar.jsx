@@ -1,5 +1,5 @@
-import React from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import {
   LayoutDashboard,
@@ -12,7 +12,7 @@ import {
   CreditCard,
   MessageSquare,
   ShieldCheck,
-  Building,
+  Building2,
   Layers,
   Activity,
   FileCheck2,
@@ -20,12 +20,29 @@ import {
   Sparkles,
   Flame,
   Trash2,
-  BarChart3
+  Bell,
+  BarChart3,
+  Settings
 } from 'lucide-react';
+import { alertService } from '../../services/alertService';
 
 export const Sidebar = ({ role = 'hospital' }) => {
+  const location = useLocation();
   const { incomingRequests } = useSelector((state) => state.requests);
   const { hospitals } = useSelector((state) => state.admin);
+
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  useEffect(() => {
+    if (role === 'admin') {
+      try {
+        const count = alertService.getAdminUnreadCount();
+        setUnreadAlerts(count);
+      } catch (e) {
+        // Fallback
+      }
+    }
+  }, [role, location.pathname]);
 
   const pendingIncomingCount = incomingRequests?.filter((r) => r.status === 'pending').length || 0;
   const pendingHospitalsCount = hospitals?.filter((h) => h.status === 'pending').length || 2;
@@ -76,33 +93,43 @@ export const Sidebar = ({ role = 'hospital' }) => {
     }
   ];
 
-  // Grouped Navigation Sections for Admin Portal
+  // Grouped Navigation Sections for Admin Portal (The 10 Required Sections)
   const adminNavSections = [
     {
-      title: 'SUPERVISORY',
+      title: 'CORE OVERSIGHT',
       items: [
-        { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Admin Overview' },
-        { to: '/admin/medicine-data', icon: Layers, label: 'Medicine Directory' },
-      ]
-    },
-    {
-      title: 'REGISTRATION & AUDIT',
-      items: [
-        { to: '/admin/hospital-details', icon: Building, label: 'Hospital Registry' },
+        { to: '/admin/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
         { 
-          to: '/admin/verification', 
-          icon: FileCheck2, 
-          label: 'Verification Queue',
+          to: '/admin/hospitals', 
+          icon: Building2, 
+          label: 'Hospitals',
           badge: pendingHospitalsCount > 0 ? pendingHospitalsCount : null,
           badgeColor: 'bg-rose-500'
         },
+        { to: '/admin/medicines', icon: Layers, label: 'Medicines' },
+        { to: '/admin/inventory', icon: Boxes, label: 'Inventory' },
+        { to: '/admin/orders', icon: ShoppingBag, label: 'Orders' },
       ]
     },
     {
-      title: 'LOGISTICS & BIO-HAZARD',
+      title: 'MONITORING & CSAT',
       items: [
-        { to: '/admin/management', icon: Activity, label: 'Transfers & Bio-Waste' },
-        { to: '/admin/feedback', icon: MessageSquare, label: 'Hospital Feedbacks' },
+        { 
+          to: '/admin/alerts', 
+          icon: Bell, 
+          label: 'Alerts',
+          badge: unreadAlerts > 0 ? unreadAlerts : null,
+          badgeColor: 'bg-rose-500'
+        },
+        { to: '/admin/feedback', icon: MessageSquare, label: 'Hospital Feedback' },
+        { to: '/admin/reports', icon: BarChart3, label: 'Reports' },
+      ]
+    },
+    {
+      title: 'GOVERNANCE & CONFIG',
+      items: [
+        { to: '/admin/audit-logs', icon: ShieldCheck, label: 'Audit Logs' },
+        { to: '/admin/settings', icon: Settings, label: 'Settings' },
       ]
     }
   ];

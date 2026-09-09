@@ -40,11 +40,18 @@ import HospitalReports from './pages/hospital/HospitalReports';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminMedicineData from './pages/admin/AdminMedicineData';
+import AdminHospitals from './pages/admin/AdminHospitals';
 import AdminHospitalDetails from './pages/admin/AdminHospitalDetails';
 import AdminVerification from './pages/admin/AdminVerification';
-import AdminManagement from './pages/admin/AdminManagement';
+import AdminMedicineData from './pages/admin/AdminMedicineData';
+import AdminInventory from './pages/admin/AdminInventory';
+import AdminOrders from './pages/admin/AdminOrders';
+import AdminAlerts from './pages/admin/AdminAlerts';
 import AdminFeedback from './pages/admin/AdminFeedback';
+import AdminReports from './pages/admin/AdminReports';
+import AdminAuditLogs from './pages/admin/AdminAuditLogs';
+import AdminSettings from './pages/admin/AdminSettings';
+import AdminManagement from './pages/admin/AdminManagement';
 
 // Protected Route Wrapper & Error Boundary
 import ProtectedRoute from './components/common/ProtectedRoute';
@@ -100,7 +107,6 @@ export const App = () => {
             <Route path="/verify-email" element={<EmailVerificationPage />} />
           </Route>
 
-<<<<<<< HEAD
           {/* Hospital Portal Routes */}
           <Route
             path="/hospital"
@@ -122,33 +128,9 @@ export const App = () => {
             <Route path="waste-management" element={<HospitalWasteManagement />} />
             <Route path="bio-waste-disposal" element={<HospitalWasteManagement />} />
             <Route path="feedback" element={<HospitalFeedback />} />
+            <Route path="reports" element={<HospitalReports />} />
             <Route path="profile" element={<HospitalProfilePage />} />
           </Route>
-=======
-        {/* Hospital Portal Routes */}
-        <Route
-          path="/hospital"
-          element={
-            <ProtectedRoute allowedRole="hospital">
-              <HospitalLayout />
-            </ProtectedRoute>
-          }
-        >
-          <Route index element={<Navigate to="/hospital/dashboard" replace />} />
-          <Route path="dashboard" element={<HospitalDashboard />} />
-          <Route path="inventory" element={<HospitalInventory />} />
-          <Route path="marketplace" element={<Marketplace />} />
-          <Route path="my-requests" element={<MyRequests />} />
-          <Route path="incoming-requests" element={<IncomingRequests />} />
-          <Route path="history" element={<HistoryPage />} />
-          <Route path="track" element={<TrackPage />} />
-          <Route path="payment-history" element={<PaymentHistory />} />
-          <Route path="waste-management" element={<HospitalWasteManagement />} />
-          <Route path="feedback" element={<HospitalFeedback />} />
-          <Route path="reports" element={<HospitalReports />} />
-          <Route path="profile" element={<HospitalProfilePage />} />
-        </Route>
->>>>>>> 6ddff35 (Added Cancel)
 
           {/* Admin Portal Routes */}
           <Route
@@ -161,11 +143,19 @@ export const App = () => {
           >
             <Route index element={<Navigate to="/admin/dashboard" replace />} />
             <Route path="dashboard" element={<AdminDashboard />} />
-            <Route path="medicine-data" element={<AdminMedicineData />} />
+            <Route path="hospitals" element={<AdminHospitals />} />
             <Route path="hospital-details" element={<AdminHospitalDetails />} />
             <Route path="verification" element={<AdminVerification />} />
-            <Route path="management" element={<AdminManagement />} />
+            <Route path="medicines" element={<AdminMedicineData />} />
+            <Route path="medicine-data" element={<Navigate to="/admin/medicines" replace />} />
+            <Route path="inventory" element={<AdminInventory />} />
+            <Route path="orders" element={<AdminOrders />} />
+            <Route path="alerts" element={<AdminAlerts />} />
             <Route path="feedback" element={<AdminFeedback />} />
+            <Route path="reports" element={<AdminReports />} />
+            <Route path="audit-logs" element={<AdminAuditLogs />} />
+            <Route path="settings" element={<AdminSettings />} />
+            <Route path="management" element={<AdminManagement />} />
           </Route>
 
           {/* Catch-all 404 Route */}

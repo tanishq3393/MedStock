@@ -1,21 +1,35 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Navbar from '../components/common/Navbar';
 import Sidebar from '../components/common/Sidebar';
-import { ShieldAlert, FileCheck2, Activity, Radio, ShieldCheck } from 'lucide-react';
+import { ShieldAlert, FileCheck2, Activity, Radio, ShieldCheck, Bell, Building2 } from 'lucide-react';
+import { alertService } from '../services/alertService';
 
 export const AdminLayout = () => {
   const { user } = useSelector((state) => state.auth);
   const location = useLocation();
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+
+  useEffect(() => {
+    try {
+      setUnreadAlerts(alertService.getAdminUnreadCount());
+    } catch (e) {
+      // Fallback
+    }
+  }, [location.pathname]);
 
   const adminMobileItems = [
-    { to: '/admin/dashboard', label: 'Supervisory' },
-    { to: '/admin/medicine-data', label: 'Medicines' },
-    { to: '/admin/hospital-details', label: 'Hospital Registry' },
-    { to: '/admin/verification', label: 'Verification' },
-    { to: '/admin/management', label: 'Logistics' },
-    { to: '/admin/feedback', label: 'Feedbacks' },
+    { to: '/admin/dashboard', label: 'Dashboard' },
+    { to: '/admin/hospitals', label: 'Hospitals' },
+    { to: '/admin/medicines', label: 'Medicines' },
+    { to: '/admin/inventory', label: 'Inventory' },
+    { to: '/admin/orders', label: 'Orders' },
+    { to: '/admin/alerts', label: 'Alerts' },
+    { to: '/admin/feedback', label: 'Feedback' },
+    { to: '/admin/reports', label: 'Reports' },
+    { to: '/admin/audit-logs', label: 'Audit Logs' },
+    { to: '/admin/settings', label: 'Settings' },
   ];
 
   return (
@@ -40,7 +54,7 @@ export const AdminLayout = () => {
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Oversight: <span className="text-slate-200 font-medium">{user?.department || 'Inter-Hospital Redistribution & Cold-Chain Monitoring'}</span>
+                Oversight: <span className="text-slate-200 font-medium">{user?.department || 'Inter-Hospital Redistribution & National Cold-Chain Monitoring'}</span>
               </p>
             </div>
           </div>
@@ -52,19 +66,24 @@ export const AdminLayout = () => {
             </div>
 
             <Link
-              to="/admin/verification"
+              to="/admin/alerts"
+              className="relative flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-secondary-800 hover:bg-secondary-700 text-slate-200 text-xs font-bold border border-secondary-700 transition-all"
+            >
+              <Bell className="w-3.5 h-3.5 text-amber-400" />
+              <span>Alerts</span>
+              {unreadAlerts > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-mono font-extrabold bg-rose-500 text-white">
+                  {unreadAlerts}
+                </span>
+              )}
+            </Link>
+
+            <Link
+              to="/admin/hospitals?status=pending"
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all"
             >
               <FileCheck2 className="w-3.5 h-3.5" />
               <span>Verification Queue</span>
-            </Link>
-
-            <Link
-              to="/admin/management"
-              className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-secondary-700 hover:bg-secondary-800 text-slate-200 text-xs font-bold transition-all"
-            >
-              <Activity className="w-3.5 h-3.5 text-amber-400" />
-              <span>Logistics Monitor</span>
             </Link>
           </div>
 

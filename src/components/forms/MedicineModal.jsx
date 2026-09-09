@@ -94,7 +94,6 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
   const handleSubmit = (e) => {
     e.preventDefault();
-<<<<<<< HEAD
 
     const { isValid, errors, sanitizedData } = validateMedicineForm(formData);
     if (!isValid) {
@@ -111,31 +110,6 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     }
 
     onSubmit(sanitizedData);
-=======
-    if (!formData.brandName?.trim() || !formData.power?.trim() || !formData.expiryDate) {
-      toast.error('Please fill all mandatory fields (Brand, Strength/Power, Expiry Date)');
-      return;
-    }
-    if (formData.mfgDate && formData.expiryDate) {
-      if (new Date(formData.mfgDate) > new Date(formData.expiryDate)) {
-        toast.error('Manufacturing date cannot be later than expiry date');
-        return;
-      }
-    }
-    if (new Date(formData.expiryDate) < new Date()) {
-      toast.error('Cannot add an already expired medicine to active trade inventory. Please log it under Bio-Waste & Disposal.');
-      return;
-    }
-    if (Number(formData.quantity) <= 0 || isNaN(Number(formData.quantity))) {
-      toast.error('Quantity must be a valid positive number greater than 0');
-      return;
-    }
-    if (Number(formData.unitOriginalPrice) <= 0 || isNaN(Number(formData.unitOriginalPrice))) {
-      toast.error('Unit price must be a valid positive amount');
-      return;
-    }
-    onSubmit(formData);
->>>>>>> 6ddff35 (Added Cancel)
     onClose();
   };
 

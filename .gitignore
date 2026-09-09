@@ -44,3 +44,6 @@ Desktop.ini
 scratch/
 tmp/
 temp/
+
+# Nested clones/subfolders
+MedStock/

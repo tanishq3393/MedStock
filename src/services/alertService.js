@@ -305,6 +305,167 @@ export const alertService = {
     });
     setStoredItem(KEYS.ALERTS, meta);
   },
+
+  /**
+   * Generates administrative alerts categorized into CRITICAL, WARNING, and INFORMATION.
+   */
+  getAdminAlerts() {
+    const storedAlertMeta = getStoredItem(KEYS.ALERTS, {});
+    const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const requests = getStoredItem(KEYS.REQUESTS, []);
+    const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
+
+    const alerts = [];
+
+    // 1. CRITICAL ALERTS:
+    // - Medicine out of stock
+    // - Expired medicine
+    medicines.forEach((med) => {
+      const exp = calculateMedicineExpiry(med.expiryDate, med.mfgDate, med.quantity, med.minStockLevel || 20);
+      if (exp.isExpired) {
+        alerts.push({
+          id: `admin-crit-exp-${med.id}`,
+          category: 'CRITICAL',
+          type: 'error',
+          title: `Expired Medicine Batch: ${med.brandName}`,
+          description: `Batch ${med.batchNo || 'N/A'} at ${med.hospitalName || 'Health Facility'} expired on ${med.expiryDate}. Immediate disposal quarantine required.`,
+          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          timestamp: new Date(Date.now() - 30 * 60000).toISOString(),
+          link: '/admin/inventory',
+        });
+      } else if (Number(med.quantity || 0) === 0) {
+        alerts.push({
+          id: `admin-crit-oos-${med.id}`,
+          category: 'CRITICAL',
+          type: 'error',
+          title: `Medicine Out of Stock: ${med.brandName}`,
+          description: `Zero available units recorded at ${med.hospitalName || 'Health Facility'}. Critical stockout alert.`,
+          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          timestamp: new Date(Date.now() - 60 * 60000).toISOString(),
+          link: '/admin/inventory',
+        });
+      }
+    });
+
+    // 2. WARNING ALERTS:
+    // - Low medicine stock
+    // - Medicine expiring soon (<60d)
+    medicines.forEach((med) => {
+      const exp = calculateMedicineExpiry(med.expiryDate, med.mfgDate, med.quantity, med.minStockLevel || 20);
+      if (!exp.isExpired && Number(med.quantity || 0) > 0 && (Number(med.quantity || 0) <= (med.minStockLevel || 20) || exp.isLowStock)) {
+        alerts.push({
+          id: `admin-warn-low-${med.id}`,
+          category: 'WARNING',
+          type: 'warning',
+          title: `Low Medicine Stock Reserve: ${med.brandName}`,
+          description: `Only ${med.quantity} units remaining (below safety threshold of ${med.minStockLevel || 20}) at ${med.hospitalName || 'Facility'}.`,
+          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          timestamp: new Date(Date.now() - 120 * 60000).toISOString(),
+          link: '/admin/inventory',
+        });
+      }
+      if (!exp.isExpired && exp.isNearExpiry) {
+        alerts.push({
+          id: `admin-warn-expiring-${med.id}`,
+          category: 'WARNING',
+          type: 'warning',
+          title: `Medicine Expiring Soon: ${med.brandName}`,
+          description: `Batch ${med.batchNo || 'N/A'} has ${exp.daysRemaining} days remaining before regulatory shelf life expires.`,
+          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          timestamp: new Date(Date.now() - 180 * 60000).toISOString(),
+          link: '/admin/medicines',
+        });
+      }
+    });
+
+    // 3. INFORMATION ALERTS:
+    // - New hospital registration / Verification request
+    // - New order
+    // - New hospital feedback
+    hospitals.forEach((hosp) => {
+      if (hosp.status === 'pending' || hosp.status === 'under_review') {
+        alerts.push({
+          id: `admin-info-hosp-${hosp.id}`,
+          category: 'INFORMATION',
+          type: 'info',
+          title: `Verification Request: ${hosp.name}`,
+          description: `New hospital applicant registered from ${hosp.city}. Statutory Form 20B/21B documents awaiting review.`,
+          relatedItem: `${hosp.name} (${hosp.registrationNo || 'New Registration'})`,
+          timestamp: hosp.registeredDate || new Date(Date.now() - 240 * 60000).toISOString(),
+          link: '/admin/hospitals',
+        });
+      }
+    });
+
+    requests.forEach((req) => {
+      if (req.status === 'pending') {
+        alerts.push({
+          id: `admin-info-req-${req.id}`,
+          category: 'INFORMATION',
+          type: 'info',
+          title: `New Inter-Hospital Requisition: ${req.medicineName}`,
+          description: `Order from ${req.fromHospitalName} to ${req.toHospitalName} for ${req.quantity} units is awaiting processing.`,
+          relatedItem: `Order #${(req.id || '').toUpperCase().replace('REQ-', 'ORD-MED-')}`,
+          timestamp: req.requestDate || new Date(Date.now() - 90 * 60000).toISOString(),
+          link: '/admin/orders',
+        });
+      }
+    });
+
+    feedbacks.forEach((fb) => {
+      if (!fb.status || fb.status === 'new') {
+        alerts.push({
+          id: `admin-info-fb-${fb.id}`,
+          category: 'INFORMATION',
+          type: 'info',
+          title: `New Hospital Feedback: ${fb.hospitalName}`,
+          description: `${fb.rating}★ rating submitted under category "${fb.category || 'General'}": "${(fb.feedbackText || fb.comment || '').slice(0, 60)}..."`,
+          relatedItem: fb.hospitalName,
+          timestamp: fb.date || new Date(Date.now() - 75 * 60000).toISOString(),
+          link: '/admin/feedback',
+        });
+      }
+    });
+
+    // Merge read/dismissed preferences
+    return alerts
+      .map((alert) => {
+        const meta = storedAlertMeta[alert.id] || {};
+        return {
+          ...alert,
+          read: meta.read || false,
+          dismissed: meta.dismissed || false,
+        };
+      })
+      .filter((alert) => !alert.dismissed);
+  },
+
+  markAdminAlertAsRead(alertId) {
+    const meta = getStoredItem(KEYS.ALERTS, {});
+    meta[alertId] = { ...(meta[alertId] || {}), read: true };
+    setStoredItem(KEYS.ALERTS, meta);
+  },
+
+  markAllAdminAlertsAsRead() {
+    const meta = getStoredItem(KEYS.ALERTS, {});
+    const alerts = this.getAdminAlerts();
+    alerts.forEach((a) => {
+      meta[a.id] = { ...(meta[a.id] || {}), read: true };
+    });
+    setStoredItem(KEYS.ALERTS, meta);
+  },
+
+  dismissAdminAlert(alertId) {
+    const meta = getStoredItem(KEYS.ALERTS, {});
+    meta[alertId] = { ...(meta[alertId] || {}), dismissed: true };
+    setStoredItem(KEYS.ALERTS, meta);
+  },
+
+  getAdminUnreadCount() {
+    const alerts = this.getAdminAlerts();
+    return alerts.filter((a) => !a.read).length;
+  },
 };
 
 export default alertService;

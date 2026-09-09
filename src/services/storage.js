@@ -21,6 +21,8 @@ const KEYS = {
   AUTH: 'sms_auth_session',
   ALERTS: 'sms_alerts',
   AUDIT_TRAIL: 'sms_audit_trail',
+  SETTINGS: 'sms_admin_settings',
+  STOCK_HISTORY: 'sms_stock_history',
 };
 
 // Initialize localStorage with mock data if not present, and seamlessly merge new mock data
@@ -259,8 +261,110 @@ export const initializeStorage = () => {
   if (!localStorage.getItem(KEYS.ALERTS)) {
     localStorage.setItem(KEYS.ALERTS, JSON.stringify({}));
   }
-  if (!localStorage.getItem(KEYS.AUDIT_TRAIL)) {
-    localStorage.setItem(KEYS.AUDIT_TRAIL, JSON.stringify([]));
+  if (!localStorage.getItem(KEYS.SETTINGS)) {
+    localStorage.setItem(KEYS.SETTINGS, JSON.stringify({
+      profile: {
+        name: 'Super Administrator',
+        email: 'admin@smartmedishare.org',
+        phone: '+91 11 2345 6789',
+        department: 'National Healthcare Logistics Oversight',
+        avatar: '',
+      },
+      security: {
+        twoFactorEnabled: false,
+        sessionTimeoutMinutes: 60,
+        lastPasswordChange: '2024-07-15',
+        loginHistory: [
+          { id: '1', ip: '103.21.14.88', location: 'New Delhi, India', device: 'Chrome / Windows 11', timestamp: 'Today, 09:30 AM', current: true },
+          { id: '2', ip: '103.21.14.88', location: 'New Delhi, India', device: 'Chrome / Windows 11', timestamp: 'Yesterday, 04:15 PM', current: false },
+          { id: '3', ip: '49.207.210.12', location: 'Mumbai, India', device: 'Safari / macOS', timestamp: 'Sep 05, 2024, 11:20 AM', current: false },
+        ],
+      },
+      notifications: {
+        lowStockNotifications: true,
+        expiryNotifications: true,
+        newHospitalNotifications: true,
+        newOrderNotifications: true,
+        feedbackNotifications: true,
+      },
+      system: {
+        minStockThreshold: 20,
+        expiryWarningPeriodDays: 60,
+        requestSlaHours: 48,
+        coldChainMinTemp: 2.0,
+        coldChainMaxTemp: 8.0,
+      }
+    }));
+  }
+  if (!localStorage.getItem(KEYS.AUDIT_TRAIL) || JSON.parse(localStorage.getItem(KEYS.AUDIT_TRAIL) || '[]').length === 0) {
+    const seedAudit = [
+      {
+        id: 'audit-seed-1',
+        timestamp: new Date(Date.now() - 25 * 60000).toISOString(),
+        action: 'HOSPITAL_APPROVED',
+        entityType: 'Hospitals',
+        module: 'Hospitals',
+        adminName: 'Super Administrator',
+        adminUser: 'Super Administrator',
+        description: 'Admin approved City Care Hospital',
+        summary: 'Admin approved City Care Hospital',
+        status: 'Verified',
+        hospitalName: 'City Care Hospital',
+      },
+      {
+        id: 'audit-seed-2',
+        timestamp: new Date(Date.now() - 110 * 60000).toISOString(),
+        action: 'MEDICINE_ADDED',
+        entityType: 'Medicines',
+        module: 'Medicines',
+        adminName: 'Super Administrator',
+        adminUser: 'Super Administrator',
+        description: 'Admin added Paracetamol (Batch #PCM-2024-91)',
+        summary: 'Admin added Paracetamol',
+        status: 'Active',
+        hospitalName: 'Apollo Hospital',
+      },
+      {
+        id: 'audit-seed-3',
+        timestamp: new Date(Date.now() - 240 * 60000).toISOString(),
+        action: 'ORDER_STATUS_UPDATED',
+        entityType: 'Orders',
+        module: 'Orders',
+        adminName: 'Super Administrator',
+        adminUser: 'Super Administrator',
+        description: 'Admin updated Order #MED1024',
+        summary: 'Admin updated Order #MED1024 to Shipped',
+        status: 'Shipped',
+        hospitalName: 'Fortis Memorial Research Institute',
+      },
+      {
+        id: 'audit-seed-4',
+        timestamp: new Date(Date.now() - 360 * 60000).toISOString(),
+        action: 'FEEDBACK_RESOLVED',
+        entityType: 'Feedback',
+        module: 'Feedback',
+        adminName: 'Super Administrator',
+        adminUser: 'Super Administrator',
+        description: 'Admin resolved hospital feedback from Apollo Hospital',
+        summary: 'Admin resolved hospital feedback',
+        status: 'Resolved',
+        hospitalName: 'Apollo Hospital',
+      },
+      {
+        id: 'audit-seed-5',
+        timestamp: new Date(Date.now() - 520 * 60000).toISOString(),
+        action: 'HOSPITAL_SUSPENDED',
+        entityType: 'Hospitals',
+        module: 'Hospitals',
+        adminName: 'Super Administrator',
+        adminUser: 'Super Administrator',
+        description: 'Admin suspended a hospital account for regulatory compliance review',
+        summary: 'Admin suspended a hospital account',
+        status: 'Suspended',
+        hospitalName: 'Metro General Hospital',
+      }
+    ];
+    localStorage.setItem(KEYS.AUDIT_TRAIL, JSON.stringify(seedAudit));
   }
 };
 

@@ -1,24 +1,43 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
 import { 
   Building2, 
-  RefreshCw, 
-  Boxes, 
-  TrendingUp, 
   ShieldCheck, 
-  Activity, 
-  ArrowUpRight, 
+  Clock, 
+  Boxes, 
+  AlertTriangle, 
   AlertCircle,
-  Award,
-  ThermometerSnowflake,
-  Clock,
-  ArrowRight
+  ShoppingBag, 
+  Package, 
+  Layers, 
+  ArrowRight, 
+  ArrowUpRight, 
+  Star, 
+  MessageSquare,
+  Activity,
+  CheckCircle2,
+  RefreshCw,
+  Eye,
+  Check,
+  Radio
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { 
+  ResponsiveContainer, 
+  BarChart, 
+  Bar, 
+  XAxis, 
+  YAxis, 
+  CartesianGrid, 
+  Tooltip, 
+  Legend, 
+  Cell, 
+  PieChart, 
+  Pie, 
+  AreaChart, 
+  Area 
+} from 'recharts';
 import { fetchAdminDashboard } from '../../store/slices/adminSlice';
-import TransfersBarChart from '../../components/charts/TransfersBarChart';
-import PerformanceBarChart from '../../components/charts/PerformanceBarChart';
-import HotMedicinesBarChart from '../../components/charts/HotMedicinesBarChart';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 
 export const AdminDashboard = () => {
@@ -30,16 +49,115 @@ export const AdminDashboard = () => {
   }, [dispatch]);
 
   const stats = dashboardData?.stats || {
-    totalHospitals: 48,
-    monthlyTransfers: 324,
-    totalMedicinesTransferred: 18450,
-    totalPlatformVolume: '₹ 2.14 Cr',
+    totalHospitals: 24,
+    verifiedHospitals: 19,
+    pendingVerification: 4,
+    totalMedicines: 42,
+    lowStock: 6,
+    expiringSoon: 8,
+    pendingOrders: 5,
+    totalOrders: 38,
+  };
+
+  const medicineStockOverview = dashboardData?.medicineStockOverview || [
+    { name: 'In Stock', value: 28, color: '#0A6E79' },
+    { name: 'Low Stock', value: 6, color: '#F59E0B' },
+    { name: 'Out of Stock', value: 3, color: '#EF4444' },
+    { name: 'Expired', value: 5, color: '#94A3B8' },
+  ];
+
+  const ordersOverview = dashboardData?.ordersOverview || [
+    { status: 'Pending', count: 5, color: '#F59E0B' },
+    { status: 'Processing', count: 7, color: '#06B6D4' },
+    { status: 'Shipped', count: 12, color: '#3B82F6' },
+    { status: 'Delivered', count: 11, color: '#10B981' },
+    { status: 'Cancelled', count: 3, color: '#EF4444' },
+  ];
+
+  const hospitalRegistrationTrend = dashboardData?.hospitalRegistrationTrend || [
+    { month: 'Apr', count: 4, verified: 3 },
+    { month: 'May', count: 6, verified: 5 },
+    { month: 'Jun', count: 9, verified: 8 },
+    { month: 'Jul', count: 12, verified: 10 },
+    { month: 'Aug', count: 18, verified: 15 },
+    { month: 'Sep', count: 24, verified: 19 },
+  ];
+
+  const recentActivity = dashboardData?.recentActivity || [
+    {
+      id: 'act-1',
+      type: 'REGISTRATION',
+      title: 'New hospital registration received',
+      hospital: 'Metro Care Super Speciality',
+      time: '15 minutes ago',
+      status: 'Pending Audit',
+      badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
+      link: '/admin/hospitals?status=pending'
+    },
+    {
+      id: 'act-2',
+      type: 'VERIFICATION',
+      title: 'Hospital verification approved',
+      hospital: 'Apollo Hospital (Bandra Unit)',
+      time: '1 hour ago',
+      status: 'Verified',
+      badgeColor: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      link: '/admin/hospitals'
+    },
+    {
+      id: 'act-3',
+      type: 'STOCK_UPDATE',
+      title: 'Medicine stock updated (+150 units)',
+      hospital: 'Lilavati Hospital & Research Centre',
+      time: '2 hours ago',
+      status: 'In Stock',
+      badgeColor: 'bg-teal-100 text-teal-800 border-teal-200',
+      link: '/admin/inventory'
+    },
+    {
+      id: 'act-4',
+      type: 'NEW_ORDER',
+      title: 'New inter-hospital order received',
+      hospital: 'Max Super Speciality to Fortis Hospital',
+      time: '3 hours ago',
+      status: 'Processing',
+      badgeColor: 'bg-blue-100 text-blue-800 border-blue-200',
+      link: '/admin/orders'
+    },
+    {
+      id: 'act-5',
+      type: 'ORDER_STATUS',
+      title: 'Order status changed to Shipped',
+      hospital: 'Consignment #ORD-MED-1024',
+      time: '4 hours ago',
+      status: 'Cold-Chain Transit',
+      badgeColor: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+      link: '/admin/orders'
+    },
+    {
+      id: 'act-6',
+      type: 'FEEDBACK',
+      title: 'Hospital feedback received (5 Stars)',
+      hospital: 'City Care Hospital',
+      time: '6 hours ago',
+      status: 'New Feedback',
+      badgeColor: 'bg-purple-100 text-purple-800 border-purple-200',
+      link: '/admin/feedback'
+    }
+  ];
+
+  const feedbackSummary = dashboardData?.feedbackSummary || {
+    total: 12,
+    new: 3,
+    underReview: 4,
+    resolved: 5,
+    averageRating: '4.8',
   };
 
   if (isLoading && !dashboardData) {
     return (
-      <div className="py-20">
-        <LoadingSpinner text="Compiling National Platform Analytics & CDSCO Audit Ledger..." />
+      <div className="py-24">
+        <LoadingSpinner text="Compiling National Platform Analytics & Regulatory Audit Telemetry..." />
       </div>
     );
   }
@@ -47,7 +165,7 @@ export const AdminDashboard = () => {
   return (
     <div className="space-y-6">
       
-      {/* Overview Banner */}
+      {/* Top Welcome / Supervisory Authority Banner */}
       <div className="bg-gradient-to-r from-ocean-950 via-ocean-900 to-teal-950 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(10,110,121,0.3),transparent_70%)] pointer-events-none" />
         
@@ -55,141 +173,446 @@ export const AdminDashboard = () => {
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-bold tracking-wide">
             <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
             <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-            <span>National Drug Redistribution Command Center (Mumbai-Pune Regional Hub)</span>
+            <span>Central National Healthcare Logistics Command</span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">System Supervisory Dashboard</h1>
-          <p className="text-xs text-slate-300 max-w-xl font-normal leading-relaxed">
-            Real-time multi-state metrics on cold chain logistics telemetry, surplus medicine velocity, and statutory compliance audit under CDSCO Rule 65.
+          <h1 className="text-2xl font-black tracking-tight text-white">Administrative Supervisory Dashboard</h1>
+          <p className="text-xs text-slate-300 max-w-2xl font-normal leading-relaxed">
+            Centralized monitoring of accredited hospital networks, critical pharmaceutical inventory velocity, orders fulfillment, and statutory quality compliance.
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-3">
+        <div className="relative z-10 flex items-center gap-2.5">
           <Link
-            to="/admin/verification"
+            to="/admin/hospitals?status=pending"
             className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/20 transition-all flex items-center gap-1.5"
           >
-            <span>Review Audit Queue</span>
+            <span>Review Verifications</span>
             <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+          <Link
+            to="/admin/alerts"
+            className="px-4 py-2.5 rounded-xl bg-secondary-800/80 hover:bg-secondary-800 text-slate-200 border border-secondary-700 text-xs font-bold transition-all flex items-center gap-1.5"
+          >
+            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <span>Live Alerts</span>
           </Link>
         </div>
       </div>
 
-      {/* 4 STATS CARDS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* ============================================================ */}
+      {/* 1. 8 SUMMARY METRIC CARDS */}
+      {/* ============================================================ */}
+      <div>
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h2 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
+            Platform Key Performance Indicators
+          </h2>
+          <span className="text-[11px] text-slate-400 font-medium">Real-time sync</span>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          
+          {/* Card 1: Total Hospitals */}
+          <Link 
+            to="/admin/hospitals"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-primary-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Hospitals</span>
+              <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Building2 className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.totalHospitals}</h3>
+              <p className="text-[11px] text-teal-700 font-semibold mt-1 flex items-center gap-1">
+                <span>Registered institutional participants</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 2: Verified Hospitals */}
+          <Link 
+            to="/admin/hospitals?status=verified"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Verified Hospitals</span>
+              <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <ShieldCheck className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.verifiedHospitals}</h3>
+              <p className="text-[11px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
+                <CheckCircle2 className="w-3 h-3" />
+                <span>Active trading credentials</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 3: Pending Verification */}
+          <Link 
+            to="/admin/hospitals?status=pending"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-amber-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pending Verification</span>
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Clock className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-amber-600 font-mono">{stats.pendingVerification}</h3>
+              <p className="text-[11px] text-amber-700 font-semibold mt-1 flex items-center gap-1">
+                <AlertTriangle className="w-3 h-3" />
+                <span>Awaiting Form 20B/21B audit</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 4: Total Medicines */}
+          <Link 
+            to="/admin/medicines"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-primary-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Medicines</span>
+              <div className="w-10 h-10 rounded-xl bg-cyan-50 border border-cyan-100 text-cyan-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Layers className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.totalMedicines}</h3>
+              <p className="text-[11px] text-cyan-700 font-semibold mt-1 flex items-center gap-1">
+                <span>Unique pharmaceutical lines</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 5: Low Stock */}
+          <Link 
+            to="/admin/inventory?status=low_stock"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-orange-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Low Stock</span>
+              <div className="w-10 h-10 rounded-xl bg-orange-50 border border-orange-100 text-orange-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <AlertCircle className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-orange-600 font-mono">{stats.lowStock}</h3>
+              <p className="text-[11px] text-orange-700 font-semibold mt-1 flex items-center gap-1">
+                <span>Below institutional threshold</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 6: Expiring Soon */}
+          <Link 
+            to="/admin/medicines"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-rose-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Expiring Soon</span>
+              <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Boxes className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-rose-600 font-mono">{stats.expiringSoon}</h3>
+              <p className="text-[11px] text-rose-700 font-semibold mt-1 flex items-center gap-1">
+                <span>Within 60-day shelf life concession</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 7: Pending Orders */}
+          <Link 
+            to="/admin/orders?status=pending"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-amber-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pending Orders</span>
+              <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <ShoppingBag className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-amber-600 font-mono">{stats.pendingOrders}</h3>
+              <p className="text-[11px] text-amber-700 font-semibold mt-1 flex items-center gap-1">
+                <span>Awaiting dispatch authorization</span>
+              </p>
+            </div>
+          </Link>
+
+          {/* Card 8: Total Orders */}
+          <Link 
+            to="/admin/orders"
+            className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-blue-300 transition-all group"
+          >
+            <div className="flex justify-between items-start">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Orders</span>
+              <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center group-hover:scale-105 transition-transform">
+                <Package className="w-5 h-5" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.totalOrders}</h3>
+              <p className="text-[11px] text-blue-700 font-semibold mt-1 flex items-center gap-1">
+                <span>Inter-hospital requisitions processed</span>
+              </p>
+            </div>
+          </Link>
+
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* 2. VISUAL ANALYTICS SECTION (A, B, C) */}
+      {/* ============================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Card 1: Total Hospitals */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+        {/* A. Medicine Stock Overview */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Registered Hospitals</span>
-            <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center">
-              <Building2 className="w-5 h-5" />
+            <div>
+              <h3 className="text-sm font-black text-slate-900">A. Medicine Stock Overview</h3>
+              <p className="text-xs text-slate-400">Inventory breakdown across pharmaceutical depots</p>
             </div>
+            <span className="text-[10px] font-mono font-bold text-teal-800 bg-teal-50 px-2 py-0.5 rounded-md border border-teal-200">
+              CDSCO Live
+            </span>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.totalHospitals} Institutions</h3>
-            <div className="flex items-center gap-1 text-[10px] text-teal-700 font-bold mt-1">
-              <ArrowUpRight className="w-3 h-3" />
-              <span>{stats.pendingVerifications ?? 0} awaiting statutory verification</span>
-            </div>
+
+          <div className="w-full h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={medicineStockOverview} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="name" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  formatter={(val, name) => [`${val} Medicines`, 'Inventory Count']}
+                  contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                />
+                <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={38}>
+                  {medicineStockOverview.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
+            {medicineStockOverview.map((item) => (
+              <div key={item.name} className="flex items-center justify-between p-1.5 rounded-lg bg-slate-50">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-slate-600 font-medium text-[11px]">{item.name}</span>
+                </div>
+                <span className="font-mono font-bold text-slate-800">{item.value}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Card 2: Monthly Transfers */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+        {/* B. Orders Overview */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Exchange Operations</span>
-            <div className="w-10 h-10 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center">
-              <RefreshCw className="w-5 h-5" />
+            <div>
+              <h3 className="text-sm font-black text-slate-900">B. Orders Overview</h3>
+              <p className="text-xs text-slate-400">Requisitions pipeline status distribution</p>
             </div>
+            <span className="text-[10px] font-mono font-bold text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+              Pipeline SLA
+            </span>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{stats.monthlyTransfers} Requests</h3>
-            <div className="flex items-center gap-1 text-[10px] text-blue-700 font-bold mt-1">
-              <span>{stats.avgFulfillmentRate || '99.2%'} fulfillment rate</span>
-            </div>
+
+          <div className="w-full h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={ordersOverview} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="status" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  formatter={(val) => [`${val} Orders`, 'Order Count']}
+                  contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                />
+                <Bar dataKey="count" radius={[6, 6, 0, 0]} maxBarSize={34}>
+                  {ordersOverview.map((entry, index) => (
+                    <Cell key={`cell-ord-${index}`} fill={entry.color} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-100 text-xs">
+            {ordersOverview.slice(0, 4).map((item) => (
+              <div key={item.status} className="flex items-center justify-between p-1.5 rounded-lg bg-slate-50">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: item.color }} />
+                  <span className="text-slate-600 font-medium text-[11px]">{item.status}</span>
+                </div>
+                <span className="font-mono font-bold text-slate-800">{item.count}</span>
+              </div>
+            ))}
           </div>
         </div>
 
-        {/* Card 3: Total Medicines Transferred */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
+        {/* C. Hospital Registration Trend */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Medicine Units Saved</span>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-700 flex items-center justify-center">
-              <Boxes className="w-5 h-5" />
+            <div>
+              <h3 className="text-sm font-black text-slate-900">C. Hospital Registration Trend</h3>
+              <p className="text-xs text-slate-400">Institutional network growth over time</p>
             </div>
+            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+              Network +240%
+            </span>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{Number(stats.totalMedicinesTransferred || 0).toLocaleString('en-IN')} Units</h3>
-            <div className="flex items-center gap-1 text-[10px] text-emerald-700 font-bold mt-1">
-              <ArrowUpRight className="w-3 h-3" />
-              <span>{stats.totalPlatformVolume || '₹2.14 Cr'} platform volume</span>
-            </div>
-          </div>
-        </div>
 
-        {/* Card 4: Cold Chain Assurance */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-3">
-          <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Cold Chain SLA</span>
-            <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 text-sky-700 flex items-center justify-center">
-              <ThermometerSnowflake className="w-5 h-5" />
-            </div>
+          <div className="w-full h-56">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={hospitalRegistrationTrend} margin={{ top: 15, right: 10, left: -20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0A6E79" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#0A6E79" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                <XAxis dataKey="month" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
+                <YAxis tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} />
+                <Tooltip 
+                  formatter={(val) => [`${val} Hospitals`, 'Total Registered']}
+                  contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.1)' }}
+                />
+                <Area type="monotone" dataKey="count" stroke="#0A6E79" strokeWidth={2.5} fillOpacity={1} fill="url(#trendGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
           </div>
-          <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">100% In-Range</h3>
-            <div className="flex items-center gap-1 text-[10px] text-sky-700 font-bold mt-1">
-              <span>2°C - 8°C Zero temperature breach (Demo Simulator)</span>
-            </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-600">
+            <span className="text-[11px] text-slate-400">Accreditation rate</span>
+            <span className="font-mono font-bold text-teal-800">
+              {stats.verifiedHospitals} of {stats.totalHospitals} Institutions Verified (79.2%)
+            </span>
           </div>
         </div>
 
       </div>
 
-      {/* 2. CHARTS GRID */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* ============================================================ */}
+      {/* 3. RECENT ACTIVITY & HOSPITAL FEEDBACK SUMMARY */}
+      {/* ============================================================ */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Chart 1: Transfer Trends (last 6 months) */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+        {/* D. Recent Activity Feed (2 Cols) */}
+        <div className="lg:col-span-2 bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <h3 className="text-sm font-black text-slate-900">Inter-Hospital Transfer Trend</h3>
-              <p className="text-xs text-slate-400">Consignment volume completed across urban healthcare clusters</p>
+              <h3 className="text-sm font-black text-slate-900">D. Recent Platform Activity</h3>
+              <p className="text-xs text-slate-400">Live operational events across network nodes</p>
             </div>
-            <span className="text-[10px] font-mono font-bold text-teal-800 bg-teal-50 px-2.5 py-1 rounded-full border border-teal-200">
-              6-Month Ledger
-            </span>
+            <Link
+              to="/admin/audit-logs"
+              className="inline-flex items-center gap-1 text-xs font-bold text-teal-700 hover:text-teal-800 transition-colors"
+            >
+              <span>View Audit Logs</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          <TransfersBarChart data={dashboardData?.transferTrends} />
+
+          <div className="divide-y divide-slate-100">
+            {recentActivity.map((act) => (
+              <div key={act.id} className="py-3 flex items-start justify-between gap-3 hover:bg-slate-50/70 px-2 rounded-xl transition-colors">
+                <div className="flex items-start gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 text-slate-600 flex items-center justify-center flex-shrink-0 mt-0.5">
+                    {act.type.includes('REGISTRATION') ? <Building2 className="w-4 h-4 text-teal-600" /> :
+                     act.type.includes('VERIFICATION') ? <ShieldCheck className="w-4 h-4 text-emerald-600" /> :
+                     act.type.includes('STOCK') ? <Boxes className="w-4 h-4 text-amber-600" /> :
+                     act.type.includes('ORDER') ? <ShoppingBag className="w-4 h-4 text-blue-600" /> :
+                     <MessageSquare className="w-4 h-4 text-purple-600" />}
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-slate-900 leading-snug">{act.title}</h4>
+                    <p className="text-[11px] text-slate-500">{act.hospital}</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${act.badgeColor || 'bg-slate-100 text-slate-700 border-slate-200'}`}>
+                    {act.status}
+                  </span>
+                  <span className="text-[10px] text-slate-400">{act.time}</span>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Chart 2: System Performance Metrics */}
-        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <h3 className="text-sm font-black text-slate-900">Platform SLA & Regulatory Performance</h3>
-              <p className="text-xs text-slate-400">Comparing real-time dispatch vs. statutory compliance benchmarks</p>
-            </div>
-            <span className="text-[10px] font-mono font-bold text-emerald-800 bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-              CDSCO Target: 98%
-            </span>
-          </div>
-          <PerformanceBarChart data={dashboardData?.systemPerformance} />
-        </div>
-
-      </div>
-
-      {/* 3. TOP 10 HOT SELLING MEDICINES CHART */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
-        <div className="flex justify-between items-center flex-wrap gap-2">
+        {/* Hospital Feedback Summary Card (1 Col) */}
+        <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col justify-between space-y-5">
           <div>
-            <h3 className="text-sm font-black text-slate-900">Top 10 High-Velocity Critical Medicines</h3>
-            <p className="text-xs text-slate-400">Highest redistribution turnaround across emergency trauma, oncology, and surgical intensive care units</p>
+            <div className="flex justify-between items-start">
+              <div>
+                <h3 className="text-sm font-black text-slate-900">Hospital Feedback Summary</h3>
+                <p className="text-xs text-slate-400">Institutional participant satisfaction index</p>
+              </div>
+              <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 flex items-center justify-center">
+                <MessageSquare className="w-4 h-4" />
+              </div>
+            </div>
+
+            {/* Big Rating Display */}
+            <div className="mt-5 p-4 rounded-2xl bg-gradient-to-br from-purple-50/60 to-slate-50 border border-purple-100/80 text-center space-y-1">
+              <div className="flex items-center justify-center gap-1.5 text-amber-400">
+                {[...Array(5)].map((_, i) => (
+                  <Star key={i} className="w-5 h-5 fill-current" />
+                ))}
+              </div>
+              <div className="text-3xl font-black text-slate-900 font-mono">
+                {feedbackSummary.averageRating} <span className="text-xs text-slate-400 font-normal">/ 5.0</span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-medium">
+                Overall Hospital Satisfaction CSAT Score
+              </p>
+            </div>
+
+            {/* Breakdown Badges */}
+            <div className="grid grid-cols-2 gap-2 mt-4 text-xs">
+              <div className="p-2.5 rounded-xl border border-slate-200/80 bg-slate-50/50">
+                <div className="text-[10px] text-slate-400 uppercase font-bold">Total Feedback</div>
+                <div className="text-base font-black text-slate-800 font-mono mt-0.5">{feedbackSummary.total}</div>
+              </div>
+              <div className="p-2.5 rounded-xl border border-amber-200/80 bg-amber-50/50">
+                <div className="text-[10px] text-amber-600 uppercase font-bold">New Submissions</div>
+                <div className="text-base font-black text-amber-700 font-mono mt-0.5">{feedbackSummary.new}</div>
+              </div>
+              <div className="p-2.5 rounded-xl border border-blue-200/80 bg-blue-50/50">
+                <div className="text-[10px] text-blue-600 uppercase font-bold">Under Review</div>
+                <div className="text-base font-black text-blue-700 font-mono mt-0.5">{feedbackSummary.underReview}</div>
+              </div>
+              <div className="p-2.5 rounded-xl border border-emerald-200/80 bg-emerald-50/50">
+                <div className="text-[10px] text-emerald-600 uppercase font-bold">Resolved</div>
+                <div className="text-base font-black text-emerald-700 font-mono mt-0.5">{feedbackSummary.resolved}</div>
+              </div>
+            </div>
           </div>
-          <span className="text-[10px] font-extrabold text-amber-800 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">
-            Rule-Based Allocation Intelligence
-          </span>
+
+          {/* Action: View All Feedback */}
+          <Link
+            to="/admin/feedback"
+            className="w-full py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+          >
+            <span>View All Feedback</span>
+            <ArrowRight className="w-3.5 h-3.5 text-slate-300" />
+          </Link>
         </div>
-        <HotMedicinesBarChart data={dashboardData?.topHotMedicines} />
+
       </div>
 
     </div>
