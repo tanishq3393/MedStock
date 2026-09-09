@@ -5,10 +5,12 @@ import { calculateConcessionRate } from '../../utils/pricingUtils';
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
 import { validateMedicineForm } from '../../utils/validation';
 import { formatCurrency, formatNumber } from '../../utils/formatters';
+import { getStoredItem, KEYS } from '../../services/storage';
 import toast from 'react-hot-toast';
 
 export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, isEdit = false }) => {
   const [formData, setFormData] = useState({
+    medicineId: '',
     medicineName: '',
     brandName: '',
     genericName: '',
@@ -28,10 +30,18 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
   });
 
   const [autoSuggestedConcession, setAutoSuggestedConcession] = useState(null);
+  const [masterMedicines, setMasterMedicines] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMasterMedicines(getStoredItem(KEYS.MASTER_MEDICINES, []));
+    }
+  }, [isOpen]);
 
   useEffect(() => {
     if (initialData) {
       setFormData({
+        medicineId: initialData.medicineId || '',
         medicineName: initialData.brandName || initialData.medicineName || '',
         brandName: initialData.brandName || '',
         genericName: initialData.genericName || '',
@@ -53,6 +63,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
       const today = new Date().toISOString().split('T')[0];
       const futureDate = new Date(Date.now() + 180 * 86400000).toISOString().split('T')[0];
       setFormData({
+        medicineId: '',
         medicineName: '',
         brandName: '',
         genericName: '',
@@ -83,6 +94,36 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     setAutoSuggestedConcession(suggested);
     if (!isEdit) {
       setFormData((prev) => ({ ...prev, concessionPercent: suggested }));
+    }
+  };
+
+  const handleBrandNameChange = (val) => {
+    const trimmed = val.trim().toLowerCase();
+    const match = masterMedicines.find(
+      (m) =>
+        (m.medicineName || '').trim().toLowerCase() === trimmed ||
+        (m.brandName || '').trim().toLowerCase() === trimmed
+    );
+
+    if (match) {
+      setFormData((prev) => ({
+        ...prev,
+        brandName: val,
+        medicineName: match.medicineName || match.brandName,
+        genericName: match.genericName || prev.genericName,
+        power: match.strength || match.power || prev.power,
+        form: match.dosageForm || match.form || prev.form,
+        category: match.category || prev.category,
+        manufacturer: match.manufacturer || prev.manufacturer,
+        storageType: match.storageType || prev.storageType,
+        medicineId: match.id,
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        brandName: val,
+        medicineName: val,
+      }));
     }
   };
 
@@ -132,11 +173,19 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
             <input
               type="text"
               required
+              list="master-medicines-catalogue-datalist"
               placeholder="e.g. Augmentin 625 Duo, Meropenem IV"
               value={formData.brandName}
-              onChange={(e) => setFormData({ ...formData, brandName: e.target.value, medicineName: e.target.value })}
+              onChange={(e) => handleBrandNameChange(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-semibold text-slate-900"
             />
+            <datalist id="master-medicines-catalogue-datalist">
+              {masterMedicines.map((m) => (
+                <option key={m.id} value={m.medicineName || m.brandName}>
+                  {m.genericName ? `${m.genericName} • ${m.strength || m.power}` : m.category}
+                </option>
+              ))}
+            </datalist>
           </div>
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">

@@ -1,10 +1,10 @@
-import { getStoredItem, setStoredItem, KEYS, isHospitalSuspended } from './storage';
-import { HOSPITAL_ANALYTICS } from './mockData';
-import { calculateMedicineExpiry, calculateRequestExpiry, processExpiredRequests } from '../utils/expiryUtils';
-import { calculateOrderPricing } from '../utils/pricingUtils';
-import { auditService } from './auditService';
-import { findAlternatives } from './medicineAlternativeService';
-import { getCancellationPolicy, calculateRefundAmounts } from '../utils/cancellationPolicy';
+import { getStoredItem, setStoredItem, KEYS, isHospitalSuspended } from './storage.js';
+import { HOSPITAL_ANALYTICS } from './mockData.js';
+import { calculateMedicineExpiry, calculateRequestExpiry, processExpiredRequests } from '../utils/expiryUtils.js';
+import { calculateOrderPricing } from '../utils/pricingUtils.js';
+import { auditService } from './auditService.js';
+import { findAlternatives } from './medicineAlternativeService.js';
+import { getCancellationPolicy, calculateRefundAmounts } from '../utils/cancellationPolicy.js';
 
 const SUSPENDED_HOSPITAL_ERROR = 'Your hospital account is currently suspended. You cannot perform transactions or operational activities.';
 
@@ -194,10 +194,92 @@ export const hospitalService = {
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const hosp = hospitals.find((h) => h.id === medicineData.hospitalId) || { name: medicineData.hospitalName || 'Hospital' };
 
+    const batchToMatch = (medicineData.batchNo || medicineData.batchNumber || '').trim().toLowerCase();
+    const medNameToMatch = (medicineData.brandName || medicineData.medicineName || '').trim().toLowerCase();
+
+    // Link with master medicine catalogue if medicineId not explicitly supplied
+    let targetMedicineId = medicineData.medicineId;
+    if (!targetMedicineId && medNameToMatch) {
+      const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+      const masterMatch = masterMeds.find(
+        (m) =>
+          (m.medicineName || '').trim().toLowerCase() === medNameToMatch ||
+          (m.brandName || '').trim().toLowerCase() === medNameToMatch
+      );
+      if (masterMatch) {
+        targetMedicineId = masterMatch.id;
+      }
+    }
+
+    // =========================================================================
+    // DUPLICATE STOCK RULE: Check Same Hospital + Same Medicine + Same Batch
+    // =========================================================================
+    const existingIndex = medicines.findIndex((m) => {
+      // 1. Same Hospital
+      if (m.hospitalId !== medicineData.hospitalId) return false;
+
+      // 2. Same Batch Number
+      const existingBatch = (m.batchNo || m.batchNumber || '').trim().toLowerCase();
+      if (!existingBatch || existingBatch !== batchToMatch) return false;
+
+      // 3. Same Medicine (by medicineId if present on both, or by normalized medicine name)
+      if (targetMedicineId && m.medicineId && m.medicineId === targetMedicineId) {
+        return true;
+      }
+      const existingMedName = (m.brandName || m.medicineName || '').trim().toLowerCase();
+      return existingMedName === medNameToMatch && existingMedName.length > 0;
+    });
+
+    if (existingIndex !== -1) {
+      // DUPLICATE MATCH: Add new quantity to existing quantity instead of creating a new row!
+      const existing = medicines[existingIndex];
+      const previousQty = Number(existing.quantity || 0);
+      existing.quantity = previousQty + qty;
+      existing.updatedAt = new Date().toISOString();
+      if (unitPrice > 0) existing.unitOriginalPrice = unitPrice;
+      if (medicineData.concessionPercent !== undefined) {
+        existing.concessionPercent = Math.max(0, Math.min(90, Number(medicineData.concessionPercent)));
+      }
+      if (medicineData.notes) {
+        existing.notes = existing.notes
+          ? `${existing.notes} | Stock increment: +${qty} units`
+          : medicineData.notes;
+      }
+      if (targetMedicineId && !existing.medicineId) {
+        existing.medicineId = targetMedicineId;
+      }
+
+      setStoredItem(KEYS.MEDICINES, medicines);
+
+      auditService.logEvent({
+        action: 'INVENTORY_MERGED',
+        entityType: 'INVENTORY',
+        entityId: existing.id,
+        actorRole: 'hospital',
+        hospitalId: existing.hospitalId,
+        hospitalName: existing.hospitalName,
+        summary: `Incremented existing stock for ${existing.brandName} (Batch ${existing.batchNo}) by +${qty} units. Previous: ${previousQty}, New Total: ${existing.quantity}.`,
+        resultingStatus: existing.status || 'active',
+        metadata: {
+          addedQuantity: qty,
+          previousQuantity: previousQty,
+          totalQuantity: existing.quantity,
+          batchNo: existing.batchNo,
+        },
+      });
+
+      return existing;
+    }
+
+    // =========================================================================
+    // NEW INVENTORY RECORD: Create separate row for new batch / new hospital
+    // =========================================================================
     const newMed = {
       id: 'med-' + Date.now(),
+      medicineId: targetMedicineId || null,
       ...medicineData,
       brandName: medicineData.brandName || medicineData.medicineName || 'Medicine',
+      medicineName: medicineData.brandName || medicineData.medicineName || 'Medicine',
       genericName: medicineData.genericName || '',
       power: medicineData.power || medicineData.dosage || '',
       form: medicineData.form || medicineData.dosageForm || 'Tablet',
@@ -210,6 +292,8 @@ export const hospitalService = {
       minStockLevel: Number(medicineData.minStockLevel || medicineData.minimumStockLevel || 20),
       concessionPercent: Math.max(0, Math.min(90, Number(medicineData.concessionPercent || 0))),
       dateAdded: new Date().toISOString().split('T')[0],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       status: medicineData.status || 'active',
       distanceKm: Number(medicineData.distanceKm) || 12,
     };
@@ -231,6 +315,10 @@ export const hospitalService = {
     });
 
     return newMed;
+  },
+
+  async getMasterMedicines() {
+    return getStoredItem(KEYS.MASTER_MEDICINES, []);
   },
 
   async updateMedicine(id, updatedData) {

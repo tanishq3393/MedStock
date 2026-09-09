@@ -6,12 +6,15 @@ export const StatusBadge = ({ status, className = '', showIcon = true }) => {
 
   const normalized = status.toLowerCase().trim();
 
-  // GREEN: available / verified / accepted / paid / delivered / success / certified / healthy / active
-  if (['available', 'verified', 'accepted', 'paid', 'delivered', 'success', 'incinerated & certified', 'certified', 'healthy', 'active stock', 'active'].includes(normalized)) {
+  // GREEN: available / verified / accepted / paid / delivered / success / certified / healthy / active / in stock
+  if (['available', 'verified', 'accepted', 'paid', 'delivered', 'success', 'incinerated & certified', 'certified', 'healthy', 'active stock', 'active', 'in stock', 'in_stock'].includes(normalized)) {
+    let displayLabel = status;
+    if (normalized === 'healthy' || normalized === 'active') displayLabel = 'Available';
+    if (normalized === 'in_stock' || normalized === 'in stock') displayLabel = 'In Stock';
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 ${className}`}>
         {showIcon && <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[2.5]" />}
-        <span className="capitalize">{status === 'healthy' || status === 'active' ? 'Available' : status}</span>
+        <span className="capitalize">{displayLabel}</span>
       </span>
     );
   }
@@ -37,10 +40,10 @@ export const StatusBadge = ({ status, className = '', showIcon = true }) => {
   }
 
   // AMBER/ORANGE: disposal requested / pending disposal / near expiry / expiring soon / low stock / attention
-  if (['disposal requested', 'disposal_requested', 'pending_disposal', 'pending disposal', 'expiring soon', 'expiring_soon', 'near expiry', 'near-expiry', 'low stock', 'low-stock', 'pending', 'reported', 'quarantine', 'in transit to bio-centre', 'documents_missing', 'documents missing'].includes(normalized)) {
+  if (['disposal requested', 'disposal_requested', 'pending_disposal', 'pending disposal', 'expiring soon', 'expiring_soon', 'near expiry', 'near-expiry', 'low stock', 'low-stock', 'low_stock', 'pending', 'reported', 'quarantine', 'in transit to bio-centre', 'documents_missing', 'documents missing'].includes(normalized)) {
     let displayLabel = status;
     if (normalized === 'near-expiry' || normalized === 'near expiry') displayLabel = 'Expiring Soon';
-    if (normalized === 'low-stock') displayLabel = 'Low Stock';
+    if (normalized === 'low-stock' || normalized === 'low_stock') displayLabel = 'Low Stock';
     if (normalized === 'pending_disposal') displayLabel = 'Disposal Requested';
 
     return (
@@ -51,12 +54,17 @@ export const StatusBadge = ({ status, className = '', showIcon = true }) => {
     );
   }
 
-  // RED: expired / critical / rejected / failed / cancelled / suspended
-  if (['expired', 'critical', 'critical expiry', 'rejected', 'failed', 'cancelled', 'suspended'].includes(normalized)) {
+  // RED: expired / critical / out of stock / rejected / failed / cancelled / suspended
+  if (['expired', 'critical', 'critical expiry', 'out of stock', 'out_of_stock', 'rejected', 'failed', 'cancelled', 'suspended'].includes(normalized)) {
+    let displayLabel = status;
+    if (normalized === 'critical') displayLabel = 'Critical Expiry';
+    if (normalized === 'out_of_stock' || normalized === 'out of stock') displayLabel = 'Out of Stock';
+    if (normalized === 'expired') displayLabel = 'Expired';
+
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200/80 ${className}`}>
         {showIcon && <X className="w-3.5 h-3.5 text-rose-600 stroke-[2.5]" />}
-        <span className="capitalize">{normalized === 'critical' ? 'Critical Expiry' : status}</span>
+        <span className="capitalize">{displayLabel}</span>
       </span>
     );
   }

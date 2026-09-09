@@ -1,7 +1,7 @@
-import { getStoredItem, setStoredItem, KEYS } from './storage';
-import { ADMIN_ANALYTICS } from './mockData';
-import { auditService } from './auditService';
-import { calculateMedicineExpiry } from '../utils/expiryUtils';
+import { getStoredItem, setStoredItem, KEYS } from './storage.js';
+import { ADMIN_ANALYTICS } from './mockData.js';
+import { auditService } from './auditService.js';
+import { calculateMedicineExpiry } from '../utils/expiryUtils.js';
 
 const assertAdminSession = () => {
   const session = getStoredItem(KEYS.AUTH, null);
@@ -378,65 +378,134 @@ export const adminService = {
   },
 
   // ==========================================
-  // 3. MEDICINE DIRECTORY OVERSIGHT
+  // 3. MASTER MEDICINES CATALOGUE OVERSIGHT
   // ==========================================
-  async getMedicineData(hospitalId = null) {
-    await new Promise((r) => setTimeout(r, 200));
-    const medicines = getStoredItem(KEYS.MEDICINES, []);
-    if (!hospitalId || hospitalId === 'all') return medicines;
-    return medicines.filter((m) => m.hospitalId === hospitalId);
+  async getMedicineData() {
+    await new Promise((r) => setTimeout(r, 150));
+    return getStoredItem(KEYS.MASTER_MEDICINES, []);
   },
 
   async addMedicineToHospital(medicineData) {
-    await new Promise((r) => setTimeout(r, 250));
+    // Admin creates medicine in the Master Catalogue ONLY
+    await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
-    const medicines = getStoredItem(KEYS.MEDICINES, []);
-    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
-    const hosp = hospitals.find((h) => h.id === medicineData.hospitalId) || { name: 'Hospital Facility', city: 'Mumbai' };
 
-    const newMed = {
-      id: 'med-' + Date.now(),
-      ...medicineData,
-      hospitalName: hosp.name,
-      location: `${hosp.city}, ${hosp.state || 'India'}`,
-      quantity: Number(medicineData.quantity),
-      unitOriginalPrice: Number(medicineData.unitOriginalPrice),
-      concessionPercent: Number(medicineData.concessionPercent || 0),
-      dateAdded: new Date().toISOString().split('T')[0],
-      distanceKm: medicineData.distanceKm || 15.0,
+    if (!medicineData.medicineName && !medicineData.brandName) {
+      throw new Error('Medicine name is required for master catalogue registration');
+    }
+
+    const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+    const name = (medicineData.medicineName || medicineData.brandName).trim();
+    const generic = (medicineData.genericName || '').trim();
+    const form = medicineData.dosageForm || medicineData.form || 'Tablet';
+    const strength = medicineData.strength || medicineData.power || '';
+
+    // Generate standard medicine code if not specified
+    let code = medicineData.medicineCode;
+    if (!code) {
+      const prefix = name.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() || 'MED';
+      const strengthNum = strength.replace(/[^0-9]/g, '') || '100';
+      code = `MED-${prefix}-${strengthNum}`;
+    }
+
+    const newMasterMed = {
+      id: 'master-med-' + Date.now(),
+      medicineCode: code,
+      medicineName: name,
+      brandName: name,
+      genericName: generic,
+      category: medicineData.category || 'General Therapeutics',
+      dosageForm: form,
+      form: form,
+      strength: strength,
+      power: strength,
+      unit: medicineData.unit || 'mg',
+      manufacturer: medicineData.manufacturer || 'Approved Pharmaceutical Lab',
+      storageType: medicineData.storageType || 'Room Temperature (15°C - 25°C)',
+      description: medicineData.description || 'Registered pharmaceutical formulation in MEDEX central master formulary.',
       status: 'active',
+      dateAdded: new Date().toISOString().split('T')[0],
     };
 
-    medicines.unshift(newMed);
-    setStoredItem(KEYS.MEDICINES, medicines);
-    return newMed;
+    masterMeds.unshift(newMasterMed);
+    setStoredItem(KEYS.MASTER_MEDICINES, masterMeds);
+
+    auditService.logEvent({
+      action: 'MASTER_MEDICINE_ADDED',
+      entityType: 'MEDICINE',
+      entityId: newMasterMed.id,
+      actorRole: 'admin',
+      summary: `Registered new medicine "${newMasterMed.medicineName}" (${newMasterMed.medicineCode}) in central master catalogue.`,
+      resultingStatus: 'active',
+      metadata: { code: newMasterMed.medicineCode, category: newMasterMed.category, manufacturer: newMasterMed.manufacturer },
+    });
+
+    return newMasterMed;
   },
 
   async updateMedicineData(id, updatedData) {
     await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
-    const medicines = getStoredItem(KEYS.MEDICINES, []);
-    const index = medicines.findIndex((m) => m.id === id);
-    if (index === -1) throw new Error('Medicine record not found');
+    const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+    const index = masterMeds.findIndex((m) => m.id === id);
+    if (index === -1) throw new Error('Master medicine record not found');
 
-    medicines[index] = {
-      ...medicines[index],
+    const name = updatedData.medicineName || updatedData.brandName || masterMeds[index].medicineName;
+    const form = updatedData.dosageForm || updatedData.form || masterMeds[index].dosageForm;
+    const strength = updatedData.strength || updatedData.power || masterMeds[index].strength;
+
+    masterMeds[index] = {
+      ...masterMeds[index],
       ...updatedData,
-      quantity: Number(updatedData.quantity ?? medicines[index].quantity),
-      unitOriginalPrice: Number(updatedData.unitOriginalPrice ?? medicines[index].unitOriginalPrice),
-      concessionPercent: Number(updatedData.concessionPercent ?? medicines[index].concessionPercent),
+      medicineName: name,
+      brandName: name,
+      genericName: updatedData.genericName ?? masterMeds[index].genericName,
+      category: updatedData.category ?? masterMeds[index].category,
+      dosageForm: form,
+      form: form,
+      strength: strength,
+      power: strength,
+      unit: updatedData.unit ?? masterMeds[index].unit,
+      manufacturer: updatedData.manufacturer ?? masterMeds[index].manufacturer,
+      storageType: updatedData.storageType ?? masterMeds[index].storageType,
+      medicineCode: updatedData.medicineCode ?? masterMeds[index].medicineCode,
+      description: updatedData.description ?? masterMeds[index].description,
     };
 
-    setStoredItem(KEYS.MEDICINES, medicines);
-    return medicines[index];
+    setStoredItem(KEYS.MASTER_MEDICINES, masterMeds);
+
+    auditService.logEvent({
+      action: 'MASTER_MEDICINE_UPDATED',
+      entityType: 'MEDICINE',
+      entityId: id,
+      actorRole: 'admin',
+      summary: `Updated master formulary entry for "${masterMeds[index].medicineName}".`,
+      resultingStatus: 'active',
+      metadata: { code: masterMeds[index].medicineCode },
+    });
+
+    return masterMeds[index];
   },
 
   async deleteMedicineData(id) {
     await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
-    const medicines = getStoredItem(KEYS.MEDICINES, []);
-    const filtered = medicines.filter((m) => m.id !== id);
-    setStoredItem(KEYS.MEDICINES, filtered);
+    const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+    const target = masterMeds.find((m) => m.id === id);
+    const filtered = masterMeds.filter((m) => m.id !== id);
+    setStoredItem(KEYS.MASTER_MEDICINES, filtered);
+
+    if (target) {
+      auditService.logEvent({
+        action: 'MASTER_MEDICINE_DELETED',
+        entityType: 'MEDICINE',
+        entityId: id,
+        actorRole: 'admin',
+        summary: `Removed "${target.medicineName}" (${target.medicineCode}) from central master catalogue.`,
+        resultingStatus: 'deleted',
+      });
+    }
+
     return true;
   },
 
@@ -579,7 +648,7 @@ export const adminService = {
   // ==========================================
   // 6. CENTRAL INVENTORY OVERSIGHT
   // ==========================================
-  async getInventory(statusFilter = 'all', searchTerm = '', hospitalFilter = 'all', categoryFilter = 'all') {
+  async getInventory(statusFilter = 'all', searchTerm = '', hospitalFilter = 'all', categoryFilter = 'all', expiryFilter = 'all') {
     await new Promise((r) => setTimeout(r, 150));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
@@ -601,21 +670,20 @@ export const adminService = {
     const uniqueMedicinesSet = new Set();
 
     const items = medicines.map((med) => {
-      const hosp = hospitals.find((h) => h.id === med.hospitalId) || { name: med.hospitalName || 'Health Facility' };
+      const hosp = hospitals.find((h) => h.id === med.hospitalId) || { name: med.hospitalName || 'Health Facility', city: 'District' };
       const exp = calculateMedicineExpiry(med.expiryDate, med.mfgDate, med.quantity, med.minStockLevel || 20);
       const qty = Number(med.quantity || 0);
       const reserved = reservedMap[med.id] || 0;
       const available = Math.max(0, qty - reserved);
 
-      if (med.brandName) {
-        uniqueMedicinesSet.add(med.brandName.trim().toLowerCase());
-      }
+      const medName = med.brandName || med.medicineName || 'Pharmaceutical';
+      uniqueMedicinesSet.add(medName.trim().toLowerCase());
 
       let computedStatus = 'in_stock';
       if (exp.isExpired) {
         computedStatus = 'expired';
         expiredUnits += 1;
-      } else if (available === 0) {
+      } else if (available === 0 || qty === 0) {
         computedStatus = 'out_of_stock';
         outOfStockCount += 1;
       } else if (available <= (med.minStockLevel || 20) || exp.isLowStock) {
@@ -633,39 +701,56 @@ export const adminService = {
 
       return {
         id: med.id,
-        medicine: med.brandName,
-        medicineName: med.brandName,
-        medicineId: med.id,
+        medicine: medName,
+        medicineName: medName,
+        medicineId: med.medicineId || med.id,
+        masterMedicineId: med.masterMedicineId || med.medicineId,
         genericName: med.genericName || 'Active Pharmaceutical Ingredient',
         category: med.category || 'Essential Medicines',
+        dosageForm: med.dosageForm || med.form || 'Tablet',
+        form: med.form || med.dosageForm || 'Tablet',
+        strength: med.strength || med.power || '',
+        power: med.power || med.strength || '',
+        manufacturer: med.manufacturer || 'Authorized Manufacturer',
         hospital: hosp.name,
         hospitalName: hosp.name,
         hospitalId: med.hospitalId,
+        hospitalCity: hosp.city || 'Metro',
+        hospitalState: hosp.state || 'India',
         availableStock: available,
         availableQuantity: available,
         totalStock: qty,
+        quantity: qty,
         reservedStock: reserved,
         reservedQuantity: reserved,
         expiredStock: exp.isExpired ? qty : 0,
         minimumStock: med.minStockLevel || 20,
+        minStockLevel: med.minStockLevel || 20,
+        mfgDate: med.mfgDate || '2024-01-01',
         expiryDate: med.expiryDate,
+        daysUntilExpiry: exp.daysUntilExpiry,
+        isExpired: exp.isExpired,
+        isNearExpiry: exp.isNearExpiry,
         status: computedStatus,
         stockStatus: computedStatus,
         lastUpdated: med.lastUpdated || med.dateAdded || '2024-09-01',
         batchNumber: med.batchNo || 'BATCH-2024',
+        batchNo: med.batchNo || 'BATCH-2024',
         unitOriginalPrice: med.unitOriginalPrice || 50,
+        notes: med.notes || '',
+        storageType: med.storageType || 'Room Temperature (15°C - 25°C)',
       };
     });
 
-    // Summary counts calculated from inventory data (Requirement 4)
+    // Summary counts calculated from real centralized inventory
     const summary = {
       totalMedicines: uniqueMedicinesSet.size || medicines.length,
+      totalUnits,
       totalStockUnits: totalUnits,
       lowStock: lowStockCount,
       outOfStock: outOfStockCount,
       expiringSoon: expiringSoonCount,
       expired: expiredUnits,
-      // Compatibility aliases
       totalStock: totalUnits,
       lowStockCount,
       outOfStockCount,
@@ -680,18 +765,32 @@ export const adminService = {
         item.genericName.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.hospital.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.hospitalId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.medicineId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.batchNumber?.toLowerCase().includes(searchTerm.toLowerCase());
 
       let matchStatus = true;
       if (statusFilter && statusFilter !== 'all') {
         const normFilter = statusFilter.toLowerCase().replace(/[\s_-]+/g, '');
         if (normFilter === 'expiringsoon') {
-          const exp = calculateMedicineExpiry(item.expiryDate);
-          matchStatus = exp.isNearExpiry && !exp.isExpired;
+          matchStatus = item.isNearExpiry && !item.isExpired;
         } else {
           const normItemStatus = (item.status || '').toLowerCase().replace(/[\s_-]+/g, '');
           matchStatus = normItemStatus === normFilter;
+        }
+      }
+
+      let matchExpiry = true;
+      if (expiryFilter && expiryFilter !== 'all') {
+        const normExp = expiryFilter.toLowerCase().replace(/[\s_-]+/g, '');
+        if (normExp === 'good') {
+          matchExpiry = !item.isExpired && (item.daysUntilExpiry === undefined || item.daysUntilExpiry > 90);
+        } else if (normExp === 'expiringsoon' || normExp === 'within90') {
+          matchExpiry = !item.isExpired && item.daysUntilExpiry !== undefined && item.daysUntilExpiry <= 90;
+        } else if (normExp === 'within60') {
+          matchExpiry = !item.isExpired && item.daysUntilExpiry !== undefined && item.daysUntilExpiry <= 60;
+        } else if (normExp === 'within30') {
+          matchExpiry = !item.isExpired && item.daysUntilExpiry !== undefined && item.daysUntilExpiry <= 30;
+        } else if (normExp === 'expired') {
+          matchExpiry = item.isExpired;
         }
       }
 
@@ -705,13 +804,146 @@ export const adminService = {
         categoryFilter === 'all' ||
         item.category.toLowerCase() === categoryFilter.toLowerCase();
 
-      return matchSearch && matchStatus && matchHosp && matchCategory;
+      return matchSearch && matchStatus && matchExpiry && matchHosp && matchCategory;
     });
 
     return {
       items: filtered,
       summary,
     };
+  },
+
+  async adminAddStock({
+    hospitalId,
+    masterMedicineId,
+    medicineName,
+    genericName,
+    category,
+    dosageForm,
+    form,
+    strength,
+    power,
+    manufacturer,
+    batchNo,
+    quantity,
+    mfgDate,
+    expiryDate,
+    minStockLevel,
+    notes,
+    unitOriginalPrice
+  }) {
+    await new Promise((r) => setTimeout(r, 200));
+    assertAdminSession();
+    if (!hospitalId) throw new Error('Hospital must be selected');
+    if (!medicineName?.trim()) throw new Error('Medicine name must be specified');
+    if (!batchNo?.trim()) throw new Error('Batch number is required');
+    const addQty = Number(quantity);
+    if (isNaN(addQty) || addQty <= 0) throw new Error('Quantity must be greater than 0');
+    if (!expiryDate) throw new Error('Expiry date is required');
+
+    const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === hospitalId) || { name: 'Hospital Facility', city: 'District' };
+
+    const normBatch = batchNo.trim().toLowerCase();
+    const normName = medicineName.trim().toLowerCase();
+
+    // Section 6 Duplicate Medicine/Batch Logic:
+    // Hospital + Medicine + Batch
+    const existingIndex = medicines.findIndex((m) => {
+      if (m.hospitalId !== hospitalId) return false;
+      const matchBatch = (m.batchNo || '').trim().toLowerCase() === normBatch;
+      const matchName = (m.brandName || m.medicineName || '').trim().toLowerCase() === normName ||
+        (masterMedicineId && (m.masterMedicineId === masterMedicineId || m.medicineId === masterMedicineId));
+      return matchBatch && matchName;
+    });
+
+    let resultItem;
+    let isNewRecord = false;
+    let prevQuantity = 0;
+
+    if (existingIndex !== -1) {
+      // Merge into existing batch (do NOT create duplicate row)
+      prevQuantity = Number(medicines[existingIndex].quantity || 0);
+      medicines[existingIndex].quantity = prevQuantity + addQty;
+      medicines[existingIndex].lastUpdated = new Date().toISOString().split('T')[0];
+      if (mfgDate) medicines[existingIndex].mfgDate = mfgDate;
+      if (expiryDate) medicines[existingIndex].expiryDate = expiryDate;
+      if (minStockLevel) medicines[existingIndex].minStockLevel = Number(minStockLevel);
+      resultItem = medicines[existingIndex];
+    } else {
+      // Create separate batch record
+      isNewRecord = true;
+      resultItem = {
+        id: 'med-' + Date.now(),
+        masterMedicineId: masterMedicineId || undefined,
+        medicineId: masterMedicineId || ('med-' + Date.now()),
+        brandName: medicineName.trim(),
+        medicineName: medicineName.trim(),
+        genericName: genericName?.trim() || 'Active Formulation',
+        category: category || 'Essential Medicines',
+        form: dosageForm || form || 'Tablet',
+        power: strength || power || 'Standard',
+        manufacturer: manufacturer || 'Authorized Manufacturer',
+        batchNo: batchNo.trim(),
+        quantity: addQty,
+        minStockLevel: Number(minStockLevel) || 20,
+        mfgDate: mfgDate || new Date().toISOString().split('T')[0],
+        expiryDate: expiryDate,
+        unitOriginalPrice: Number(unitOriginalPrice) || 50,
+        hospitalId,
+        hospitalName: hosp.name,
+        location: `${hosp.city || 'District'}, ${hosp.state || 'India'}`,
+        dateAdded: new Date().toISOString().split('T')[0],
+        lastUpdated: new Date().toISOString().split('T')[0],
+        notes: notes || 'Admin override stock addition',
+        addedBy: 'Admin (Override)',
+      };
+      medicines.unshift(resultItem);
+    }
+
+    setStoredItem(KEYS.MEDICINES, medicines);
+
+    // Record in Stock History (Section 12)
+    const stockHistory = getStoredItem(KEYS.STOCK_HISTORY, []);
+    stockHistory.unshift({
+      id: 'sh-admin-' + Date.now(),
+      medicineId: resultItem.id,
+      medicineName: resultItem.brandName || resultItem.medicineName,
+      batchNo: resultItem.batchNo,
+      hospitalId,
+      hospitalName: hosp.name,
+      action: 'Stock Added',
+      actionType: 'Intake',
+      quantityDelta: addQty,
+      previousStock: prevQuantity,
+      resultingStock: resultItem.quantity,
+      performedBy: 'Admin',
+      reason: notes || 'Admin override authorized batch addition',
+      timestamp: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
+    });
+    setStoredItem(KEYS.STOCK_HISTORY, stockHistory);
+
+    // Audit Trail
+    auditService.logEvent({
+      action: 'ADMIN_STOCK_ADDED',
+      entityType: 'Inventory',
+      entityId: resultItem.id,
+      hospitalId,
+      hospitalName: hosp.name,
+      adminUser: 'Super Administrator',
+      summary: `Admin added ${addQty} units of ${resultItem.brandName} (Batch: ${resultItem.batchNo}) to ${hosp.name}. Total balance: ${resultItem.quantity} units.`,
+      resultingStatus: 'Completed',
+      metadata: {
+        isNewRecord,
+        quantityDelta: addQty,
+        resultingQuantity: resultItem.quantity,
+        batchNo: resultItem.batchNo,
+      }
+    });
+
+    return resultItem;
   },
 
   async adjustStock({ medicineId, quantityDelta, type = 'Intake', reason = 'Inventory adjustment' }) {
@@ -733,15 +965,19 @@ export const adminService = {
     stockHistory.unshift({
       id: 'sh-' + Date.now(),
       medicineId,
-      medicineName: med.brandName,
+      medicineName: med.brandName || med.medicineName,
+      batchNo: med.batchNo,
       hospitalId: med.hospitalId,
       hospitalName: med.hospitalName,
-      type,
+      action: Number(quantityDelta) >= 0 ? 'Stock Added' : 'Stock Adjustment',
+      actionType: type,
       quantityDelta: Number(quantityDelta),
       previousStock: prevStock,
       resultingStock: newStock,
+      performedBy: 'Admin',
       reason,
       timestamp: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
       adminUser: 'Super Administrator',
     });
     setStoredItem(KEYS.STOCK_HISTORY, stockHistory);
@@ -766,41 +1002,71 @@ export const adminService = {
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
 
     const sourceMedIndex = medicines.findIndex((m) => m.id === medicineId);
-    if (sourceMedIndex === -1) throw new Error('Source medicine record not found');
+    if (sourceMedIndex === -1) throw new Error('Source inventory record not found');
     const sourceMed = medicines[sourceMedIndex];
 
     const transferQty = Number(quantity);
-    if (transferQty <= 0) throw new Error('Transfer quantity must be greater than 0');
-    if (Number(sourceMed.quantity || 0) < transferQty) {
-      throw new Error(`Insufficient stock. Available: ${sourceMed.quantity} units`);
+    if (isNaN(transferQty) || transferQty <= 0) throw new Error('Transfer quantity must be greater than 0');
+    
+    const currentQty = Number(sourceMed.quantity || 0);
+    if (currentQty <= 0) {
+      throw new Error('Cannot transfer out-of-stock inventory (Current balance: 0 units)');
+    }
+    if (currentQty < transferQty) {
+      throw new Error(`Insufficient stock. Available to transfer: ${currentQty} units`);
     }
 
-    const sourceHosp = hospitals.find((h) => h.id === (sourceHospitalId || sourceMed.hospitalId)) || { name: sourceMed.hospitalName };
+    // Block transfer of expired stock (Section 21)
+    const exp = calculateMedicineExpiry(sourceMed.expiryDate, sourceMed.mfgDate, currentQty, sourceMed.minStockLevel || 20);
+    if (exp.isExpired) {
+      throw new Error('Expired medicines cannot be transferred for redistribution under patient safety protocols.');
+    }
+
+    const sourceHosp = hospitals.find((h) => h.id === (sourceHospitalId || sourceMed.hospitalId)) || { name: sourceMed.hospitalName, id: sourceMed.hospitalId };
     const targetHosp = hospitals.find((h) => h.id === targetHospitalId);
     if (!targetHosp) throw new Error('Target destination hospital not found');
+    if (targetHosp.id === sourceHosp.id) throw new Error('Destination hospital must be different from source hospital');
 
-    // Deduct from source
-    sourceMed.quantity = Number(sourceMed.quantity) - transferQty;
+    // Deduct from source hospital
+    sourceMed.quantity = currentQty - transferQty;
     sourceMed.lastUpdated = new Date().toISOString().split('T')[0];
 
-    // Find or add to target hospital
-    let targetMed = medicines.find((m) => m.hospitalId === targetHospitalId && m.brandName.toLowerCase() === sourceMed.brandName.toLowerCase());
-    if (targetMed) {
-      targetMed.quantity = Number(targetMed.quantity) + transferQty;
+    // Target hospital duplicate rule: Hospital + Medicine + Batch (Section 11)
+    const normBatch = (sourceMed.batchNo || '').trim().toLowerCase();
+    const normName = (sourceMed.brandName || sourceMed.medicineName || '').trim().toLowerCase();
+
+    let targetMedIndex = medicines.findIndex((m) => {
+      if (m.hospitalId !== targetHospitalId) return false;
+      const matchBatch = (m.batchNo || '').trim().toLowerCase() === normBatch;
+      const matchName = (m.brandName || m.medicineName || '').trim().toLowerCase() === normName ||
+        (sourceMed.masterMedicineId && (m.masterMedicineId === sourceMed.masterMedicineId || m.medicineId === sourceMed.masterMedicineId));
+      return matchBatch && matchName;
+    });
+
+    let targetMed;
+    if (targetMedIndex !== -1) {
+      // Increase existing batch quantity in target hospital
+      targetMed = medicines[targetMedIndex];
+      targetMed.quantity = Number(targetMed.quantity || 0) + transferQty;
       targetMed.lastUpdated = new Date().toISOString().split('T')[0];
     } else {
+      // Create new inventory record in target hospital keeping same batch, mfg, and expiry
       targetMed = {
         ...sourceMed,
         id: 'med-' + Date.now() + '-xfr',
         hospitalId: targetHospitalId,
         hospitalName: targetHosp.name,
-        location: `${targetHosp.city}, ${targetHosp.state || 'India'}`,
+        location: `${targetHosp.city || ''}, ${targetHosp.state || 'India'}`,
         quantity: transferQty,
+        batchNo: sourceMed.batchNo,
+        mfgDate: sourceMed.mfgDate,
+        expiryDate: sourceMed.expiryDate,
         dateAdded: new Date().toISOString().split('T')[0],
         lastUpdated: new Date().toISOString().split('T')[0],
       };
       medicines.unshift(targetMed);
     }
+
     setStoredItem(KEYS.MEDICINES, medicines);
 
     // Create tracking consignment
@@ -809,7 +1075,8 @@ export const adminService = {
     trackingList.unshift({
       transactionId: txnId,
       trackingNumber: 'MED-TRK-' + Math.floor(100000 + Math.random() * 900000),
-      medicineName: sourceMed.brandName,
+      medicineName: sourceMed.brandName || sourceMed.medicineName,
+      batchNo: sourceMed.batchNo,
       quantity: transferQty,
       senderHospital: sourceHosp.name,
       senderHospitalId: sourceHosp.id,
@@ -826,24 +1093,53 @@ export const adminService = {
     });
     setStoredItem(KEYS.TRACKING, trackingList);
 
-    // Stock history
+    // Log to Stock History for BOTH source and target (Section 12)
     const stockHistory = getStoredItem(KEYS.STOCK_HISTORY, []);
+    
+    // Source deduction
     stockHistory.unshift({
-      id: 'sh-xfr-' + Date.now(),
-      medicineId,
-      medicineName: sourceMed.brandName,
+      id: 'sh-xfr-src-' + Date.now(),
+      medicineId: sourceMed.id,
+      medicineName: sourceMed.brandName || sourceMed.medicineName,
+      batchNo: sourceMed.batchNo,
       hospitalId: sourceHosp.id,
       hospitalName: sourceHosp.name,
-      type: 'Transfer',
+      partnerHospitalId: targetHosp.id,
+      partnerHospitalName: targetHosp.name,
+      action: 'Stock Transferred',
+      actionType: 'Transfer',
       quantityDelta: -transferQty,
-      previousStock: Number(sourceMed.quantity) + transferQty,
+      previousStock: currentQty,
       resultingStock: sourceMed.quantity,
+      performedBy: 'Admin',
       reason: `Transferred ${transferQty} units to ${targetHosp.name}. Note: ${note || 'Admin quota redistribution'}`,
       timestamp: new Date().toISOString(),
-      adminUser: 'Super Administrator',
+      date: new Date().toISOString().split('T')[0],
     });
+
+    // Destination addition
+    stockHistory.unshift({
+      id: 'sh-xfr-dest-' + Date.now(),
+      medicineId: targetMed.id,
+      medicineName: sourceMed.brandName || sourceMed.medicineName,
+      batchNo: sourceMed.batchNo,
+      hospitalId: targetHosp.id,
+      hospitalName: targetHosp.name,
+      partnerHospitalId: sourceHosp.id,
+      partnerHospitalName: sourceHosp.name,
+      action: 'Stock Received',
+      actionType: 'Received',
+      quantityDelta: transferQty,
+      resultingStock: targetMed.quantity,
+      performedBy: 'Admin',
+      reason: `Received ${transferQty} units transferred from ${sourceHosp.name}. Note: ${note || 'Admin quota redistribution'}`,
+      timestamp: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
+    });
+
     setStoredItem(KEYS.STOCK_HISTORY, stockHistory);
 
+    // Audit Trail
     auditService.logEvent({
       action: 'STOCK_TRANSFERRED',
       entityType: 'Inventory',
@@ -852,52 +1148,58 @@ export const adminService = {
       hospitalName: sourceHosp.name,
       partnerHospitalId: targetHosp.id,
       partnerHospitalName: targetHosp.name,
-      summary: `Admin transferred ${transferQty} units of ${sourceMed.brandName} from ${sourceHosp.name} to ${targetHosp.name}`,
+      adminUser: 'Super Administrator',
+      summary: `Admin transferred ${transferQty} units of ${sourceMed.brandName} (Batch: ${sourceMed.batchNo}) from ${sourceHosp.name} to ${targetHosp.name}.`,
       resultingStatus: 'In Transit',
+      metadata: {
+        sourceHospital: sourceHosp.name,
+        destinationHospital: targetHosp.name,
+        medicine: sourceMed.brandName,
+        batchNo: sourceMed.batchNo,
+        quantity: transferQty,
+      }
     });
 
-    return { success: true, txnId };
+    return { success: true, txnId, targetMed, sourceMed };
   },
 
-  async getStockHistory(medicineId = null) {
+  async getStockHistory(medicineId = null, batchNo = null, hospitalId = null) {
     await new Promise((r) => setTimeout(r, 100));
     const stockHistory = getStoredItem(KEYS.STOCK_HISTORY, []);
-    if (stockHistory.length === 0) {
+    
+    let filtered = stockHistory;
+    if (medicineId && medicineId !== 'all') {
+      filtered = filtered.filter((h) => 
+        h.medicineId === medicineId || 
+        (h.medicineName && h.medicineName.toLowerCase() === medicineId.toLowerCase())
+      );
+    }
+    if (batchNo && batchNo !== 'all') {
+      filtered = filtered.filter((h) => (h.batchNo || '').toLowerCase() === batchNo.toLowerCase());
+    }
+    if (hospitalId && hospitalId !== 'all') {
+      filtered = filtered.filter((h) => h.hospitalId === hospitalId || h.partnerHospitalId === hospitalId);
+    }
+
+    if (filtered.length === 0) {
       return [
         {
-          id: 'sh-sample-1',
-          medicineName: 'Paracetamol 500mg',
-          type: 'Intake',
-          quantityDelta: 200,
-          resultingStock: 350,
-          reason: 'Authorized batch intake from central depot',
-          timestamp: new Date(Date.now() - 2 * 3600000).toISOString(),
-          adminUser: 'Super Administrator',
-        },
-        {
-          id: 'sh-sample-2',
-          medicineName: 'Azithromycin 500mg',
-          type: 'Transfer',
-          quantityDelta: -50,
-          resultingStock: 120,
-          reason: 'Emergency ICU quota transfer to Apollo Hospital',
-          timestamp: new Date(Date.now() - 8 * 3600000).toISOString(),
-          adminUser: 'Super Administrator',
-        },
-        {
-          id: 'sh-sample-3',
-          medicineName: 'Meropenem 1g Injection',
-          type: 'Removal',
-          quantityDelta: -10,
-          resultingStock: 25,
-          reason: 'Vial integrity quarantine inspection',
-          timestamp: new Date(Date.now() - 24 * 3600000).toISOString(),
-          adminUser: 'Super Administrator',
+          id: 'sh-fallback-1',
+          medicineName: 'Pharmaceutical Inventory Batch',
+          batchNo: batchNo || 'BATCH-001',
+          action: 'Stock Added',
+          actionType: 'Intake',
+          quantityDelta: 100,
+          resultingStock: 100,
+          performedBy: 'Apollo Hospital',
+          reason: 'Initial verified stock intake registration',
+          timestamp: new Date(Date.now() - 48 * 3600000).toISOString(),
+          date: new Date(Date.now() - 48 * 3600000).toISOString().split('T')[0],
         }
       ];
     }
-    if (!medicineId || medicineId === 'all') return stockHistory;
-    return stockHistory.filter((h) => h.medicineId === medicineId);
+
+    return filtered;
   },
 
   // ==========================================

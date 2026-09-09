@@ -1,6 +1,8 @@
 import {
   INITIAL_HOSPITALS,
+  INITIAL_MASTER_MEDICINES,
   INITIAL_MEDICINES,
+  INITIAL_STOCK_HISTORY,
   INITIAL_REQUESTS,
   INITIAL_TRACKING,
   INITIAL_PAYMENTS,
@@ -8,10 +10,11 @@ import {
   INITIAL_FEEDBACKS,
   HOSPITAL_ANALYTICS,
   ADMIN_ANALYTICS
-} from './mockData';
+} from './mockData.js';
 
 const KEYS = {
   HOSPITALS: 'sms_hospitals',
+  MASTER_MEDICINES: 'sms_master_medicines',
   MEDICINES: 'sms_medicines',
   REQUESTS: 'sms_requests',
   TRACKING: 'sms_tracking',
@@ -27,9 +30,23 @@ const KEYS = {
 
 // Initialize localStorage with mock data if not present, and seamlessly merge new mock data
 export const initializeStorage = () => {
-  // 1. Hospitals: initialize or merge missing & normalize future-ready document models
+  // 1. Hospitals: initialize or migrate with comprehensive 20-hospital dataset & future-ready document models
+  const HOSPITALS_DATASET_VERSION = 'medex_v2_comprehensive_hospitals';
+  const storedVersion = localStorage.getItem('sms_hospital_dataset_version');
   const storedHospitals = localStorage.getItem(KEYS.HOSPITALS);
-  if (!storedHospitals) {
+
+  if (!storedHospitals || storedVersion !== HOSPITALS_DATASET_VERSION) {
+    let userCreatedHospitals = [];
+    if (storedHospitals) {
+      try {
+        const parsed = JSON.parse(storedHospitals);
+        const seedIds = new Set(INITIAL_HOSPITALS.map((h) => h.id));
+        userCreatedHospitals = parsed.filter((h) => !seedIds.has(h.id));
+      } catch (e) {
+        userCreatedHospitals = [];
+      }
+    }
+
     const normalizedInit = INITIAL_HOSPITALS.map((hosp) => ({
       ...hosp,
       documents: (hosp.documents || []).map((doc, idx) => ({
@@ -37,8 +54,13 @@ export const initializeStorage = () => {
         hospitalId: hosp.id,
         documentType: doc.documentType || doc.type || 'Registration Certificate',
         documentName: doc.documentName || doc.name || 'Document.pdf',
+        fileName: doc.fileName || doc.documentName || doc.name || 'Document.pdf',
+        fileReference: doc.fileReference || `/documents/${doc.documentName || doc.name || 'document.pdf'}`,
         name: doc.name || doc.documentName || 'Document.pdf',
         type: doc.type || doc.documentType || 'Registration Certificate',
+        required: doc.required ?? true,
+        status: doc.status || 'Submitted',
+        submissionStatus: doc.submissionStatus || 'submitted',
         documentStatus: doc.documentStatus || (doc.verified ? 'verified' : (hosp.status === 'verified' ? 'verified' : (doc.rejectionReason ? 'rejected' : 'pending'))),
         uploadedAt: doc.uploadedAt || hosp.registeredDate || '2024-08-01',
         reviewedAt: doc.reviewedAt || (doc.verified ? hosp.verifiedDate || '2024-08-02' : null),
@@ -48,7 +70,9 @@ export const initializeStorage = () => {
         verified: doc.verified ?? (doc.documentStatus === 'verified'),
       })),
     }));
-    localStorage.setItem(KEYS.HOSPITALS, JSON.stringify(normalizedInit));
+
+    localStorage.setItem(KEYS.HOSPITALS, JSON.stringify([...normalizedInit, ...userCreatedHospitals]));
+    localStorage.setItem('sms_hospital_dataset_version', HOSPITALS_DATASET_VERSION);
   } else {
     try {
       let parsedHosp = JSON.parse(storedHospitals);
@@ -67,8 +91,13 @@ export const initializeStorage = () => {
             hospitalId: hosp.id,
             documentType: doc.documentType || doc.type || 'Registration Certificate',
             documentName: doc.documentName || doc.name || 'Document.pdf',
+            fileName: doc.fileName || doc.documentName || doc.name || 'Document.pdf',
+            fileReference: doc.fileReference || `/documents/${doc.documentName || doc.name || 'document.pdf'}`,
             name: doc.name || doc.documentName || 'Document.pdf',
             type: doc.type || doc.documentType || 'Registration Certificate',
+            required: doc.required ?? true,
+            status: doc.status || 'Submitted',
+            submissionStatus: doc.submissionStatus || 'submitted',
             documentStatus: docStatus,
             uploadedAt: doc.uploadedAt || hosp.registeredDate || '2024-08-01',
             reviewedAt: doc.reviewedAt || (docStatus === 'verified' ? hosp.verifiedDate || '2024-08-02' : null),
@@ -87,6 +116,26 @@ export const initializeStorage = () => {
     } catch (e) {
       console.error('Failed to migrate hospitals', e);
     }
+  }
+
+  // 1b. Master Medicines Catalogue: initialize or migrate with INITIAL_MASTER_MEDICINES
+  const MASTER_DATASET_VERSION = 'medex_v1_master_catalogue';
+  const storedMasterVersion = localStorage.getItem('sms_master_medicines_version');
+  const storedMasterMeds = localStorage.getItem(KEYS.MASTER_MEDICINES);
+
+  if (!storedMasterMeds || storedMasterVersion !== MASTER_DATASET_VERSION) {
+    let userCreatedMaster = [];
+    if (storedMasterMeds) {
+      try {
+        const parsed = JSON.parse(storedMasterMeds);
+        const seedIds = new Set(INITIAL_MASTER_MEDICINES.map((m) => m.id));
+        userCreatedMaster = parsed.filter((m) => !seedIds.has(m.id));
+      } catch (e) {
+        userCreatedMaster = [];
+      }
+    }
+    localStorage.setItem(KEYS.MASTER_MEDICINES, JSON.stringify([...INITIAL_MASTER_MEDICINES, ...userCreatedMaster]));
+    localStorage.setItem('sms_master_medicines_version', MASTER_DATASET_VERSION);
   }
 
   // 2. Medicines: initialize or merge missing & ensure mfgDate
@@ -300,6 +349,26 @@ export const initializeStorage = () => {
       }
     } catch (e) {
       console.error('Failed to migrate feedbacks', e);
+    }
+  }
+
+  const storedStockHistory = localStorage.getItem(KEYS.STOCK_HISTORY);
+  if (!storedStockHistory) {
+    localStorage.setItem(KEYS.STOCK_HISTORY, JSON.stringify(INITIAL_STOCK_HISTORY));
+  } else {
+    try {
+      const parsedHistory = JSON.parse(storedStockHistory);
+      if (!Array.isArray(parsedHistory) || parsedHistory.length === 0) {
+        localStorage.setItem(KEYS.STOCK_HISTORY, JSON.stringify(INITIAL_STOCK_HISTORY));
+      } else {
+        const existingIds = new Set(parsedHistory.map((h) => h.id));
+        const missing = INITIAL_STOCK_HISTORY.filter((h) => !existingIds.has(h.id));
+        if (missing.length > 0) {
+          localStorage.setItem(KEYS.STOCK_HISTORY, JSON.stringify([...parsedHistory, ...missing]));
+        }
+      }
+    } catch (e) {
+      localStorage.setItem(KEYS.STOCK_HISTORY, JSON.stringify(INITIAL_STOCK_HISTORY));
     }
   }
 

@@ -181,9 +181,14 @@ const hospitalSlice = createSlice({
         state.error = action.payload;
       })
 
-      // Add Medicine
+      // Add Medicine (handles both newly added records and merged duplicate stock)
       .addCase(addMedicineItem.fulfilled, (state, action) => {
-        state.inventory.unshift(action.payload);
+        const existingIdx = state.inventory.findIndex((m) => m.id === action.payload.id);
+        if (existingIdx !== -1) {
+          state.inventory[existingIdx] = action.payload;
+        } else {
+          state.inventory.unshift(action.payload);
+        }
       })
 
       // Update Medicine

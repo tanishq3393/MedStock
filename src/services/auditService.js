@@ -1,4 +1,4 @@
-import { getStoredItem, setStoredItem, KEYS } from './storage';
+import { getStoredItem, setStoredItem, KEYS } from './storage.js';
 
 /**
  * Standardized Audit Trail Service for MediStock / SmartMediShare
