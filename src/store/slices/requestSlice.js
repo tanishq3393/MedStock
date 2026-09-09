@@ -41,6 +41,17 @@ export const payForRequest = createAsyncThunk('requests/pay', async ({ requestId
   }
 });
 
+export const cancelRequisition = createAsyncThunk(
+  'requests/cancelRequisition',
+  async ({ requestId, reason, note, hospitalId }, { rejectWithValue }) => {
+    try {
+      return await hospitalService.cancelRequest({ requestId, reason, note, hospitalId });
+    } catch (err) {
+      return rejectWithValue(err.message);
+    }
+  }
+);
+
 const requestSlice = createSlice({
   name: 'requests',
   initialState: {
@@ -133,6 +144,30 @@ const requestSlice = createSlice({
       })
       .addCase(payForRequest.rejected, (state, action) => {
         state.isProcessingPayment = false;
+        state.error = action.payload;
+      })
+
+      // Cancel Requisition
+      .addCase(cancelRequisition.pending, (state) => {
+        state.isLoading = true;
+        state.error = null;
+      })
+      .addCase(cancelRequisition.fulfilled, (state, action) => {
+        state.isLoading = false;
+        const cancelledReq = action.payload;
+        if (cancelledReq && cancelledReq.id) {
+          const outIdx = state.outgoingRequests.findIndex((r) => r.id === cancelledReq.id);
+          if (outIdx !== -1) {
+            state.outgoingRequests[outIdx] = { ...state.outgoingRequests[outIdx], ...cancelledReq };
+          }
+          const inIdx = state.incomingRequests.findIndex((r) => r.id === cancelledReq.id);
+          if (inIdx !== -1) {
+            state.incomingRequests[inIdx] = { ...state.incomingRequests[inIdx], ...cancelledReq };
+          }
+        }
+      })
+      .addCase(cancelRequisition.rejected, (state, action) => {
+        state.isLoading = false;
         state.error = action.payload;
       });
   }

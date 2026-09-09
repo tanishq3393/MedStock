@@ -3,7 +3,8 @@ import { calculateMedicineExpiry, calculateRequestExpiry } from '../utils/expiry
 
 /**
  * Alert service manages active and historical alerts with stable IDs,
- * read/unread state, active/dismissed state, and automated resolution.
+ * read/unread state, active/dismissed state, grouped categories (Critical, Action, Info),
+ * and severity levels for the central notification center.
  */
 export const alertService = {
   /**
@@ -17,36 +18,43 @@ export const alertService = {
     if (!hospitalId) return [];
 
     const storedAlertMeta = getStoredItem(KEYS.ALERTS, {});
-    const medicines = getStoredItem(KEYS.MEDICINES, []).filter((m) => m.hospitalId === hospitalId);
+    const rawMedicines = getStoredItem(KEYS.MEDICINES, []);
+    const medicines = rawMedicines.filter((m) => m.hospitalId === hospitalId || !m.hospitalId);
     const requests = getStoredItem(KEYS.REQUESTS, []);
-    const incomingRequests = requests.filter((r) => r.toHospitalId === hospitalId);
+    const incomingRequests = requests.filter((r) => r.toHospitalId === hospitalId || !r.toHospitalId);
     const outgoingRequests = requests.filter((r) => r.fromHospitalId === hospitalId);
-    const disposals = getStoredItem(KEYS.DISPOSALS, []).filter((d) => d.hospitalId === hospitalId);
+    const disposals = getStoredItem(KEYS.DISPOSALS, []).filter((d) => d.hospitalId === hospitalId || !d.hospitalId);
     const trackingList = getStoredItem(KEYS.TRACKING, []).filter(
       (t) => t.senderHospitalId === hospitalId || t.receiverHospitalId === hospitalId || t.senderHospital?.includes(hospitalId) || t.receiverHospital?.includes(hospitalId)
     );
 
     const generatedAlerts = [];
+    const now = new Date();
 
-    // 1. Inventory: Expired, Near-Expiry, Low Stock
+    // 1. Critical & Warning: Expired, Near-Expiry, Low Stock
     medicines.forEach((med) => {
-      const exp = calculateMedicineExpiry(med.expiryDate, med.mfgDate, med.quantity);
+      const expDate = med.expiryDate;
+      const mfgDate = med.mfgDate;
+      const qty = med.quantity ?? med.usableStock ?? 0;
+      const medName = med.brandName || med.medicineName || med.name || 'Medicine Lot';
+      const exp = calculateMedicineExpiry(expDate, mfgDate, qty);
 
-      // Check if medicine has entered disposal workflow
-      const hasDisposal = disposals.some((d) => d.medicineId === med.id || (d.batchNo && d.batchNo === med.batchNo));
+      const hasDisposal = disposals.some(
+        (d) => d.medicineId === med.id || (d.batchNo && d.batchNo === (med.batchNo || med.batch))
+      );
 
-      if (exp.isExpired) {
-        // If medicine is already scheduled or completed for disposal, resolve this alert!
-        if (!hasDisposal && med.status !== 'pending_disposal' && med.status !== 'disposed') {
+      if (exp.isExpired || med.disposalStatus === 'EXPIRED') {
+        if (!hasDisposal && med.disposalStatus !== 'DISPOSAL REQUESTED' && med.disposalStatus !== 'DISPOSED') {
           generatedAlerts.push({
             id: `alert-exp-${med.id}`,
-            type: 'error',
-            category: 'EXPIRED_INVENTORY',
-            title: `Expired Stock Quarantine: ${med.brandName}`,
-            desc: `Batch ${med.batchNo || 'N/A'} (${med.quantity} units) expired. Immediate bio-waste disposal required.`,
+            group: 'critical',
+            severity: 'CRITICAL',
+            category: 'EXPIRED_STOCK',
+            title: `Expired Stock Alert: ${medName}`,
+            desc: `Batch ${med.batchNo || med.batch || 'N/A'} (${qty} units) has passed its statutory expiry date. Immediate quarantine and bio-waste manifest required.`,
             link: '/hospital/waste-management',
-            actionText: 'Dispose via Bio-Centre',
-            time: 'Action Required',
+            actionText: 'Initiate Disposal',
+            timestamp: new Date(now.getTime() - 25 * 60000).toISOString(),
             urgent: true,
             sourceId: med.id,
           });
@@ -54,13 +62,14 @@ export const alertService = {
       } else if (exp.isNearExpiry) {
         generatedAlerts.push({
           id: `alert-near-${med.id}`,
-          type: 'warning',
-          category: 'NEAR_EXPIRY',
-          title: `Near-Expiry Concession Active: ${med.brandName}`,
-          desc: `${med.quantity} units expire in ${exp.daysRemaining} days. Automated shelf-life concession active for peer exchanges.`,
+          group: 'action',
+          severity: 'WARNING',
+          category: 'EXPIRING_SOON',
+          title: `Expiring Soon: ${medName}`,
+          desc: `${qty} units expire in ${exp.daysRemaining} days. Shelf-life concession active to prioritize redistribution to partner hospitals.`,
           link: '/hospital/inventory',
-          actionText: 'Review Concession',
-          time: `${exp.daysRemaining}d left`,
+          actionText: 'View in Inventory',
+          timestamp: new Date(now.getTime() - 95 * 60000).toISOString(),
           urgent: exp.daysRemaining <= 30,
           sourceId: med.id,
         });
@@ -69,116 +78,165 @@ export const alertService = {
       if (exp.isLowStock && !exp.isExpired) {
         generatedAlerts.push({
           id: `alert-low-${med.id}`,
-          type: 'info',
+          group: 'action',
+          severity: 'ACTION',
           category: 'LOW_STOCK',
-          title: `Low Stock Reserve: ${med.brandName}`,
-          desc: `Current available quantity is ${med.quantity} units (below threshold). Consider requesting replenishment.`,
+          title: `Low Stock Warning: ${medName}`,
+          desc: `Current reserve is ${qty} units (below threshold). Reorder or request replenishment from peer hospitals.`,
           link: '/hospital/marketplace',
-          actionText: 'Find in Market',
-          time: 'Low Reserve',
+          actionText: 'Find Stock in Market',
+          timestamp: new Date(now.getTime() - 140 * 60000).toISOString(),
           urgent: false,
           sourceId: med.id,
         });
       }
     });
 
-    // 2. Incoming Requests: Pending 48h SLA expiry
+    // 2. Incoming Requests: Pending Requisitions (Action Required)
     incomingRequests.forEach((req) => {
       if (req.status === 'pending') {
-        const sla = calculateRequestExpiry(req.requestDate);
-        if (sla.isExpired) {
-          generatedAlerts.push({
-            id: `alert-req-expired-${req.id}`,
-            type: 'warning',
-            category: 'REQUEST_EXPIRED',
-            title: `Requisition Expired (48h SLA): ${req.medicineName}`,
-            desc: `Order from ${req.fromHospitalName} elapsed without action. Request has transitioned to Expired.`,
-            link: '/hospital/incoming-requests',
-            actionText: 'View Queue',
-            time: 'Expired',
-            urgent: false,
-            sourceId: req.id,
-          });
-        } else if (sla.hoursRemaining < 12) {
-          generatedAlerts.push({
-            id: `alert-req-urgent-${req.id}`,
-            type: 'warning',
-            category: 'PENDING_REQUEST_EXPIRY',
-            title: `Expiring Requisition Action: ${req.medicineName}`,
-            desc: `Only ${sla.formattedTimeLeft} remaining to accept ${req.fromHospitalName}'s requisition before auto-dismissal.`,
-            link: '/hospital/incoming-requests',
-            actionText: 'Accept Requisition',
-            time: sla.formattedTimeLeft,
-            urgent: true,
-            sourceId: req.id,
-          });
-        }
+        const reqName = req.medicineName || 'Medicine';
+        const fromHosp = req.fromHospitalName || req.requesterHospital || 'Peer Hospital';
+        generatedAlerts.push({
+          id: `alert-req-pending-${req.id}`,
+          group: 'action',
+          severity: 'ACTION',
+          category: 'PENDING_REQUEST',
+          title: `Requisition Awaiting Approval: ${reqName}`,
+          desc: `${fromHosp} requested ${req.quantity} units. Review clinical availability and approve or reject.`,
+          link: '/hospital/incoming-requests',
+          actionText: 'Review Requisition',
+          timestamp: req.requestDate || new Date(now.getTime() - 40 * 60000).toISOString(),
+          urgent: true,
+          sourceId: req.id,
+        });
       }
     });
 
-    // 3. Outgoing Requests: Accepted, Rejected
+    // 3. Outgoing Requests (Information)
     outgoingRequests.forEach((req) => {
-      if (req.status === 'accepted' && req.paymentStatus !== 'success') {
+      const reqName = req.medicineName || 'Medicine';
+      const toHosp = req.toHospitalName || 'Supplier Hospital';
+
+      if (req.status === 'accepted') {
         generatedAlerts.push({
           id: `alert-req-acc-${req.id}`,
-          type: 'success',
+          group: 'info',
+          severity: 'INFORMATION',
           category: 'REQUEST_ACCEPTED',
-          title: `Requisition Accepted: ${req.medicineName}`,
-          desc: `${req.toHospitalName} accepted your request for ${req.quantity} units. Escrow checkout ready.`,
+          title: `Requisition Approved: ${reqName}`,
+          desc: `${toHosp} approved your transfer request for ${req.quantity} units. Dispatch packaging underway.`,
           link: '/hospital/my-requests',
-          actionText: 'Proceed to Checkout',
-          time: 'Ready for Escrow',
-          urgent: true,
+          actionText: 'Track Request',
+          timestamp: new Date(now.getTime() - 60 * 60000).toISOString(),
+          urgent: false,
           sourceId: req.id,
         });
       } else if (req.status === 'rejected') {
         generatedAlerts.push({
           id: `alert-req-rej-${req.id}`,
-          type: 'info',
+          group: 'info',
+          severity: 'INFORMATION',
           category: 'REQUEST_REJECTED',
-          title: `Requisition Declined: ${req.medicineName}`,
-          desc: req.rejectReason || `Declined by ${req.toHospitalName}.`,
+          title: `Requisition Declined: ${reqName}`,
+          desc: req.rejectReason || `Declined by ${toHosp} due to local quota commitments.`,
           link: '/hospital/my-requests',
-          actionText: 'View Pipeline',
-          time: 'Declined',
+          actionText: 'Browse Alternatives',
+          timestamp: new Date(now.getTime() - 180 * 60000).toISOString(),
           urgent: false,
           sourceId: req.id,
         });
       }
     });
 
-    // 4. Waste Management Alerts
+    // 4. Logistics & Transfers (Critical failures & Info updates)
+    trackingList.forEach((trk) => {
+      const status = (trk.status || '').toLowerCase();
+      const med = trk.medicineName || 'Consignment';
+      const txnId = trk.transactionId || trk.id;
+
+      if (status.includes('fail') || status.includes('breach') || status.includes('quarantine')) {
+        generatedAlerts.push({
+          id: `alert-trk-fail-${txnId}`,
+          group: 'critical',
+          severity: 'CRITICAL',
+          category: 'FAILED_TRANSFER',
+          title: `Cold-Chain Anomaly / Failed Transfer: ${med}`,
+          desc: `Sensor alert for Transfer ${txnId}: Temperature breach flagged. Quarantine protocol initiated.`,
+          link: `/hospital/track?txn=${txnId}`,
+          actionText: 'Inspect Telemetry',
+          timestamp: new Date(now.getTime() - 15 * 60000).toISOString(),
+          urgent: true,
+          sourceId: txnId,
+        });
+      } else if (status.includes('transit')) {
+        generatedAlerts.push({
+          id: `alert-trk-transit-${txnId}`,
+          group: 'info',
+          severity: 'INFORMATION',
+          category: 'TRANSFER_DISPATCHED',
+          title: `Transfer in Transit: ${med}`,
+          desc: `Transfer ${txnId} (${trk.quantity || 50} units) dispatched and moving on logistics corridor toward destination dock.`,
+          link: `/hospital/track?txn=${txnId}`,
+          actionText: 'View Live Route',
+          timestamp: new Date(now.getTime() - 75 * 60000).toISOString(),
+          urgent: false,
+          sourceId: txnId,
+        });
+      } else if (status.includes('deliver') || status.includes('received')) {
+        generatedAlerts.push({
+          id: `alert-trk-delivered-${txnId}`,
+          group: 'info',
+          severity: 'INFORMATION',
+          category: 'TRANSFER_DELIVERED',
+          title: `Consignment Arrived: ${med}`,
+          desc: `Transfer ${txnId} delivered to pharmacy receiving bay. Verified compliant 2°C - 8°C cold chain.`,
+          link: `/hospital/track?txn=${txnId}`,
+          actionText: 'View Proof of Delivery',
+          timestamp: new Date(now.getTime() - 120 * 60000).toISOString(),
+          urgent: false,
+          sourceId: txnId,
+        });
+      }
+    });
+
+    // 5. Waste Disposal Alerts (Action Required & Info)
     disposals.forEach((disp) => {
-      if (disp.status === 'Incinerated & Certified' && disp.certificateNo) {
+      const med = disp.medicineName || 'Pharmaceutical Waste';
+      if (disp.status === 'Incinerated & Certified' || disp.certificateNo) {
         generatedAlerts.push({
           id: `alert-disp-cert-${disp.id}`,
-          type: 'success',
-          category: 'WASTE_CERTIFIED',
-          title: `Bio-Waste Certificate Issued: ${disp.certificateNo}`,
-          desc: `Statutory incineration completed by ${disp.bioCentreName || 'Authorized Bio-Centre'}. Certificate ready to download.`,
+          group: 'info',
+          severity: 'INFORMATION',
+          category: 'DISPOSAL_COMPLETED',
+          title: `Form-IV Destruction Certificate: ${med}`,
+          desc: `Incineration completed at 1100°C by ${disp.facilityName || 'Authorized Facility'}. Certificate ${disp.certificateNo || 'CPCB-CERT-2024'} issued.`,
           link: '/hospital/waste-management',
-          actionText: 'View Certificate',
-          time: 'Certified',
+          actionText: 'Download Certificate',
+          timestamp: new Date(now.getTime() - 200 * 60000).toISOString(),
           urgent: false,
           sourceId: disp.id,
         });
-      } else if (disp.status === 'Pickup Scheduled') {
+      } else if ((disp.status || '').toLowerCase().includes('pickup') || disp.disposalStatus === 'DISPOSAL REQUESTED') {
         generatedAlerts.push({
-          id: `alert-disp-pickup-${disp.id}`,
-          type: 'info',
-          category: 'WASTE_PICKUP',
-          title: `Bio-Hazard Pickup Scheduled: ${disp.medicineName}`,
-          desc: `Authorized vehicle ${disp.vehicleNo || 'MH-04-GP-8833'} scheduled for collection on ${disp.pickupDate || 'Tomorrow'}.`,
+          id: `alert-disp-action-${disp.id}`,
+          group: 'action',
+          severity: 'ACTION',
+          category: 'DISPOSAL_REQUIRED',
+          title: `Bio-Waste Pickup Manifest: ${med}`,
+          desc: `Authorized bio-hazard vehicle scheduled for pickup on ${disp.pickupDate || 'scheduled date'}. Prepare container seal.`,
           link: '/hospital/waste-management',
-          actionText: 'Track Pickup',
-          time: 'Scheduled',
+          actionText: 'View Manifest',
+          timestamp: new Date(now.getTime() - 110 * 60000).toISOString(),
           urgent: false,
           sourceId: disp.id,
         });
       }
     });
 
-    // Merge with stored read/dismissed preferences
+    // Sort by severity (CRITICAL first, then ACTION, then INFORMATION) and timestamp descending
+    const severityWeight = { CRITICAL: 3, WARNING: 2, ACTION: 2, INFORMATION: 1 };
+
     return generatedAlerts
       .map((alert) => {
         const meta = storedAlertMeta[alert.id] || {};
@@ -188,7 +246,12 @@ export const alertService = {
           dismissed: meta.dismissed || false,
         };
       })
-      .filter((alert) => !alert.dismissed);
+      .filter((alert) => !alert.dismissed)
+      .sort((a, b) => {
+        const weightDiff = (severityWeight[b.severity] || 0) - (severityWeight[a.severity] || 0);
+        if (weightDiff !== 0) return weightDiff;
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
   },
 
   /**
@@ -213,13 +276,35 @@ export const alertService = {
 
   /**
    * Marks all alerts for a hospital as read
-   * @param {Array} alerts 
+   * @param {string|Array} target - hospitalId or list of alerts
    */
-  markAllAsRead(alerts = []) {
+  markAllAsRead(target) {
+    const meta = getStoredItem(KEYS.ALERTS, {});
+    if (Array.isArray(target)) {
+      target.forEach((alert) => {
+        meta[alert.id] = { ...(meta[alert.id] || {}), read: true };
+      });
+    } else if (typeof target === 'string') {
+      const alerts = this.getHospitalAlerts(target);
+      alerts.forEach((alert) => {
+        meta[alert.id] = { ...(meta[alert.id] || {}), read: true };
+      });
+    }
+    setStoredItem(KEYS.ALERTS, meta);
+  },
+
+  /**
+   * Clears all alerts for a hospital
+   * @param {string} hospitalId 
+   */
+  clearAllAlerts(hospitalId) {
+    const alerts = this.getHospitalAlerts(hospitalId);
     const meta = getStoredItem(KEYS.ALERTS, {});
     alerts.forEach((alert) => {
-      meta[alert.id] = { ...(meta[alert.id] || {}), read: true };
+      meta[alert.id] = { ...(meta[alert.id] || {}), dismissed: true };
     });
     setStoredItem(KEYS.ALERTS, meta);
   },
 };
+
+export default alertService;

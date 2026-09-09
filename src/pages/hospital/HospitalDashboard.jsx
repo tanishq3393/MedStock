@@ -33,12 +33,20 @@ import FloatingNetworkHero from '../../components/spatial/FloatingNetworkHero';
 import SpatialInventoryOverview from '../../components/spatial/SpatialInventoryOverview';
 import LiveSupplyNetworkMap from '../../components/spatial/LiveSupplyNetworkMap';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
+<<<<<<< HEAD
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
+=======
+import RecentActivitySection from '../../components/common/RecentActivitySection';
+>>>>>>> 6ddff35 (Added Cancel)
 
 export const HospitalDashboard = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
+<<<<<<< HEAD
   const { dashboardData, inventory = [], disposals = [], isLoading } = useSelector((state) => state.hospital);
+=======
+  const { dashboardData, isLoading, error } = useSelector((state) => state.hospital);
+>>>>>>> 6ddff35 (Added Cancel)
 
   const [timeRange, setTimeRange] = useState('6M'); // 7D | 30D | 3M | 6M | 1Y
 
@@ -90,6 +98,29 @@ export const HospitalDashboard = () => {
 
   if (isLoading && !dashboardData && inventory.length === 0) {
     return <LoadingSpinner text="Compiling Pharmacy Supply Chain Telemetry..." />;
+  }
+
+  if (error && !dashboardData) {
+    return (
+      <div className="p-8 max-w-lg mx-auto text-center space-y-4 rounded-2xl bg-white border border-rose-200 shadow-sm my-12">
+        <div className="w-12 h-12 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto">
+          <AlertTriangle className="w-6 h-6" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="text-base font-bold text-slate-900">Telemetry Synchronization Offline</h2>
+          <p className="text-xs text-slate-500">
+            {typeof error === 'string' ? error : 'Unable to retrieve real-time inventory telemetry.'}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => user?.id && dispatch(fetchHospitalDashboard(user.id))}
+          className="px-4 py-2 rounded-xl bg-primary-600 text-white font-bold text-xs hover:bg-primary-700 transition-all shadow-md shadow-primary-600/20"
+        >
+          Retry Connection
+        </button>
+      </div>
+    );
   }
 
   const stats = dashboardData?.stats || {
@@ -314,6 +345,7 @@ export const HospitalDashboard = () => {
 
       </div>
 
+<<<<<<< HEAD
       {/* 3. QUICK ACTION TILES (Hospital Workflow Shortcuts) */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         
@@ -384,6 +416,135 @@ export const HospitalDashboard = () => {
       </div>
 
       {/* 4. SPATIAL INVENTORY WAREHOUSE VISUALIZATION */}
+=======
+      {/* OPERATIONAL QUEUES & SYSTEM STATUS WITH PROPER EMPTY STATES */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Queue 1: Inventory Status */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                <Boxes className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Hospital Pharmacy Stock</h4>
+                <p className="text-[10px] text-slate-500 font-mono">Central Formulary</p>
+              </div>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              stats.totalMedicines > 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'
+            }`}>
+              {stats.totalMedicines > 0 ? `${stats.totalMedicines} Units` : 'Needs Stock'}
+            </span>
+          </div>
+
+          <div className="text-xs text-slate-600">
+            {stats.totalMedicines > 0 ? (
+              <p className="line-clamp-2 text-[11px] leading-relaxed">
+                Hospital inventory is active across {stats.activeSkus} therapeutic categories with automated stock monitoring.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <p className="font-semibold text-slate-800 text-[11px]">No medicines in inventory yet</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">Add your hospital's available stock to begin managing inventory.</p>
+              </div>
+            )}
+          </div>
+
+          <Link
+            to="/hospital/inventory"
+            className="text-[11px] font-bold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1 pt-1"
+          >
+            <span>{stats.totalMedicines > 0 ? 'Manage Pharmacy Stock' : 'Add Hospital Stock'}</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {/* Queue 2: Incoming Peer Requests */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
+                <Send className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Incoming Peer Requests</h4>
+                <p className="text-[10px] text-slate-500 font-mono">Hospital Exchange Queue</p>
+              </div>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              stats.pendingRequestsCount > 0 ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {stats.pendingRequestsCount > 0 ? `${stats.pendingRequestsCount} Pending` : 'Clear'}
+            </span>
+          </div>
+
+          <div className="text-xs text-slate-600">
+            {stats.pendingRequestsCount > 0 ? (
+              <p className="line-clamp-2 text-[11px] leading-relaxed">
+                {stats.pendingRequestsCount} incoming requisition{stats.pendingRequestsCount > 1 ? 's' : ''} awaiting clinical review and stock allocation.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <p className="font-semibold text-slate-800 text-[11px]">No incoming requests</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">Requests from other hospitals will appear here.</p>
+              </div>
+            )}
+          </div>
+
+          <Link
+            to="/hospital/incoming-requests"
+            className="text-[11px] font-bold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1 pt-1"
+          >
+            <span>Review Requisitions</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {/* Queue 3: Active Transfers */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-sm flex flex-col justify-between space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 rounded-lg bg-amber-50 text-amber-600 flex items-center justify-center">
+                <Truck className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-slate-900">Active Supply Transfers</h4>
+                <p className="text-[10px] text-slate-500 font-mono">Cold-Chain Telemetry</p>
+              </div>
+            </div>
+            <span className={`px-2 py-0.5 rounded-full text-[10px] font-mono font-bold ${
+              stats.activeShipmentsCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-500'
+            }`}>
+              {stats.activeShipmentsCount > 0 ? `${stats.activeShipmentsCount} In Transit` : 'Idle'}
+            </span>
+          </div>
+
+          <div className="text-xs text-slate-600">
+            {stats.activeShipmentsCount > 0 ? (
+              <p className="line-clamp-2 text-[11px] leading-relaxed">
+                {stats.activeShipmentsCount} active medicine consignment{stats.activeShipmentsCount > 1 ? 's' : ''} currently in transit.
+              </p>
+            ) : (
+              <div className="space-y-1">
+                <p className="font-semibold text-slate-800 text-[11px]">No active transfers</p>
+                <p className="text-[11px] text-slate-500 leading-relaxed">Approved medicine transfers will appear here.</p>
+              </div>
+            )}
+          </div>
+
+          <Link
+            to="/hospital/track"
+            className="text-[11px] font-bold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1 pt-1"
+          >
+            <span>Track Live Deliveries</span>
+            <ChevronRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      </div>
+
+      {/* 3. SPATIAL INVENTORY WAREHOUSE VISUALIZATION */}
+>>>>>>> 6ddff35 (Added Cancel)
       <SpatialInventoryOverview />
 
       {/* 5. DATA VISUALIZATION SECTION WITH TIMEFRAME TOGGLE */}
@@ -472,6 +633,12 @@ export const HospitalDashboard = () => {
         </div>
       </div>
 
+<<<<<<< HEAD
+=======
+      {/* 5. RECENT ACTIVITY AUDIT TIMELINE */}
+      <RecentActivitySection />
+
+>>>>>>> 6ddff35 (Added Cancel)
       {/* 6. LIVE SUPPLY NETWORK COMPONENT */}
       <LiveSupplyNetworkMap />
 

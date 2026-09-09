@@ -18,11 +18,13 @@ import {
   AlertTriangle,
   CheckCircle2,
   Clock,
-  ArrowRight
+  ArrowRight,
+  Search
 } from 'lucide-react';
 import { logoutUser, setUserSession, switchHospitalAction } from '../../store/slices/authSlice';
 import { getStoredItem, setStoredItem, KEYS } from '../../services/storage';
 import { alertService } from '../../services/alertService';
+import GlobalSearchModal from './GlobalSearchModal';
 import toast from 'react-hot-toast';
 
 export const Navbar = () => {
@@ -34,10 +36,23 @@ export const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [notificationTab, setNotificationTab] = useState('all'); // 'all' | 'critical' | 'action' | 'info'
+  const [searchModalOpen, setSearchModalOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [editFormData, setEditFormData] = useState({});
   const [alerts, setAlerts] = useState([]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setSearchModalOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   const refreshAlerts = () => {
     if (user?.id) {
@@ -67,7 +82,32 @@ export const Navbar = () => {
     }
   };
 
+<<<<<<< HEAD
   const handleLogoutClick = () => {
+=======
+  const handleClearAllAlerts = (e) => {
+    e.preventDefault();
+    if (user?.id) {
+      alertService.clearAllAlerts(user.id);
+      refreshAlerts();
+      toast.success('All notifications cleared');
+    }
+  };
+
+  const handleAlertClick = (alert) => {
+    alertService.markAsRead(alert.id);
+    refreshAlerts();
+    setNotificationOpen(false);
+    if (alert.link) {
+      navigate(alert.link);
+    }
+  };
+
+  const handleLogout = async () => {
+    await dispatch(logoutUser());
+    toast.success('Logged out successfully');
+    navigate('/');
+>>>>>>> 6ddff35 (Added Cancel)
     setUserDropdownOpen(false);
     setMobileMenuOpen(false);
     setShowLogoutConfirm(true);
@@ -175,6 +215,19 @@ export const Navbar = () => {
           {/* Right Action Bar */}
           <div className="flex items-center gap-3">
             
+            {/* Global Search Button */}
+            <button
+              type="button"
+              onClick={() => setSearchModalOpen(true)}
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-xl border border-slate-200 hover:border-slate-300 bg-slate-50/90 hover:bg-white text-slate-500 hover:text-slate-800 transition-all text-xs shadow-xs"
+              title="Global Medicine & Inventory Search (Ctrl+K)"
+              aria-label="Global Search"
+            >
+              <Search className="w-3.5 h-3.5 text-slate-400" />
+              <span className="hidden md:inline font-medium text-[11px]">Quick search...</span>
+              <kbd className="hidden md:inline px-1.5 py-0.5 text-[9px] font-mono font-bold bg-slate-200/70 rounded text-slate-600">⌘K</kbd>
+            </button>
+
             {/* Notification Bell Dropdown */}
             {isAuthenticated && (
               <div className="relative">
@@ -201,7 +254,7 @@ export const Navbar = () => {
                     <div className="px-4 pb-2.5 border-b border-slate-100 flex items-center justify-between">
                       <div className="flex items-center gap-1.5 font-bold text-xs text-slate-800">
                         <Bell className="w-3.5 h-3.5 text-primary-600" />
-                        <span>Institutional Activity Alerts</span>
+                        <span>Notification Center</span>
                       </div>
                       <div className="flex items-center gap-2">
                         {alerts.filter((a) => !a.read).length > 0 && (
@@ -212,68 +265,133 @@ export const Navbar = () => {
                             Mark all read
                           </button>
                         )}
+                        {alerts.length > 0 && (
+                          <button
+                            onClick={handleClearAllAlerts}
+                            className="text-[10px] font-bold text-slate-400 hover:text-slate-600"
+                          >
+                            Clear all
+                          </button>
+                        )}
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-primary-50 text-primary-700">
                           {alerts.filter((a) => !a.read).length} Unread
                         </span>
                       </div>
                     </div>
 
+                    {/* Category Filter Tabs */}
+                    <div className="flex items-center gap-1 px-3 py-1.5 bg-slate-50 border-b border-slate-100 overflow-x-auto text-[10px] font-bold">
+                      <button
+                        onClick={() => setNotificationTab('all')}
+                        className={`px-2.5 py-1 rounded-lg transition-all ${
+                          notificationTab === 'all'
+                            ? 'bg-slate-900 text-white shadow-xs'
+                            : 'text-slate-600 hover:bg-slate-200/70'
+                        }`}
+                      >
+                        All ({alerts.length})
+                      </button>
+                      <button
+                        onClick={() => setNotificationTab('critical')}
+                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                          notificationTab === 'critical'
+                            ? 'bg-rose-600 text-white shadow-xs'
+                            : 'text-rose-700 hover:bg-rose-50'
+                        }`}
+                      >
+                        <span>🔴 Critical</span>
+                        {criticalCount > 0 && <span>({criticalCount})</span>}
+                      </button>
+                      <button
+                        onClick={() => setNotificationTab('action')}
+                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                          notificationTab === 'action'
+                            ? 'bg-amber-600 text-white shadow-xs'
+                            : 'text-amber-700 hover:bg-amber-50'
+                        }`}
+                      >
+                        <span>🟠 Action</span>
+                        {actionCount > 0 && <span>({actionCount})</span>}
+                      </button>
+                      <button
+                        onClick={() => setNotificationTab('info')}
+                        className={`px-2 py-1 rounded-lg transition-all flex items-center gap-1 ${
+                          notificationTab === 'info'
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-blue-700 hover:bg-blue-50'
+                        }`}
+                      >
+                        <span>🔵 Info</span>
+                        {infoCount > 0 && <span>({infoCount})</span>}
+                      </button>
+                    </div>
+
                     <div className="max-h-80 overflow-y-auto divide-y divide-slate-100 text-xs">
-                      {alerts.length === 0 ? (
+                      {filteredAlerts.length === 0 ? (
                         <div className="p-6 text-center text-slate-400 space-y-1">
                           <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-500" />
-                          <p className="text-xs font-bold text-slate-700">All Systems Nominal</p>
-                          <p className="text-[11px] text-slate-500">No active inventory, request, or disposal alerts.</p>
+                          <p className="text-xs font-bold text-slate-700">No Notifications</p>
+                          <p className="text-[11px] text-slate-500">You're all caught up in this category.</p>
                         </div>
                       ) : (
-                        alerts.map((n) => (
+                        filteredAlerts.map((n) => (
                           <div
                             key={n.id}
-                            className={`p-3.5 hover:bg-slate-50/80 transition-colors block space-y-1 ${
-                              !n.read ? 'bg-primary-50/20' : ''
+                            onClick={() => handleAlertClick(n)}
+                            className={`p-3.5 hover:bg-slate-50/90 transition-colors block space-y-1.5 cursor-pointer ${
+                              !n.read ? 'bg-primary-50/25' : ''
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
-                              <Link
-                                to={n.link || '/hospital/dashboard'}
-                                onClick={() => setNotificationOpen(false)}
-                                className="flex items-center gap-1.5 font-bold text-slate-900 hover:text-primary-600 flex-1"
-                              >
-                                {n.urgent ? (
-                                  <AlertTriangle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
-                                ) : (
-                                  <Sparkles className="w-3.5 h-3.5 text-primary-500 flex-shrink-0" />
-                                )}
+                              <div className="flex items-center gap-1.5 font-bold text-slate-900 hover:text-primary-600 flex-1">
+                                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                                  !n.read ? 'bg-primary-600 animate-pulse' : 'bg-transparent'
+                                }`} />
                                 <span className="line-clamp-1">{n.title}</span>
-                              </Link>
+                              </div>
                               <div className="flex items-center gap-1.5 flex-shrink-0">
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider ${
+                                  n.severity === 'CRITICAL'
+                                    ? 'bg-rose-100 text-rose-800 border border-rose-200'
+                                    : n.severity === 'WARNING' || n.severity === 'ACTION'
+                                      ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                      : 'bg-blue-50 text-blue-800 border border-blue-200'
+                                }`}>
+                                  {n.severity || 'INFO'}
                                 </span>
                                 <button
                                   onClick={(e) => handleDismissAlert(e, n.id)}
-                                  className="text-slate-400 hover:text-slate-600 p-0.5 rounded"
-                                  title="Dismiss alert"
+                                  className="text-slate-400 hover:text-slate-700 p-0.5 rounded hover:bg-slate-100"
+                                  title="Dismiss notification"
                                 >
                                   ✕
                                 </button>
                               </div>
                             </div>
-                            <p className="text-[11px] text-slate-600 leading-relaxed">
-                              {n.message}
+                            <p className="text-[11px] text-slate-600 leading-relaxed pl-3.5">
+                              {n.desc || n.message}
                             </p>
+                            <div className="flex items-center justify-between pl-3.5 text-[10px] text-slate-400 font-mono">
+                              <span>{new Date(n.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              {n.actionText && (
+                                <span className="text-primary-600 font-bold hover:underline flex items-center gap-0.5">
+                                  {n.actionText} →
+                                </span>
+                              )}
+                            </div>
                           </div>
                         ))
                       )}
                     </div>
 
-                    <div className="pt-2 px-4 border-t border-slate-100 text-center">
+                    <div className="pt-2 px-4 border-t border-slate-100 flex items-center justify-between text-[11px]">
+                      <span className="text-slate-400 font-mono">Single State Notifications</span>
                       <Link
                         to="/hospital/dashboard"
                         onClick={() => setNotificationOpen(false)}
-                        className="text-[11px] font-bold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"
+                        className="font-bold text-primary-600 hover:text-primary-700 inline-flex items-center gap-1"
                       >
-                        <span>View All Hospital Metrics</span>
+                        <span>Open Dashboard</span>
                         <ArrowRight className="w-3 h-3" />
                       </Link>
                     </div>
@@ -572,6 +690,7 @@ export const Navbar = () => {
           </div>
         </div>
       )}
+<<<<<<< HEAD
       {/* Logout Confirmation Modal */}
       {showLogoutConfirm && (
         <div 
@@ -610,6 +729,14 @@ export const Navbar = () => {
           </div>
         </div>
       )}
+=======
+
+      {/* Global Search Modal */}
+      <GlobalSearchModal 
+        isOpen={searchModalOpen} 
+        onClose={() => setSearchModalOpen(false)} 
+      />
+>>>>>>> 6ddff35 (Added Cancel)
     </header>
   );
 };

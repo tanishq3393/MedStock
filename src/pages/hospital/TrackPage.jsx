@@ -28,7 +28,7 @@ import {
 import { fetchTrackingByTxn } from '../../store/slices/trackSlice';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { getStoredItem, KEYS } from '../../services/storage';
+import { getStoredItem, setStoredItem, KEYS } from '../../services/storage';
 import { extractCity } from '../../utils/geoUtils';
 import IndiaLiveMap from '../../components/tracking/IndiaLiveMap';
 import toast from 'react-hot-toast';
@@ -74,6 +74,44 @@ export const TrackPage = () => {
       setLastRefreshedTime('Just now');
       toast.success('Demo tracking telemetry refreshed');
     }, 600);
+  };
+
+  const handleReceiveStock = () => {
+    try {
+      const trackings = getStoredItem(KEYS.TRACKING, []);
+      const updatedTrackings = trackings.map((t) => {
+        if (t.transactionId === tracking.transactionId || t.trackingNumber === tracking.trackingNumber) {
+          return { ...t, status: 'Delivered', deliveredDate: new Date().toISOString().split('T')[0] };
+        }
+        return t;
+      });
+      setStoredItem(KEYS.TRACKING, updatedTrackings);
+
+      // Add to hospital inventory
+      const currentMeds = getStoredItem(KEYS.MEDICINES, []);
+      const newLot = {
+        id: `med-recv-${Date.now()}`,
+        hospitalId: user?.id || 'hosp-1',
+        hospitalName: user?.name || 'Apollo Hospital Central Pharmacy',
+        brandName: tracking.medicineName || 'Received Medicine Lot',
+        genericName: 'Verified Transferred Stock',
+        batchNo: `TRF-${Math.floor(1000 + Math.random() * 9000)}`,
+        quantity: tracking.quantity || 50,
+        mfgDate: '01/2026',
+        expiryDate: '12/2027',
+        unitOriginalPrice: 120,
+        discountPercent: 15,
+        status: 'Available',
+        verified: true,
+      };
+      setStoredItem(KEYS.MEDICINES, [newLot, ...currentMeds]);
+
+      dispatch(fetchTrackingByTxn(selectedTxn));
+      toast.success('Stock received and inventory updated');
+      setShowProofModal(true);
+    } catch (e) {
+      toast.error('Failed to complete stock receipt');
+    }
   };
 
   const storedTrackings = getStoredItem(KEYS.TRACKING, []);
@@ -167,21 +205,24 @@ export const TrackPage = () => {
     ],
   };
 
-  const isDelivered = (tracking.status || '').toLowerCase() === 'delivered';
+  const isReceived = (tracking.status || '').toLowerCase() === 'received';
+  const isDelivered = (tracking.status || '').toLowerCase() === 'delivered' || isReceived;
   const isInTransit = (tracking.status || '').toLowerCase().includes('transit');
+  const isDispatched = isInTransit || isDelivered;
+  const isPreparing = (tracking.status || '').toLowerCase() === 'preparing';
   const isOrdered = (tracking.status || '').toLowerCase() === 'ordered' || (tracking.status || '').toLowerCase() === 'pending';
 
   const sellerCity = extractCity(tracking.senderHospital);
   const buyerCity = extractCity(tracking.receiverHospital);
 
-  // 6 Standard Progress Steps (Requirement 10)
+  // 6 Standard Progress Steps: REQUEST APPROVED -> PREPARING -> DISPATCHED -> IN TRANSIT -> DELIVERED -> RECEIVED
   const progressSteps = [
-    { label: 'Order Confirmed', short: 'Confirmed', time: '25 Aug • 02:15 PM', desc: 'Requisition verified by verification engine', completed: true, active: false },
-    { label: 'Pickup Scheduled', short: 'Scheduled', time: '26 Aug • 09:45 AM', desc: 'Authorized medical courier assigned', completed: true, active: false },
-    { label: 'Picked Up', short: 'Picked Up', time: '26 Aug • 03:30 PM', desc: 'Medicine collected from seller hospital', completed: !isOrdered, active: false },
-    { label: 'In Transit', short: 'In Transit', time: 'Today • 12:40 PM', desc: 'Medicine is currently moving toward the destination', completed: isDelivered, active: isInTransit },
-    { label: 'Out for Delivery', short: 'Out for Delivery', time: isDelivered ? 'Today • 03:45 PM' : 'Pending', desc: 'En route to hospital intake dock', completed: isDelivered, active: false },
-    { label: 'Delivered', short: 'Delivered', time: isDelivered ? 'Today • 04:30 PM' : 'Pending', desc: 'Intake dock inspection and handoff sign-off', completed: isDelivered, active: false },
+    { label: 'REQUEST APPROVED', short: 'Approved', time: '25 Aug • 02:15 PM', desc: 'Transfer requisition validated & stock earmarked', completed: true, active: false },
+    { label: 'PREPARING', short: 'Preparing', time: '26 Aug • 09:45 AM', desc: 'Cryo-insulated cold box sealed at hospital dock', completed: isDispatched || isPreparing, active: isPreparing },
+    { label: 'DISPATCHED', short: 'Dispatched', time: '26 Aug • 03:30 PM', desc: 'Handed over to authorized GPS bio-courier', completed: isDispatched, active: false },
+    { label: 'IN TRANSIT', short: 'In Transit', time: 'Today • 12:40 PM', desc: 'Actively moving toward destination on highway corridor', completed: isDelivered, active: isInTransit },
+    { label: 'DELIVERED', short: 'Delivered', time: isDelivered ? 'Today • 03:45 PM' : 'Pending', desc: 'Consignment arrived at destination receiving bay', completed: isDelivered, active: isDelivered && !isReceived },
+    { label: 'RECEIVED', short: 'Received', time: isReceived ? 'Today • 04:30 PM' : 'Pending', desc: 'Pharmacist dock verification & intake sign-off', completed: isReceived, active: false },
   ];
 
   return (
@@ -563,14 +604,24 @@ export const TrackPage = () => {
                   <span>✓ Delivered • View Delivery Proof</span>
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => navigate(`/hospital/requests`)}
-                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-primary-600/20 transition-all"
-                >
-                  <span>View Transfer Details</span>
-                  <ExternalLink className="w-4 h-4" />
-                </button>
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    onClick={handleReceiveStock}
+                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Receive Stock & Update Inventory</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/hospital/my-requests`)}
+                    className="w-full py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 transition-all"
+                  >
+                    <span>View Transfer Requisition</span>
+                    <ExternalLink className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               )}
 
               <button

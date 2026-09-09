@@ -9,6 +9,7 @@ import {
   MapPin,
   Package,
   Search,
+<<<<<<< HEAD
   X,
   XCircle,
 } from "lucide-react";
@@ -20,9 +21,33 @@ import "./IncomingRequests.css";
   ============================================================
   INCOMING REQUESTS
   ============================================================
+=======
+  Truck,
+  Sparkles,
+  XCircle,
+  AlertCircle
+} from 'lucide-react';
+import { fetchIncomingRequests, respondToRequest } from '../../store/slices/requestSlice';
+import StatusBadge from '../../components/common/StatusBadge';
+import Modal from '../../components/common/Modal';
+import LoadingSpinner from '../../components/common/LoadingSpinner';
+import WorkflowTimeline from '../../components/common/WorkflowTimeline';
+import EmptyState from '../../components/common/EmptyState';
+import toast from 'react-hot-toast';
+import { isHospitalSuspended } from '../../services/storage';
+import { getRequestRemainingTime } from '../../utils/expiryUtils';
+
+export const IncomingRequests = () => {
+  const dispatch = useDispatch();
+  const { user } = useSelector((state) => state.auth);
+  const { incomingRequests, isLoading, isResponding } = useSelector((state) => state.requests);
+  const { inventory = [] } = useSelector((state) => state.hospital);
+  const isSuspended = isHospitalSuspended(user?.id);
+>>>>>>> 6ddff35 (Added Cancel)
 
   Frontend-safe implementation.
 
+<<<<<<< HEAD
   Features:
   - Search requests
   - Filter by status
@@ -168,6 +193,87 @@ function StatusBadge({ status }) {
     Rejected: <XCircle size={14} />,
   };
 
+=======
+  // Map inventory stock by id and brandName
+  const stockMap = useMemo(() => {
+    const map = {};
+    inventory.forEach((item) => {
+      if (item.id) map[item.id] = Number(item.quantity) || 0;
+      if (item.brandName) map[item.brandName.toLowerCase()] = Number(item.quantity) || 0;
+    });
+    return map;
+  }, [inventory]);
+
+  const getAvailableStockForReq = (req) => {
+    if (!req) return 0;
+    if (req.medicineId && stockMap[req.medicineId] !== undefined) {
+      return stockMap[req.medicineId];
+    }
+    const nameKey = (req.medicineName || '').split('(')[0].trim().toLowerCase();
+    if (stockMap[nameKey] !== undefined) {
+      return stockMap[nameKey];
+    }
+    return 100; // Default fallback if lot was created in external seed
+  };
+
+  useEffect(() => {
+    if (user?.id) {
+      dispatch(fetchIncomingRequests(user.id));
+    }
+  }, [dispatch, user?.id]);
+
+  const handleConfirmAccept = async () => {
+    if (!acceptModalReq) return;
+    const avail = getAvailableStockForReq(acceptModalReq);
+    if (acceptModalReq.quantity > avail) {
+      toast.error(`Cannot accept requisition: Requested quantity (${acceptModalReq.quantity}) exceeds available stock (${avail} units).`);
+      return;
+    }
+    try {
+      await dispatch(respondToRequest({ requestId: acceptModalReq.id, action: 'accept', hospitalId: user?.id })).unwrap();
+      toast.success(`Accepted requisition from ${acceptModalReq.fromHospitalName}. Earmarked inventory lot.`);
+      setAcceptModalReq(null);
+    } catch (err) {
+      toast.error('Failed to accept request: ' + (err.message || 'Error occurred'));
+    }
+  };
+
+  const handleConfirmReject = async (e) => {
+    e.preventDefault();
+    if (!rejectModalReq) return;
+    try {
+      await dispatch(respondToRequest({ 
+        requestId: rejectModalReq.id, 
+        action: 'reject', 
+        reason: rejectReason || 'Stock reserved for critical inpatient use.',
+        hospitalId: user?.id
+      })).unwrap();
+      toast.success(`Declined requisition from ${rejectModalReq.fromHospitalName}`);
+      setRejectModalReq(null);
+      setRejectReason('');
+    } catch (err) {
+      toast.error('Failed to reject request');
+    }
+  };
+
+  const filtered = incomingRequests.filter((r) => {
+    const matchesSearch = (r.fromHospitalName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.medicineName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (r.transactionId || '').toLowerCase().includes(searchTerm.toLowerCase());
+    
+    const isCancelled = r.status === 'cancelled' || r.status === 'cancelled by buyer';
+
+    if (filterTab === 'all') return matchesSearch;
+    if (filterTab === 'pending') return matchesSearch && r.status === 'pending' && !isCancelled;
+    if (filterTab === 'accepted') return matchesSearch && (r.status === 'accepted' || r.status === 'paid') && !isCancelled;
+    if (filterTab === 'cancelled') return matchesSearch && isCancelled;
+    return matchesSearch;
+  });
+
+  const pendingCount = incomingRequests.filter((r) => r.status === 'pending' && r.status !== 'cancelled' && r.status !== 'cancelled by buyer').length;
+  const cancelledCount = incomingRequests.filter((r) => r.status === 'cancelled' || r.status === 'cancelled by buyer').length;
+
+>>>>>>> 6ddff35 (Added Cancel)
   return (
     <span className={`incoming-status-badge ${getStatusClass(status)}`}>
       {icons[status]}
@@ -436,6 +542,7 @@ export default function IncomingRequests() {
           )}
         </div>
 
+<<<<<<< HEAD
         <div className="incoming-filter-group">
           {STATUS_OPTIONS.map((status) => (
             <button
@@ -863,6 +970,255 @@ export default function IncomingRequests() {
             )}
           </div>
         </div>
+=======
+        <div className="flex items-center gap-1.5 text-xs font-bold overflow-x-auto pb-1 sm:pb-0">
+          <button
+            onClick={() => setFilterTab('pending')}
+            className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              filterTab === 'pending'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Pending Decision ({pendingCount})
+          </button>
+          <button
+            onClick={() => setFilterTab('accepted')}
+            className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              filterTab === 'accepted'
+                ? 'bg-emerald-600 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            Authorized Orders
+          </button>
+          {cancelledCount > 0 && (
+            <button
+              onClick={() => setFilterTab('cancelled')}
+              className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+                filterTab === 'cancelled'
+                  ? 'bg-rose-600 text-white shadow-sm'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              Cancelled by Buyer ({cancelledCount})
+            </button>
+          )}
+          <button
+            onClick={() => setFilterTab('all')}
+            className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+              filterTab === 'all'
+                ? 'bg-slate-900 text-white shadow-sm'
+                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            All Requisitions
+          </button>
+        </div>
+      </div>
+
+      {/* Incoming Requests Cards */}
+      {isLoading && incomingRequests.length === 0 ? (
+        <LoadingSpinner text="Querying pending requisitions..." />
+      ) : filtered.length > 0 ? (
+        <div className="space-y-4">
+          {filtered.map((req) => {
+            const isCancelled = req.status === 'cancelled' || req.status === 'cancelled by buyer';
+            const isPending = req.status === 'pending' && !isCancelled;
+
+            return (
+              <div
+                key={req.id}
+                className="bg-white rounded-2xl border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all p-5 space-y-4"
+              >
+                {/* Requisition Card Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
+                  <div>
+                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block">
+                      Originating Buyer Institution
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <div className="w-8 h-8 rounded-lg bg-primary-100 text-primary-700 flex items-center justify-center font-bold">
+                        <Building2 className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-extrabold text-slate-900">
+                          {req.fromHospitalName}
+                        </h3>
+                        <p className="text-[10px] font-mono text-slate-400">
+                          ID: {req.transactionId || req.id} • Received: {new Date(req.requestDate).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-mono text-slate-400 block">Receivable Total</span>
+                      <span className="text-lg font-mono font-extrabold text-primary-800">
+                        ₹{(req.totalAmount || 0).toLocaleString()}
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-end gap-1">
+                      {isCancelled ? (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-rose-100 text-rose-800 border border-rose-200 shadow-xs">
+                          <XCircle className="w-3.5 h-3.5 text-rose-600" />
+                          <span>CANCELLED BY BUYER</span>
+                        </span>
+                      ) : (
+                        <StatusBadge status={req.status} />
+                      )}
+
+                      {!isCancelled && (() => {
+                        const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
+                        if (req.status === 'expired' || (req.status === 'pending' && sla.isExpired)) {
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                              48h SLA EXPIRED
+                            </span>
+                          );
+                        }
+                        if (req.status === 'pending') {
+                          return (
+                            <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
+                              <Clock className="w-2.5 h-2.5 text-amber-600" />
+                              {sla.formattedRemaining} left
+                            </span>
+                          );
+                        }
+                        return null;
+                      })()}
+                    </div>
+
+                    {isPending ? (
+                      <div className="flex items-center gap-2">
+                        {(() => {
+                          const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
+                          const isExpiredReq = req.status === 'expired' || sla.isExpired;
+                          const avail = getAvailableStockForReq(req);
+                          const isStockInsufficient = req.quantity > avail;
+                          const isDisabled = isSuspended || isExpiredReq || isStockInsufficient;
+
+                          return (
+                            <button
+                              onClick={() => !isDisabled && setAcceptModalReq(req)}
+                              disabled={isDisabled}
+                              title={
+                                isStockInsufficient
+                                  ? `Insufficient inventory stock (${avail} units available, ${req.quantity} requested)`
+                                  : isExpiredReq
+                                  ? 'This requisition has expired after 48h SLA'
+                                  : 'Accept and earmark stock'
+                              }
+                              className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-xl font-bold text-xs shadow-md transition-all ${
+                                isDisabled 
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed shadow-none' 
+                                  : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20 hover:scale-105'
+                              }`}
+                            >
+                              <Check className="w-3.5 h-3.5" />
+                              <span>Accept & Earmark</span>
+                            </button>
+                          );
+                        })()}
+
+                        <button
+                          onClick={() => !isSuspended && setRejectModalReq(req)}
+                          disabled={isSuspended}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200 font-bold text-xs transition-all"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          <span>Decline</span>
+                        </button>
+                      </div>
+                    ) : isCancelled ? (
+                      <span className="px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200 text-slate-500 font-mono text-xs font-bold">
+                        Action Voided (Cancelled)
+                      </span>
+                    ) : (
+                      <span className="text-xs font-mono font-bold text-slate-500 capitalize">
+                        {req.status === 'paid' ? 'Payment Escrowed' : `Status: ${req.status}`}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cancellation Notice Banner */}
+                {isCancelled && (
+                  <div className="p-3.5 bg-rose-50/80 border border-rose-200 rounded-xl text-xs text-rose-950 space-y-1.5">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <span className="font-bold flex items-center gap-1.5 text-rose-900">
+                        <AlertCircle className="w-4 h-4 text-rose-600" />
+                        <span>Requisition cancelled by buyer facility ({req.fromHospitalName}).</span>
+                      </span>
+                      <span className="font-mono text-[11px] text-slate-500">
+                        {req.cancellation?.cancelledAt ? new Date(req.cancellation.cancelledAt).toLocaleString() : ''}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-slate-700">
+                      Reason: <strong className="text-slate-900">{req.cancellation?.reason || 'Buyer requirement changed'}</strong>
+                      {req.cancellation?.note ? ` • Note: "${req.cancellation.note}"` : ''}
+                    </p>
+                    <p className="text-[10px] font-mono text-emerald-700 font-semibold">
+                      ✓ Any earmarked stock reservation was released back to your available inventory.
+                    </p>
+                  </div>
+                )}
+
+                {/* Requested Item Detail & Inventory Verification */}
+                <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                  <div className="space-y-0.5">
+                    <span className="font-extrabold text-slate-900 text-sm">{req.medicineName}</span>
+                    <span className="text-[11px] font-mono text-slate-500 block font-semibold">{req.power}</span>
+                    {req.notes && (
+                      <p className="text-[11px] text-slate-600 italic mt-1">"{req.notes}"</p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-6 font-mono text-xs">
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 block">Requested / In-Stock</span>
+                      <span className="font-extrabold text-slate-900 text-sm">
+                        {req.quantity} / <span className={req.quantity > getAvailableStockForReq(req) ? 'text-rose-600 font-bold' : 'text-emerald-700'}>{getAvailableStockForReq(req)}</span> units
+                      </span>
+                    </div>
+
+                    <div>
+                      <span className="text-[10px] uppercase text-slate-400 block">Cold Chain Protocol</span>
+                      <span className="font-bold text-emerald-700 flex items-center gap-1">
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        2°C - 8°C Verified
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Workflow Timeline */}
+                <div className="pt-2 border-t border-slate-100">
+                  <WorkflowTimeline 
+                    type="request" 
+                    currentStatus={req.status} 
+                    timestamp={req.requestDate} 
+                    isCancelled={isCancelled}
+                    cancellationDetails={req.cancellation}
+                  />
+                </div>
+
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <EmptyState
+          icon={Inbox}
+          title="No incoming requisitions"
+          description="Requests from other hospitals will appear here."
+          impact="When partner hospitals experience critical shortages, your surplus inventory helps save lives while recovering capital."
+          actionLabel="View Hospital Inventory"
+          actionTo="/hospital/inventory"
+        />
+>>>>>>> 6ddff35 (Added Cancel)
       )}
 
       {/* =====================================================

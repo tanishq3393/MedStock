@@ -36,6 +36,7 @@ import PaymentHistory from './pages/hospital/PaymentHistory';
 import HospitalFeedback from './pages/hospital/HospitalFeedback';
 import HospitalProfilePage from './pages/hospital/HospitalProfilePage';
 import HospitalWasteManagement from './pages/hospital/HospitalWasteManagement';
+import HospitalReports from './pages/hospital/HospitalReports';
 
 // Admin Pages
 import AdminDashboard from './pages/admin/AdminDashboard';
@@ -99,6 +100,7 @@ export const App = () => {
             <Route path="/verify-email" element={<EmailVerificationPage />} />
           </Route>
 
+<<<<<<< HEAD
           {/* Hospital Portal Routes */}
           <Route
             path="/hospital"
@@ -122,6 +124,31 @@ export const App = () => {
             <Route path="feedback" element={<HospitalFeedback />} />
             <Route path="profile" element={<HospitalProfilePage />} />
           </Route>
+=======
+        {/* Hospital Portal Routes */}
+        <Route
+          path="/hospital"
+          element={
+            <ProtectedRoute allowedRole="hospital">
+              <HospitalLayout />
+            </ProtectedRoute>
+          }
+        >
+          <Route index element={<Navigate to="/hospital/dashboard" replace />} />
+          <Route path="dashboard" element={<HospitalDashboard />} />
+          <Route path="inventory" element={<HospitalInventory />} />
+          <Route path="marketplace" element={<Marketplace />} />
+          <Route path="my-requests" element={<MyRequests />} />
+          <Route path="incoming-requests" element={<IncomingRequests />} />
+          <Route path="history" element={<HistoryPage />} />
+          <Route path="track" element={<TrackPage />} />
+          <Route path="payment-history" element={<PaymentHistory />} />
+          <Route path="waste-management" element={<HospitalWasteManagement />} />
+          <Route path="feedback" element={<HospitalFeedback />} />
+          <Route path="reports" element={<HospitalReports />} />
+          <Route path="profile" element={<HospitalProfilePage />} />
+        </Route>
+>>>>>>> 6ddff35 (Added Cancel)
 
           {/* Admin Portal Routes */}
           <Route

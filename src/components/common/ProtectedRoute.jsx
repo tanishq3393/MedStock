@@ -1,10 +1,15 @@
 import React, { useEffect, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+<<<<<<< HEAD
 import { useSelector, useDispatch } from 'react-redux';
 import { hasRequiredRole, isValidRole } from '../../utils/rbac';
 import { logoutUser } from '../../store/slices/authSlice';
 import ErrorBoundary from './ErrorBoundary';
 import toast from 'react-hot-toast';
+=======
+import { useSelector } from 'react-redux';
+import UnauthorizedAccess from './UnauthorizedAccess';
+>>>>>>> 6ddff35 (Added Cancel)
 
 /**
  * Route-Level Authorization & Protection Sentinel
@@ -36,6 +41,7 @@ export const ProtectedRoute = ({ children, allowedRole }) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+<<<<<<< HEAD
   // 2. Role-Based Access Control check
   if (allowedRole && !hasRequiredRole(user, allowedRole)) {
     if (!deniedNoticeShown.current) {
@@ -49,6 +55,10 @@ export const ProtectedRoute = ({ children, allowedRole }) => {
     } else {
       return <Navigate to="/hospital/dashboard" replace />;
     }
+=======
+  if (allowedRole && role !== allowedRole) {
+    return <UnauthorizedAccess currentRole={role} requiredRole={allowedRole} />;
+>>>>>>> 6ddff35 (Added Cancel)
   }
 
   return (

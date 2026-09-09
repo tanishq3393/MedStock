@@ -4,6 +4,7 @@ import { calculateMedicineExpiry, calculateRequestExpiry, processExpiredRequests
 import { calculateOrderPricing } from '../utils/pricingUtils';
 import { auditService } from './auditService';
 import { findAlternatives } from './medicineAlternativeService';
+import { getCancellationPolicy, calculateRefundAmounts } from '../utils/cancellationPolicy';
 
 const SUSPENDED_HOSPITAL_ERROR = 'Your hospital account is currently suspended. You cannot perform transactions or operational activities.';
 
@@ -805,6 +806,109 @@ export const hospitalService = {
       rejectedRequests: rejectedCompetingRequests,
       updatedRequest: targetReq,
     };
+  },
+
+  /**
+   * Cancels an active requisition with tiered refund policy rules.
+   * Safely restores seller-reserved stock if accepted/packed prior to dispatch.
+   */
+  async cancelRequest({ requestId, reason = 'No longer required', note = '', hospitalId }) {
+    await new Promise((r) => setTimeout(r, 250));
+    const requests = getStoredItem(KEYS.REQUESTS, []);
+    const reqIndex = requests.findIndex((r) => r.id === requestId);
+    if (reqIndex === -1) throw new Error('Requisition not found');
+
+    const targetReq = requests[reqIndex];
+    assertHospitalActive(hospitalId || targetReq.fromHospitalId);
+
+    if (targetReq.status === 'cancelled') {
+      throw new Error('This requisition has already been cancelled.');
+    }
+
+    const policy = getCancellationPolicy(targetReq);
+    if (!policy.canCancel) {
+      throw new Error(policy.reason || 'This requisition cannot be cancelled at this stage.');
+    }
+
+    const { totalAmount, penaltyAmount, refundAmount } = calculateRefundAmounts(targetReq, policy);
+
+    // Stock Safety: If accepted/reviewing/packed (stock was deducted from seller), and NOT dispatched,
+    // restore the reserved quantity back to the seller's inventory lot in KEYS.MEDICINES!
+    const normalizedStatus = (targetReq.status || '').toLowerCase().replace(/[\-_]/g, ' ');
+    const isPreDispatchReserved = ['accepted', 'approved', 'reviewing', 'packed'].includes(normalizedStatus);
+    const isDispatched = ['in transit', 'dispatched', 'shipped'].includes(normalizedStatus);
+
+    if (isPreDispatchReserved && !isDispatched) {
+      const medicines = getStoredItem(KEYS.MEDICINES, []);
+      const medIndex = medicines.findIndex(
+        (m) => m.id === targetReq.medicineId && m.hospitalId === targetReq.toHospitalId
+      );
+      if (medIndex !== -1) {
+        medicines[medIndex].quantity = Number(medicines[medIndex].quantity || 0) + Number(targetReq.quantity || 0);
+        setStoredItem(KEYS.MEDICINES, medicines);
+      }
+    }
+
+    // Update Requisition State
+    targetReq.status = 'cancelled';
+    targetReq.cancellation = {
+      cancelledAt: new Date().toISOString(),
+      cancelledBy: hospitalId || targetReq.fromHospitalId,
+      cancelledByHospitalName: targetReq.fromHospitalName,
+      reason: reason || 'Buyer requirement changed',
+      note: note || '',
+      stage: policy.stage,
+      stageLabel: policy.stageLabel,
+      penaltyPercent: policy.penaltyPercent,
+      penaltyAmount,
+      refundPercent: policy.refundPercent,
+      refundAmount,
+      totalAmount,
+      isDemoRefund: true,
+      refundStatus: 'Processed (Demo Escrow)',
+    };
+
+    setStoredItem(KEYS.REQUESTS, requests);
+
+    // Update related tracking in KEYS.TRACKING if present
+    const trackings = getStoredItem(KEYS.TRACKING, []);
+    let trackingModified = false;
+    const updatedTrackings = trackings.map((t) => {
+      if (t.transactionId === targetReq.transactionId || t.trackingNumber === targetReq.trackingNumber) {
+        trackingModified = true;
+        return {
+          ...t,
+          status: 'Cancelled',
+          cancellationReason: reason,
+        };
+      }
+      return t;
+    });
+    if (trackingModified) {
+      setStoredItem(KEYS.TRACKING, updatedTrackings);
+    }
+
+    // Audit Trail Logging
+    auditService.logEvent({
+      action: 'REQUEST_CANCELLED',
+      entityType: 'REQUEST',
+      entityId: targetReq.id,
+      hospitalId: targetReq.fromHospitalId,
+      hospitalName: targetReq.fromHospitalName,
+      partnerHospitalId: targetReq.toHospitalId,
+      partnerHospitalName: targetReq.toHospitalName,
+      summary: `Cancelled requisition for ${targetReq.medicineName} (${targetReq.quantity} units). Reason: ${reason}. Refund: ₹${refundAmount.toLocaleString()} (${policy.refundPercent}%).`,
+      resultingStatus: 'cancelled',
+      metadata: {
+        reason,
+        penaltyPercent: policy.penaltyPercent,
+        penaltyAmount,
+        refundPercent: policy.refundPercent,
+        refundAmount,
+      },
+    });
+
+    return targetReq;
   },
 
   // ==========================================

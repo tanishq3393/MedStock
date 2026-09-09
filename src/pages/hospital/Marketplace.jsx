@@ -51,6 +51,7 @@ export const Marketplace = () => {
   const [maxDistance, setMaxDistance] = useState('all');
   const [onlyNearExpiry, setOnlyNearExpiry] = useState(false);
   const [viewMode, setViewMode] = useState('horizontal'); // 'horizontal' | 'scroll' | 'grid'
+  const [sortBy, setSortBy] = useState('relevance'); // 'relevance' | 'price_asc' | 'price_desc' | 'stock' | 'expiry'
 
   // Selected Medicine for Drawer Inspection
   const [activeDrawerMedicine, setActiveDrawerMedicine] = useState(null);
@@ -162,10 +163,23 @@ export const Marketplace = () => {
 
   const searchActive = Boolean(search && search.trim().length >= 2);
 
-  // Partition search results into Primary Matches and Composition-Based Alternatives
+  // Partition search results into Primary Matches and Composition-Based Alternatives with sorting
   const { primaryResults, alternativeResults } = useMemo(() => {
+    const sortFn = (a, b) => {
+      const priceA = Math.round(a.unitOriginalPrice * (1 - (a.concessionPercent || 0) / 100) * 100) / 100;
+      const priceB = Math.round(b.unitOriginalPrice * (1 - (b.concessionPercent || 0) / 100) * 100) / 100;
+      if (sortBy === 'price_asc') return priceA - priceB;
+      if (sortBy === 'price_desc') return priceB - priceA;
+      if (sortBy === 'stock') return (Number(b.quantity) || 0) - (Number(a.quantity) || 0);
+      if (sortBy === 'expiry') return new Date(a.expiryDate || '2099') - new Date(b.expiryDate || '2099');
+      return 0; // relevance / default
+    };
+
     if (!searchActive) {
-      return { primaryResults: filteredMarketplace, alternativeResults: [] };
+      return { 
+        primaryResults: [...filteredMarketplace].sort(sortFn), 
+        alternativeResults: [] 
+      };
     }
     const q = search.toLowerCase().trim();
 
@@ -192,8 +206,11 @@ export const Marketplace = () => {
       alternatives = filteredMarketplace.filter((m) => !primaryIds.has(m.id));
     }
 
-    return { primaryResults: primaries, alternativeResults: alternatives };
-  }, [searchActive, search, filteredMarketplace]);
+    return { 
+      primaryResults: primaries.sort(sortFn), 
+      alternativeResults: alternatives.sort(sortFn) 
+    };
+  }, [searchActive, search, filteredMarketplace, sortBy]);
 
   const scrollShelf = (direction) => {
     const el = document.getElementById('horizontal-shelf-container');
@@ -749,7 +766,20 @@ export const Marketplace = () => {
             </label>
 
             <div className="flex items-center gap-3">
-              <span className="font-mono text-slate-400 text-xs">
+              {/* Sorting Dropdown */}
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="px-2.5 py-1 text-xs rounded-xl border border-slate-300 bg-white font-bold text-slate-700 focus:ring-2 focus:ring-primary-500 focus:outline-none"
+              >
+                <option value="relevance">Sort: Relevance</option>
+                <option value="price_asc">Price: Low → High</option>
+                <option value="price_desc">Price: High → Low</option>
+                <option value="stock">Highest Stock</option>
+                <option value="expiry">Expiry (Soonest First)</option>
+              </select>
+
+              <span className="font-mono text-slate-400 text-xs hidden sm:inline">
                 Showing: <strong className="text-slate-900">{filteredMarketplace.length}</strong> Lots
               </span>
 

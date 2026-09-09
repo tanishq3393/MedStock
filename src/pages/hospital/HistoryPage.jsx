@@ -177,7 +177,7 @@ export const HistoryPage = () => {
           </div>
 
           <div className="text-xs font-mono text-slate-600">
-            Cumulative Volume: <strong className="text-slate-900 font-extrabold text-sm">₹{totalValue.toLocaleString()}</strong> ({filteredData.length} records)
+            Cumulative Volume: <strong className="text-slate-900 font-extrabold text-sm">₹{(totalValue || 0).toLocaleString()}</strong> ({filteredData.length} records)
           </div>
         </div>
       </div>
@@ -221,7 +221,7 @@ export const HistoryPage = () => {
                         {row.quantity} units
                       </td>
                       <td className="px-4 py-4 text-right font-mono font-extrabold text-primary-800">
-                        ₹{row.amount.toLocaleString()}
+                        ₹{(row.amount || 0).toLocaleString()}
                       </td>
                       <td className="px-4 py-4 text-slate-500 font-mono">
                         {row.date}

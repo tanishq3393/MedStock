@@ -85,8 +85,8 @@ export const PaymentHistory = () => {
       const q = searchTerm.toLowerCase().trim();
       const matchesSearch =
         !q ||
-        p.transactionId.toLowerCase().includes(q) ||
-        p.medicineName.toLowerCase().includes(q) ||
+        (p.transactionId || '').toLowerCase().includes(q) ||
+        (p.medicineName || '').toLowerCase().includes(q) ||
         (p.buyerHospital && p.buyerHospital.toLowerCase().includes(q)) ||
         (p.sellerHospital && p.sellerHospital.toLowerCase().includes(q)) ||
         (p.razorpayPaymentId && p.razorpayPaymentId.toLowerCase().includes(q));
@@ -334,7 +334,7 @@ export const PaymentHistory = () => {
                         {/* Amount */}
                         <td className="px-4 py-3.5 text-right font-mono">
                           <div className="text-sm font-black text-slate-900">
-                            ₹{Number(totalAmt).toLocaleString('en-IN')}
+                            ₹{(Number(totalAmt) || 0).toLocaleString('en-IN')}
                           </div>
                           <span className="text-[10px] text-slate-400 block">incl. GST</span>
                         </td>

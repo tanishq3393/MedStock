@@ -25,6 +25,7 @@ export const ReceiptModal = ({ isOpen, onClose, payment }) => {
       <div className="space-y-6 pt-1">
         
         {/* Printable Invoice Container */}
+<<<<<<< HEAD
         <div id="invoice-printable" className="p-6 border border-slate-200 rounded-2xl bg-white space-y-6 shadow-sm relative">
           
           {/* Mandatory Demo / Sample Document Disclaimer */}
@@ -35,6 +36,26 @@ export const ReceiptModal = ({ isOpen, onClose, payment }) => {
             <p className="text-[10px] text-amber-800">
               Inter-hospital transfer receipt simulated for technical demonstration. Contains zero real patient or confidential hospital clinical records.
             </p>
+=======
+        <div id="invoice-printable" className="p-6 border border-slate-200 rounded-2xl bg-white space-y-5 shadow-sm">
+          
+          {/* DEMO / SAMPLE STRIP */}
+          <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-black uppercase tracking-wider bg-amber-200 text-amber-950 border border-amber-300">
+                DEMO / SAMPLE DOCUMENT
+              </span>
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-primary-100 text-primary-900 border border-primary-200">
+                TRANSFER DOCUMENT
+              </span>
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold uppercase tracking-wider bg-emerald-100 text-emerald-900 border border-emerald-200">
+                {payment.status === 'dispatched' ? 'DISPATCHED' : payment.status === 'in_transit' ? 'IN TRANSIT' : payment.status === 'delivered' ? 'DELIVERED' : 'RECEIVED'}
+              </span>
+            </div>
+            <span className="text-[10px] text-amber-800 font-medium">
+              Simulation Only • Contains No Real Patient Data
+            </span>
+>>>>>>> 6ddff35 (Added Cancel)
           </div>
 
           {/* Top Brand & Title */}

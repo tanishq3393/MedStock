@@ -19,7 +19,8 @@ import {
   ChevronRight,
   Sparkles,
   Flame,
-  Trash2
+  Trash2,
+  BarChart3
 } from 'lucide-react';
 
 export const Sidebar = ({ role = 'hospital' }) => {
@@ -35,6 +36,7 @@ export const Sidebar = ({ role = 'hospital' }) => {
       title: 'OVERVIEW',
       items: [
         { to: '/hospital/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+        { to: '/hospital/reports', icon: BarChart3, label: 'Reports & Analytics' },
       ]
     },
     {
