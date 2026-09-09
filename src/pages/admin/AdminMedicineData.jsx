@@ -384,23 +384,29 @@ export const AdminMedicineData = () => {
             <div className="hidden md:block w-full overflow-hidden">
               <table className="w-full divide-y divide-slate-200/80 text-xs table-fixed">
                 <colgroup>
-                  <col style={{ width: '28%' }} /> {/* Medicine & Generic Formulation */}
-                  <col style={{ width: '20%' }} /> {/* Category & Manufacturer */}
-                  <col style={{ width: '13%' }} /> {/* Batch Number & Facility */}
-                  <col style={{ width: '13%' }} /> {/* Stock (Available / Min) */}
-                  <col style={{ width: '12%' }} /> {/* Expiry Date & Horizon */}
-                  <col style={{ width: '9%' }} />  {/* Status */}
-                  <col style={{ width: '5%' }} />  {/* Actions */}
+                  <col style={{ width: '15%' }} /> {/* Medicine Name */}
+                  <col style={{ width: '14%' }} /> {/* Generic Name */}
+                  <col style={{ width: '11%' }} /> {/* Category */}
+                  <col style={{ width: '12%' }} /> {/* Manufacturer */}
+                  <col style={{ width: '9%' }} />  {/* Batch No. */}
+                  <col style={{ width: '7%' }} />  {/* Available Stock */}
+                  <col style={{ width: '7%' }} />  {/* Min Level */}
+                  <col style={{ width: '9%' }} />  {/* Expiry Date */}
+                  <col style={{ width: '8%' }} />  {/* Status */}
+                  <col style={{ width: '8%' }} />  {/* Actions */}
                 </colgroup>
                 <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3 px-3 text-left">Medicine & Formulation</th>
-                    <th className="py-3 px-2 text-left">Category & Maker</th>
-                    <th className="py-3 px-2 text-center">Batch No.</th>
-                    <th className="py-3 px-2 text-center">Stock (Avail / Min)</th>
-                    <th className="py-3 px-2 text-center">Expiry Date</th>
-                    <th className="py-3 px-2 text-center">Status</th>
-                    <th className="py-3 px-2 text-center">Actions</th>
+                    <th className="py-3 px-2 text-left">Medicine Name</th>
+                    <th className="py-3 px-2 text-left">Generic Name</th>
+                    <th className="py-3 px-2 text-left">Category</th>
+                    <th className="py-3 px-2 text-left">Manufacturer</th>
+                    <th className="py-3 px-1.5 text-center">Batch No.</th>
+                    <th className="py-3 px-1.5 text-center">Stock</th>
+                    <th className="py-3 px-1.5 text-center">Min Level</th>
+                    <th className="py-3 px-1.5 text-center">Expiry Date</th>
+                    <th className="py-3 px-1.5 text-center">Status</th>
+                    <th className="py-3 px-1.5 text-center">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -411,98 +417,95 @@ export const AdminMedicineData = () => {
                     return (
                       <tr key={med.id} className="hover:bg-teal-50/20 transition-colors group">
                         
-                        {/* Medicine & Generic Name */}
-                        <td className="py-3 px-3 overflow-hidden">
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="w-8 h-8 rounded-lg bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center shrink-0">
-                              <Pill className="w-4 h-4" />
+                        {/* 1. Medicine Name */}
+                        <td className="py-3 px-2 overflow-hidden">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-7 h-7 rounded-lg bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center shrink-0">
+                              <Pill className="w-3.5 h-3.5" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <div className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors truncate text-xs" title={med.brandName || med.medicineName}>
+                              <span className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors truncate block text-xs" title={med.brandName || med.medicineName}>
                                 {med.brandName || med.medicineName}
-                              </div>
-                              <div className="text-[11px] text-slate-500 font-medium truncate" title={med.genericName}>
-                                {med.genericName || 'Standard Formulation'}
-                              </div>
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate block" title={hosp?.name || med.hospitalName}>
+                                {hosp?.name || med.hospitalName || 'Health Facility'}
+                              </span>
                             </div>
                           </div>
                         </td>
 
-                        {/* Category & Manufacturer */}
+                        {/* 2. Generic Name */}
                         <td className="py-3 px-2 overflow-hidden">
-                          <div className="min-w-0">
-                            <span className="inline-block max-w-[150px] truncate px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200" title={med.category}>
-                              {med.category || 'Therapeutic'}
-                            </span>
-                            <div className="text-[10px] text-slate-500 font-medium truncate mt-0.5" title={med.manufacturer}>
-                              {med.manufacturer || 'Approved Pharma Lab'}
-                            </div>
-                          </div>
+                          <span className="text-slate-600 font-medium text-xs truncate block" title={med.genericName}>
+                            {med.genericName || 'Standard Formulation'}
+                          </span>
                         </td>
 
-                        {/* Batch Number & Facility */}
-                        <td className="py-3 px-2 text-center overflow-hidden">
-                          <span className="font-mono text-[10px] font-bold text-slate-800 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block truncate max-w-[110px]" title={med.batchNo || med.batchNumber}>
+                        {/* 3. Category */}
+                        <td className="py-3 px-2 overflow-hidden">
+                          <span className="inline-block max-w-full truncate px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200" title={med.category}>
+                            {med.category || 'Therapeutic'}
+                          </span>
+                        </td>
+
+                        {/* 4. Manufacturer */}
+                        <td className="py-3 px-2 overflow-hidden">
+                          <span className="text-slate-600 font-medium text-xs truncate block" title={med.manufacturer}>
+                            {med.manufacturer || 'Pharma Lab'}
+                          </span>
+                        </td>
+
+                        {/* 5. Batch Number */}
+                        <td className="py-3 px-1.5 text-center overflow-hidden">
+                          <span className="font-mono text-[10px] font-bold text-slate-800 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 inline-block truncate max-w-full" title={med.batchNo || med.batchNumber}>
                             {med.batchNo || med.batchNumber || 'BAT-2024'}
                           </span>
-                          <div className="text-[9px] text-slate-400 truncate mt-0.5" title={hosp?.name || med.hospitalName}>
-                            {hosp?.name || med.hospitalName || 'Health Facility'}
-                          </div>
                         </td>
 
-                        {/* Available Stock & Minimum Level */}
-                        <td className="py-3 px-2 text-center overflow-hidden">
-                          <div className="font-mono font-black text-xs text-slate-900">
-                            {med.quantity} <span className="text-[10px] font-semibold text-slate-400 font-sans">units</span>
-                          </div>
-                          <div className="text-[10px] font-mono text-slate-400">
-                            Min: <span className="font-semibold text-slate-600">{med.minStockLevel || 20}</span>
-                          </div>
+                        {/* 6. Available Stock */}
+                        <td className="py-3 px-1.5 text-center overflow-hidden font-mono font-black text-xs text-slate-900">
+                          {med.quantity}
                         </td>
 
-                        {/* Expiry Date & Horizon */}
-                        <td className="py-3 px-2 text-center overflow-hidden">
-                          <div className="font-mono text-[11px] font-semibold text-slate-700">
+                        {/* 7. Minimum Stock Level */}
+                        <td className="py-3 px-1.5 text-center overflow-hidden font-mono text-slate-500 text-[11px]">
+                          {med.minStockLevel || 20}
+                        </td>
+
+                        {/* 8. Expiry Date */}
+                        <td className="py-3 px-1.5 text-center overflow-hidden font-mono text-[11px] font-semibold text-slate-700">
+                          <span className="truncate block" title={med.expiryDate}>
                             {med.expiryDate || '2025-06-30'}
-                          </div>
-                          <div className="text-[9px] text-slate-400 mt-0.5">
-                            {status.key === 'expired' ? (
-                              <span className="text-rose-600 font-bold">Expired</span>
-                            ) : status.key === 'expiring_soon' ? (
-                              <span className="text-amber-600 font-bold">Near Expiry</span>
-                            ) : (
-                              <span>Healthy Batch</span>
-                            )}
-                          </div>
+                          </span>
                         </td>
 
-                        {/* Status */}
-                        <td className="py-3 px-2 text-center overflow-hidden">
-                          <span className={`inline-flex items-center justify-center px-2 py-0.5 rounded text-[10px] font-bold border ${status.badgeColor} whitespace-nowrap`}>
+                        {/* 9. Status */}
+                        <td className="py-3 px-1.5 text-center overflow-hidden">
+                          <span className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded text-[10px] font-bold border ${status.badgeColor} whitespace-nowrap`}>
                             {status.label}
                           </span>
                         </td>
 
-                        {/* Actions */}
-                        <td className="py-3 px-2 text-center overflow-hidden">
+                        {/* 10. Actions (All 3 buttons fully visible: View, Edit, Delete) */}
+                        <td className="py-3 px-1.5 text-center overflow-hidden">
                           <div className="flex items-center justify-center gap-1">
                             <button
                               onClick={() => setDetailsMedicine(med)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-primary-700 hover:bg-primary-50 transition-colors"
+                              className="p-1 rounded text-slate-400 hover:text-primary-700 hover:bg-primary-50 transition-colors"
                               title="View Medicine Details"
                             >
                               <Eye className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => handleOpenEdit(med)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                              className="p-1 rounded text-slate-400 hover:text-blue-700 hover:bg-blue-50 transition-colors"
                               title="Edit Medicine"
                             >
                               <Edit3 className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={() => setDeleteTarget(med)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-700 hover:bg-rose-50 transition-colors"
+                              className="p-1 rounded text-slate-400 hover:text-rose-700 hover:bg-rose-50 transition-colors"
                               title="Delete Medicine"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
