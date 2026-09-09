@@ -100,14 +100,24 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
             <span className="text-[10px] text-blue-300 font-medium">B2B Healthcare Escrow Gateway</span>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 text-xs text-emerald-400 bg-white/10 px-2.5 py-1 rounded-full border border-white/10">
-          <Lock className="w-3 h-3" />
-          <span>256-Bit Encrypted</span>
+        <div className="flex items-center gap-1.5 text-xs text-amber-300 bg-white/10 px-2.5 py-1 rounded-full border border-white/10 font-mono">
+          <Lock className="w-3 h-3 text-amber-400" />
+          <span>Simulated Gateway Sandbox</span>
         </div>
       </div>
 
       {!paymentDone ? (
         <div className="pt-4 space-y-4">
+          
+          {/* Mandatory Demo Simulator Notice */}
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-center space-y-0.5">
+            <span className="text-xs font-black uppercase tracking-widest text-amber-900 font-mono block">
+              DEMO / SAMPLE SIMULATOR - NO REAL PAYMENT GATEWAY
+            </span>
+            <p className="text-[10px] text-amber-800">
+              This sandbox interface demonstrates B2B escrow workflow. No real banking accounts, UPI VPAs, or credit cards are charged.
+            </p>
+          </div>
           
           {/* Order Summary Card with Itemized Breakdown */}
           <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">

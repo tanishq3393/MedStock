@@ -12,6 +12,8 @@ import {
   X,
   XCircle,
 } from "lucide-react";
+import toast from "react-hot-toast";
+import { auditService } from "../../services/auditService";
 import "./IncomingRequests.css";
 
 /*
@@ -234,6 +236,12 @@ export default function IncomingRequests() {
     .reduce((sum, request) => sum + request.quantity, 0);
 
   function openAction(request, type) {
+    if (!request) return;
+    if (request.status !== "Pending") {
+      toast.error(`Invalid transition: Request is already marked as "${request.status}" and cannot be modified.`);
+      return;
+    }
+    if (actionLoading) return;
     setActionRequest(request);
     setActionType(type);
   }
@@ -247,6 +255,15 @@ export default function IncomingRequests() {
 
   function handleAction() {
     if (!actionRequest || !actionType) return;
+    if (actionLoading) return;
+
+    // Strict validation: Only Pending -> Accepted or Pending -> Rejected is permissible
+    if (actionRequest.status !== "Pending") {
+      toast.error(`Cannot process: Request status is currently "${actionRequest.status}". Only Pending requests can be decided.`);
+      setActionRequest(null);
+      setActionType(null);
+      return;
+    }
 
     setActionLoading(true);
 
@@ -254,12 +271,26 @@ export default function IncomingRequests() {
       const newStatus =
         actionType === "approve" ? "Accepted" : "Rejected";
 
+      // Log to audit trail
+      auditService.logEvent({
+        action: actionType === "approve" ? "REQUEST_ACCEPTED" : "REQUEST_REJECTED",
+        entityType: "REQUEST",
+        entityId: actionRequest.id,
+        actorRole: "hospital",
+        hospitalName: "Authorized Provider Hospital",
+        partnerHospitalName: actionRequest.hospital,
+        summary: `${actionType === "approve" ? "Approved" : "Declined"} requisition ${actionRequest.id} for ${actionRequest.quantity} units of ${actionRequest.medicine}.`,
+        resultingStatus: newStatus,
+        metadata: { medicine: actionRequest.medicine, batch: actionRequest.batch, quantity: actionRequest.quantity, amount: actionRequest.totalAmount },
+      });
+
       setRequests((currentRequests) =>
         currentRequests.map((request) =>
           request.id === actionRequest.id
             ? {
               ...request,
               status: newStatus,
+              decidedAt: new Date().toISOString(),
             }
             : request
         )
@@ -271,11 +302,13 @@ export default function IncomingRequests() {
             ? {
               ...current,
               status: newStatus,
+              decidedAt: new Date().toISOString(),
             }
             : current
         );
       }
 
+      toast.success(`Request ${actionRequest.id} marked as ${newStatus}`);
       setActionLoading(false);
       setActionRequest(null);
       setActionType(null);
@@ -567,6 +600,7 @@ export default function IncomingRequests() {
                             <button
                               type="button"
                               className="incoming-approve-button"
+                              disabled={actionLoading}
                               onClick={() =>
                                 openAction(
                                   request,
@@ -582,6 +616,7 @@ export default function IncomingRequests() {
                             <button
                               type="button"
                               className="incoming-reject-button"
+                              disabled={actionLoading}
                               onClick={() =>
                                 openAction(
                                   request,

@@ -33,6 +33,8 @@ import AlternativeMedicinesModal from '../../components/hospital/AlternativeMedi
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
 import { isHospitalSuspended } from '../../services/storage';
+import { validateRequisition } from '../../utils/validation';
+import { formatCurrency, formatNumber } from '../../utils/formatters';
 import { findAlternatives, findAlternativesForSearchQuery } from '../../services/medicineAlternativeService';
 
 export const Marketplace = () => {
@@ -108,11 +110,18 @@ export const Marketplace = () => {
       toast.error('Your hospital account is currently suspended. You cannot perform transactions or operational activities.');
       return;
     }
+
+    const validation = validateRequisition({ quantity, notes }, medicine, user?.id);
+    if (!validation.isValid) {
+      toast.error(validation.error || 'Requisition failed validation');
+      return;
+    }
+
     const payload = {
       medicineId: medicine.id,
       medicineName: `${medicine.brandName} (${medicine.power})`,
       power: medicine.power,
-      quantity,
+      quantity: validation.sanitizedData.quantity,
       unitOriginalPrice: medicine.unitOriginalPrice,
       concessionPercent: medicine.concessionPercent || 0,
       unitFinalPrice: finalUnitPrice,
@@ -121,15 +130,15 @@ export const Marketplace = () => {
       fromHospitalName: user?.name || 'Authorized Buyer Hospital',
       toHospitalId: medicine.hospitalId,
       toHospitalName: medicine.hospitalName,
-      notes,
+      notes: validation.sanitizedData.notes,
     };
 
     try {
-      await dispatch(createNewRequest(payload));
+      await dispatch(createNewRequest(payload)).unwrap();
       setActiveDrawerMedicine(null);
       toast.success(`Exchange request for ${medicine.brandName} sent to ${medicine.hospitalName}!`);
     } catch (err) {
-      toast.error('Failed to submit request');
+      toast.error(err?.message || 'Failed to submit request');
     }
   };
 

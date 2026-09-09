@@ -66,6 +66,16 @@ export const DisposalCertificateModal = ({ isOpen, onClose, disposal }) => {
         {/* Printable Certificate Body */}
         <div ref={printRef} className="p-8 sm:p-10 space-y-6 text-slate-800 bg-white">
           
+          {/* Mandatory Demo / Sample Document Disclaimer */}
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-center space-y-0.5">
+            <span className="text-xs font-black uppercase tracking-widest text-amber-900 font-mono block">
+              DEMO / SAMPLE DOCUMENT - NO REAL PATIENT DATA
+            </span>
+            <p className="text-[10px] text-amber-800">
+              Simulated Bio-Medical Waste Destruction Certificate for technical prototype demonstration only. Not an actual legal regulatory instrument.
+            </p>
+          </div>
+
           {/* Top National Regulatory Header */}
           <div className="border-b-2 border-slate-800 pb-6 text-center space-y-2">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-100 border border-slate-300 text-[10px] font-mono font-extrabold text-slate-700 uppercase tracking-widest">
@@ -75,7 +85,7 @@ export const DisposalCertificateModal = ({ isOpen, onClose, disposal }) => {
               Certificate of Safe Pharmaceutical Destruction
             </h1>
             <p className="text-xs text-slate-600 font-medium max-w-lg mx-auto">
-              This document certifies the irreversible, eco-compliant thermal destruction of expired/recalled pharmaceutical compounds under state environmental surveillance.
+              Simulated record of eco-compliant thermal destruction of expired/recalled pharmaceutical compounds for CDSCO/CPCB audit demonstrations.
             </p>
           </div>
 
@@ -163,9 +173,9 @@ export const DisposalCertificateModal = ({ isOpen, onClose, disposal }) => {
                 <QrCode className="w-12 h-12 text-slate-900" />
               </div>
               <div>
-                <p className="text-[10px] font-mono font-bold text-slate-500 uppercase">Tamper-Proof Verification</p>
-                <p className="text-xs font-mono font-extrabold text-slate-900">SHA256-{manifestId.slice(-6)}-VALID</p>
-                <p className="text-[10px] text-emerald-600 font-semibold mt-0.5">National CPCB Ledger Verified</p>
+                <p className="text-[10px] font-mono font-bold text-slate-500 uppercase">Simulated Verification Stamp</p>
+                <p className="text-xs font-mono font-extrabold text-slate-900">SIMULATED-{manifestId.slice(-6).toUpperCase()}</p>
+                <p className="text-[10px] text-primary-600 font-semibold mt-0.5">Prototype Demo Ledger Record</p>
               </div>
             </div>
 
@@ -175,14 +185,14 @@ export const DisposalCertificateModal = ({ isOpen, onClose, disposal }) => {
                 Dr. R. K. Sharma, Ph.D.
               </div>
               <p className="text-[10px] text-slate-500 uppercase font-mono">Chief Environmental Medical Officer</p>
-              <p className="text-[9px] text-slate-400 font-mono">Digitally signed on {certifiedDate}</p>
+              <p className="text-[9px] text-slate-400 font-mono">Simulated Digital Sign-off: {certifiedDate}</p>
             </div>
 
           </div>
 
           {/* Regulatory Disclaimer */}
           <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[10px] text-slate-500 leading-relaxed text-center">
-            Notice: This certificate constitutes official proof of pharmaceutical de-inventorying for CDSCO Rule 65 audits and Central Pollution Control Board (CPCB) inspections.
+            Notice: This certificate is a prototype simulation for CDSCO Rule 65 / CPCB inspection walkthroughs. For production deployment, integration with state environmental API portals and verified PKI cryptographic digital signatures is required.
           </div>
 
         </div>

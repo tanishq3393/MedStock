@@ -1,11 +1,13 @@
 import { getStoredItem, setStoredItem, KEYS } from './storage';
+import { auditService } from './auditService';
 
 export const authService = {
-  // Login method for Hospital or Admin
+  // Login method for Hospital or Admin (DEMO PROTOTYPE ONLY)
   async login({ email, password, role }) {
     await new Promise((r) => setTimeout(r, 450)); // Realistic API delay
 
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    let authResult = null;
 
     if (role === 'admin') {
       if (email === 'admin@smartmedishare.org' && password === 'Admin@123') {
@@ -19,10 +21,8 @@ export const authService = {
         };
         const token = 'mock_jwt_token_admin_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
-        return { user, token };
-      }
-      // Demo fallback for any admin credentials if entered in testing
-      if (email.includes('admin') || password.length >= 6) {
+        authResult = { user, token };
+      } else if (email.includes('admin') || (password && password.length >= 6)) {
         const user = {
           id: 'admin-demo',
           name: 'Platform Ops Admin',
@@ -33,9 +33,10 @@ export const authService = {
         };
         const token = 'mock_jwt_token_admin_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
-        return { user, token };
+        authResult = { user, token };
+      } else {
+        throw new Error('Invalid Admin credentials. Use admin@smartmedishare.org / Admin@123');
       }
-      throw new Error('Invalid Admin credentials. Use admin@smartmedishare.org / Admin@123');
     } else {
       // Hospital role
       const matched = hospitals.find((h) => h.email.toLowerCase() === email.toLowerCase());
@@ -54,11 +55,9 @@ export const authService = {
         };
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
-        return { user, token };
-      }
-
-      // Default quick login fallback (e.g. apollo)
-      if (email === 'apollo.mumbai@smartmedishare.org' || email.includes('hospital') || email.includes('apollo')) {
+        authResult = { user, token };
+      } else if (email === 'apollo.mumbai@smartmedishare.org' || email.includes('hospital') || email.includes('apollo')) {
+        // Default quick login fallback (e.g. apollo)
         const defaultHosp = hospitals[0] || {
           id: 'hosp-1',
           name: 'Apollo Hospital',
@@ -80,26 +79,42 @@ export const authService = {
         };
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
-        return { user, token };
+        authResult = { user, token };
+      } else {
+        // Generic login allowing test testing
+        const newUser = {
+          id: 'hosp-' + Date.now().toString().slice(-4),
+          name: email.split('@')[0].toUpperCase() + ' Hospital',
+          email,
+          role: 'hospital',
+          status: 'verified',
+          registrationNo: 'REG-' + Math.floor(100000 + Math.random() * 900000),
+          authorizedPerson: 'Dr. Authorized Signatory',
+          city: 'Mumbai',
+          state: 'Maharashtra',
+          phone: '+91 98200 12345',
+        };
+        const token = 'mock_jwt_token_hospital_' + Date.now();
+        setStoredItem(KEYS.AUTH, { user: newUser, token });
+        authResult = { user: newUser, token };
       }
-
-      // Generic login allowing test testing
-      const newUser = {
-        id: 'hosp-' + Date.now().toString().slice(-4),
-        name: email.split('@')[0].toUpperCase() + ' Hospital',
-        email,
-        role: 'hospital',
-        status: 'verified',
-        registrationNo: 'REG-' + Math.floor(100000 + Math.random() * 900000),
-        authorizedPerson: 'Dr. Authorized Signatory',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        phone: '+91 98200 12345',
-      };
-      const token = 'mock_jwt_token_hospital_' + Date.now();
-      setStoredItem(KEYS.AUTH, { user: newUser, token });
-      return { user: newUser, token };
     }
+
+    if (authResult?.user) {
+      auditService.logEvent({
+        action: 'AUTH_LOGIN',
+        entityType: 'AUTH',
+        entityId: authResult.user.id,
+        actorRole: authResult.user.role,
+        hospitalId: authResult.user.role === 'hospital' ? authResult.user.id : null,
+        hospitalName: authResult.user.name,
+        summary: `Authenticated user session created for ${authResult.user.name} (${authResult.user.role.toUpperCase()}).`,
+        resultingStatus: 'authenticated',
+        metadata: { role: authResult.user.role, department: authResult.user.department || 'Clinical Operations' },
+      });
+    }
+
+    return authResult;
   },
 
   async signupHospital(formData) {
@@ -186,10 +201,35 @@ export const authService = {
   },
 
   async getCurrentSession() {
-    return getStoredItem(KEYS.AUTH, null);
+    return this.validateSession();
+  },
+
+  validateSession() {
+    const session = getStoredItem(KEYS.AUTH, null);
+    if (!session || !session.user || !session.token) {
+      return null;
+    }
+    if (!['admin', 'hospital'].includes(session.user.role)) {
+      this.logout();
+      return null;
+    }
+    return session;
   },
 
   async logout() {
+    const session = getStoredItem(KEYS.AUTH, null);
+    if (session?.user) {
+      auditService.logEvent({
+        action: 'AUTH_LOGOUT',
+        entityType: 'AUTH',
+        entityId: session.user.id,
+        actorRole: session.user.role,
+        hospitalId: session.user.role === 'hospital' ? session.user.id : null,
+        hospitalName: session.user.name,
+        summary: `User session safely terminated for ${session.user.name}.`,
+        resultingStatus: 'logged_out',
+      });
+    }
     localStorage.removeItem(KEYS.AUTH);
     return true;
   }

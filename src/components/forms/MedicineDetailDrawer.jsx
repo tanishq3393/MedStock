@@ -25,6 +25,8 @@ import MedicineImageGallery from '../hospital/MedicineImageGallery';
 import PurchaseInvoiceViewer from '../hospital/PurchaseInvoiceViewer';
 import { calculateOrderPricing } from '../../utils/pricingUtils';
 import { findAlternatives, extractMedicineComposition, CLINICAL_SAFETY_DISCLAIMER } from '../../services/medicineAlternativeService';
+import { validateRequisition } from '../../utils/validation';
+import toast from 'react-hot-toast';
 
 // ============================================================
 // SAFE NUMERIC & CURRENCY HELPERS
@@ -222,13 +224,29 @@ export const MedicineDetailDrawer = ({
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!activeMed || activeMed.quantity <= 0) return;
+    if (!activeMed) return;
+
+    if (activeMed.quantity <= 0) {
+      toast.error('This medicine batch is currently out of stock.');
+      return;
+    }
+
+    const { isValid, error, sanitizedData } = validateRequisition(
+      { quantity: requestQty, notes: requestNotes },
+      activeMed
+    );
+
+    if (!isValid) {
+      toast.error(error || 'Invalid requisition parameters.');
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       await onRequestSubmit({
         medicine: activeMed,
-        quantity: requestQty,
-        notes: requestNotes,
+        quantity: sanitizedData.quantity,
+        notes: sanitizedData.notes,
         finalUnitPrice,
         totalAmount,
       });

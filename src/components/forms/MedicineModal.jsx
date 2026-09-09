@@ -3,6 +3,8 @@ import Modal from '../common/Modal';
 import { Calculator, Sparkles, AlertTriangle, ShieldCheck, ThermometerSnowflake, Package, Layers, Info } from 'lucide-react';
 import { calculateConcessionRate } from '../../utils/pricingUtils';
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
+import { validateMedicineForm } from '../../utils/validation';
+import { formatCurrency, formatNumber } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, isEdit = false }) => {
@@ -88,29 +90,26 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     formData.unitOriginalPrice * (1 - (formData.concessionPercent || 0) / 100) * 100
   ) / 100;
 
-  const totalLotValue = Math.round(finalUnitPrice * formData.quantity);
-
   const expiryEvaluation = formData.expiryDate ? calculateMedicineExpiry(formData.expiryDate, formData.quantity) : null;
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const effectiveBrand = formData.brandName || formData.medicineName;
-    if (!effectiveBrand || !formData.power || !formData.expiryDate) {
-      toast.error('Please fill all mandatory fields (Medicine/Brand Name, Strength/Dosage, Expiry Date)');
+
+    const { isValid, errors, sanitizedData } = validateMedicineForm(formData);
+    if (!isValid) {
+      const firstError = Object.values(errors)[0];
+      toast.error(firstError || 'Please correct form validation errors.');
       return;
     }
 
-    const payload = {
-      ...formData,
-      brandName: effectiveBrand,
-      medicineName: effectiveBrand,
-      quantity: Number(formData.quantity),
-      unitOriginalPrice: Number(formData.unitOriginalPrice),
-      minStockLevel: Number(formData.minStockLevel || 20),
-      concessionPercent: Number(formData.concessionPercent || 0),
-    };
+    // Defensive safeguard: Expired medicines cannot be added to active trade stock
+    const exp = calculateMedicineExpiry(sanitizedData.expiryDate, sanitizedData.quantity);
+    if (exp.isExpired && !isEdit) {
+      toast.error('Cannot add an expired medicine batch to active stock. Please route expired items to Bio-Waste Disposal.');
+      return;
+    }
 
-    onSubmit(payload);
+    onSubmit(sanitizedData);
     onClose();
   };
 
@@ -385,7 +384,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
             <div>
               <span className="text-slate-500">Total Lot Value: </span>
               <span className="font-extrabold text-primary-700 font-mono text-sm">
-                ₹{(formData.unitOriginalPrice * formData.quantity).toLocaleString()}
+                {formatCurrency(Number(formData.unitOriginalPrice || 0) * Number(formData.quantity || 0))}
               </span>
             </div>
           </div>

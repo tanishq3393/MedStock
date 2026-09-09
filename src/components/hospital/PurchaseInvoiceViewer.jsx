@@ -90,8 +90,8 @@ export const PurchaseInvoiceViewer = ({ medicine }) => {
       >
         {/* DEMO / SAMPLE DOCUMENT WATERMARK */}
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none opacity-5">
-          <span className="text-4xl sm:text-5xl font-extrabold font-mono rotate-[-25deg] select-none text-slate-900 border-4 border-dashed border-slate-900 px-6 py-2">
-            DEMO / SAMPLE DOCUMENT
+          <span className="text-3xl sm:text-4xl font-extrabold font-mono rotate-[-25deg] select-none text-slate-900 border-4 border-dashed border-slate-900 px-6 py-2 text-center">
+            DEMO / SAMPLE DOCUMENT - NO REAL PATIENT DATA
           </span>
         </div>
 
@@ -102,8 +102,8 @@ export const PurchaseInvoiceViewer = ({ medicine }) => {
               <span className="font-extrabold text-slate-900 text-xs truncate max-w-[200px]">
                 {invoice.supplier}
               </span>
-              <span className="px-2 py-0.2 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-200">
-                DEMO DOCUMENT
+              <span className="px-2 py-0.5 rounded text-[9px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300">
+                DEMO / SAMPLE DOCUMENT - NO REAL PATIENT DATA
               </span>
             </div>
             <p className="text-[10px] text-slate-500 font-mono mt-0.5">
@@ -203,12 +203,12 @@ export const PurchaseInvoiceViewer = ({ medicine }) => {
             <div className="p-6 sm:p-8 overflow-y-auto space-y-6 flex-1 bg-white text-slate-900 font-sans relative">
               
               {/* DEMO / SAMPLE WATERMARK BADGE */}
-              <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-center space-y-0.5">
-                <span className="text-xs font-extrabold uppercase tracking-widest text-amber-900 font-mono">
-                  DEMO / SAMPLE DOCUMENT — FOR TECHNICAL DEMONSTRATION ONLY
+              <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-center space-y-0.5">
+                <span className="text-xs font-black uppercase tracking-widest text-amber-900 font-mono block">
+                  DEMO / SAMPLE DOCUMENT - NO REAL PATIENT DATA
                 </span>
                 <p className="text-[10px] text-amber-800">
-                  This simulated B2B tax invoice confirms CDSCO lot provenance and does not contain personal patient data.
+                  Simulated B2B pharmaceutical lot provenance invoice for technical demonstration only. Contains zero real patient or hospital clinical data.
                 </p>
               </div>
 

@@ -171,8 +171,23 @@ export const hospitalService = {
     const qty = Number(medicineData.quantity);
     const unitPrice = Number(medicineData.unitOriginalPrice);
 
-    if (qty <= 0) throw new Error('Inventory quantity must be greater than zero');
-    if (unitPrice <= 0) throw new Error('Unit price must be greater than zero');
+    if (!Number.isFinite(qty) || qty <= 0) throw new Error('Inventory quantity must be greater than zero');
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Unit price cannot be negative');
+
+    // Date consistency & expiration guards
+    if (medicineData.expiryDate) {
+      const exp = calculateMedicineExpiry(medicineData.expiryDate, qty);
+      if (exp.isExpired) {
+        throw new Error('Cannot add expired medicine to active inventory. Please route directly to Bio-Waste Disposal.');
+      }
+    }
+    if (medicineData.mfgDate && medicineData.expiryDate) {
+      const mfg = new Date(medicineData.mfgDate);
+      const exp = new Date(medicineData.expiryDate);
+      if (mfg > exp) {
+        throw new Error('Manufacturing date cannot be later than Expiry date');
+      }
+    }
 
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
@@ -206,6 +221,7 @@ export const hospitalService = {
       action: 'INVENTORY_ADDED',
       entityType: 'INVENTORY',
       entityId: newMed.id,
+      actorRole: 'hospital',
       hospitalId: newMed.hospitalId,
       hospitalName: newMed.hospitalName,
       summary: `Added ${newMed.brandName} (${newMed.quantity} units, Batch: ${newMed.batchNo}) to hospital inventory.`,
@@ -223,11 +239,25 @@ export const hospitalService = {
     if (index === -1) throw new Error('Medicine not found');
     assertHospitalActive(medicines[index].hospitalId);
 
+    // Guard: Disposed medicine cannot be edited or reactivated
+    if (medicines[index].status === 'disposed') {
+      throw new Error('Cannot update or reactivate a permanently disposed medicine batch');
+    }
+
     const updatedQty = updatedData.quantity !== undefined ? Number(updatedData.quantity) : medicines[index].quantity;
     const updatedPrice = updatedData.unitOriginalPrice !== undefined ? Number(updatedData.unitOriginalPrice) : medicines[index].unitOriginalPrice;
 
-    if (updatedQty < 0) throw new Error('Quantity cannot be negative');
-    if (updatedPrice < 0) throw new Error('Price cannot be negative');
+    if (!Number.isFinite(updatedQty) || updatedQty < 0) throw new Error('Quantity cannot be negative');
+    if (!Number.isFinite(updatedPrice) || updatedPrice < 0) throw new Error('Price cannot be negative');
+
+    // Date consistency check
+    const mfgDate = updatedData.mfgDate || medicines[index].mfgDate;
+    const expDate = updatedData.expiryDate || medicines[index].expiryDate;
+    if (mfgDate && expDate) {
+      if (new Date(mfgDate) > new Date(expDate)) {
+        throw new Error('Manufacturing date cannot be later than Expiry date');
+      }
+    }
 
     medicines[index] = {
       ...medicines[index],
@@ -244,6 +274,7 @@ export const hospitalService = {
       action: 'INVENTORY_UPDATED',
       entityType: 'INVENTORY',
       entityId: medicines[index].id,
+      actorRole: 'hospital',
       hospitalId: medicines[index].hospitalId,
       hospitalName: medicines[index].hospitalName,
       summary: `Updated inventory record for ${medicines[index].brandName}.`,
@@ -262,6 +293,9 @@ export const hospitalService = {
     if (medIdx === -1) throw new Error('Medicine not found in inventory');
 
     const med = medicines[medIdx];
+    if (med.status === 'disposed') {
+      throw new Error('This medicine batch has already been certified as disposed');
+    }
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const hosp = hospitals.find((h) => h.id === hospitalId) || { name: med.hospitalName || 'Hospital Pharmacy' };
 
@@ -546,6 +580,12 @@ export const hospitalService = {
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const targetMed = medicines.find((m) => m.id === reqData.medicineId);
     if (!targetMed) throw new Error('Target medicine listing not found');
+
+    // Guard: Cannot request own hospital's inventory
+    if (reqData.fromHospitalId && targetMed.hospitalId && reqData.fromHospitalId === targetMed.hospitalId) {
+      throw new Error('Hospitals cannot submit requisitions for their own inventory items');
+    }
+
     if (targetMed.quantity < qty) {
       throw new Error(`Requested quantity (${qty}) exceeds available stock (${targetMed.quantity})`);
     }

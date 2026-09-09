@@ -114,24 +114,30 @@ export const HospitalWasteManagement = () => {
 
   // Handle open confirmation modal
   const handleOpenDisposeModal = (med) => {
+    if (!med) return;
+    if (med.status === 'disposed') {
+      toast.error('This medicine batch is already certified as disposed and cannot be re-processed.');
+      return;
+    }
     setMedicineToDispose(med);
   };
 
   // Confirm Disposal Handler
   const handleConfirmDisposal = async () => {
     if (!medicineToDispose) return;
+    if (isDisposing) return;
     setIsDisposing(true);
 
     try {
       await dispatch(disposeMedicineItem({
         hospitalId: user?.id,
         medicineId: medicineToDispose.id,
-        reason: 'Statutory Expiration Safe Bio-Disposal',
-        facilityName: 'GreenBio Medical Waste Centre',
+        reason: 'Statutory Expiration Safe Bio-Disposal (Simulated)',
+        facilityName: 'GreenBio Medical Waste Centre (Demo Facility)',
       })).unwrap();
 
       toast.success(
-        `Successfully disposed ${medicineToDispose.quantity} units of ${medicineToDispose.brandName || medicineToDispose.medicineName} at GreenBio Medical Waste Centre`,
+        `Successfully disposed ${medicineToDispose.quantity} units of ${medicineToDispose.brandName || medicineToDispose.medicineName} at GreenBio Medical Waste Centre (Simulated). Disposal record permanently archived.`,
         { duration: 4500 }
       );
 
@@ -139,7 +145,7 @@ export const HospitalWasteManagement = () => {
       // Switch view to history so user immediately sees their record
       setActiveTab('history');
     } catch (err) {
-      toast.error('Failed to process bio-waste disposal: ' + (err.message || err));
+      toast.error('Failed to process bio-waste disposal: ' + (err?.message || err));
     } finally {
       setIsDisposing(false);
     }

@@ -264,21 +264,108 @@ export const initializeStorage = () => {
   }
 };
 
+/**
+ * Defensively retrieves and validates stored JSON data from localStorage.
+ * Automatically recovers from corrupted data, wrong types, or syntax errors.
+ */
 export const getStoredItem = (key, fallback = []) => {
   try {
     const item = localStorage.getItem(key);
-    return item ? JSON.parse(item) : fallback;
-  } catch (e) {
-    console.error(`Error reading ${key} from storage:`, e);
+    if (!item) return fallback;
+
+    const parsed = JSON.parse(item);
+
+    // Schema & type validation to prevent downstream runtime exceptions
+    if (Array.isArray(fallback)) {
+      if (!Array.isArray(parsed)) {
+        // Corrupted shape: expected array but found non-array. Heal storage.
+        localStorage.setItem(key, JSON.stringify(fallback));
+        return fallback;
+      }
+      return parsed;
+    }
+
+    if (fallback !== null && typeof fallback === 'object' && !Array.isArray(fallback)) {
+      if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+        // Corrupted shape: expected object but found invalid type. Heal storage.
+        localStorage.setItem(key, JSON.stringify(fallback));
+        return fallback;
+      }
+      return parsed;
+    }
+
+    // Special validation for authentication session
+    if (key === KEYS.AUTH) {
+      if (!parsed || typeof parsed !== 'object') {
+        localStorage.removeItem(KEYS.AUTH);
+        return null;
+      }
+      const { user, token } = parsed;
+      if (!user || typeof user !== 'object' || typeof token !== 'string' || !token.trim()) {
+        localStorage.removeItem(KEYS.AUTH);
+        return null;
+      }
+      if (!['admin', 'hospital'].includes(user.role)) {
+        localStorage.removeItem(KEYS.AUTH);
+        return null;
+      }
+      // Guarantee no password or raw secrets in user object
+      if (user.password) {
+        delete user.password;
+      }
+      return parsed;
+    }
+
+    return parsed;
+  } catch {
+    // Gracefully handle JSON parse error or storage access violation without crashing
+    try {
+      if (fallback !== undefined) {
+        localStorage.setItem(key, JSON.stringify(fallback));
+      }
+    } catch {
+      // Ignore write errors in restricted/private modes
+    }
     return fallback;
   }
 };
 
+/**
+ * Defensively serializes and persists an item to localStorage.
+ * Sanitizes sensitive fields before writing and handles QuotaExceeded errors safely.
+ */
 export const setStoredItem = (key, value) => {
   try {
-    localStorage.setItem(key, JSON.stringify(value));
+    // Strip sensitive fields if writing auth session
+    let safeValue = value;
+    if (key === KEYS.AUTH && value && typeof value === 'object') {
+      const userCopy = value.user ? { ...value.user } : {};
+      delete userCopy.password;
+      delete userCopy.confirmPassword;
+      delete userCopy.secret;
+      safeValue = {
+        ...value,
+        user: userCopy,
+        _isDemoSession: true,
+        _disclaimer: 'DEMO AUTHENTICATION ONLY - Authoritative backend auth required for production',
+      };
+    }
+
+    localStorage.setItem(key, JSON.stringify(safeValue));
   } catch (e) {
-    console.error(`Error writing ${key} to storage:`, e);
+    // Handle QuotaExceededError or private browsing restrictions
+    if (e.name === 'QuotaExceededError' || e.code === 22) {
+      // Clean up excess audit trail or non-essential cache if full
+      try {
+        const trail = JSON.parse(localStorage.getItem(KEYS.AUDIT_TRAIL) || '[]');
+        if (trail.length > 50) {
+          localStorage.setItem(KEYS.AUDIT_TRAIL, JSON.stringify(trail.slice(0, 50)));
+          localStorage.setItem(key, JSON.stringify(value));
+        }
+      } catch {
+        // Fallback silently without breaking UI
+      }
+    }
   }
 };
 

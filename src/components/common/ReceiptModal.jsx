@@ -25,8 +25,18 @@ export const ReceiptModal = ({ isOpen, onClose, payment }) => {
       <div className="space-y-6 pt-1">
         
         {/* Printable Invoice Container */}
-        <div id="invoice-printable" className="p-6 border border-slate-200 rounded-2xl bg-white space-y-6 shadow-sm">
+        <div id="invoice-printable" className="p-6 border border-slate-200 rounded-2xl bg-white space-y-6 shadow-sm relative">
           
+          {/* Mandatory Demo / Sample Document Disclaimer */}
+          <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-center space-y-0.5">
+            <span className="text-xs font-black uppercase tracking-widest text-amber-900 font-mono block">
+              DEMO / SAMPLE DOCUMENT - NO REAL PATIENT DATA
+            </span>
+            <p className="text-[10px] text-amber-800">
+              Inter-hospital transfer receipt simulated for technical demonstration. Contains zero real patient or confidential hospital clinical records.
+            </p>
+          </div>
+
           {/* Top Brand & Title */}
           <div className="flex justify-between items-start border-b border-slate-200 pb-4">
             <div className="flex items-center gap-2.5">
@@ -98,9 +108,9 @@ export const ReceiptModal = ({ isOpen, onClose, payment }) => {
                     <p className="text-[10px] text-slate-500">Verified Cold-Chain Packaging Included</p>
                   </td>
                   <td className="px-3 py-3 text-center">{payment.quantity}</td>
-                  <td className="px-3 py-3 text-right">₹{payment.amount.toLocaleString()}</td>
-                  <td className="px-3 py-3 text-right">₹{(payment.gstAmount || Math.round(payment.amount * 0.12)).toLocaleString()}</td>
-                  <td className="px-4 py-3 text-right font-bold text-primary-700">₹{(payment.totalPaid || Math.round(payment.amount * 1.12)).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-right">₹{Number(payment.amount || 0).toLocaleString()}</td>
+                  <td className="px-3 py-3 text-right">₹{Number(payment.gstAmount || Math.round((payment.amount || 0) * 0.12)).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-right font-bold text-primary-700">₹{Number(payment.totalPaid || Math.round((payment.amount || 0) * 1.12)).toLocaleString()}</td>
                 </tr>
               </tbody>
             </table>

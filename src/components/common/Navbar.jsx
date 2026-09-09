@@ -35,6 +35,7 @@ export const Navbar = () => {
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [editFormData, setEditFormData] = useState({});
   const [alerts, setAlerts] = useState([]);
 
@@ -66,11 +67,17 @@ export const Navbar = () => {
     }
   };
 
-  const handleLogout = async () => {
-    await dispatch(logoutUser());
-    toast.success('Logged out successfully');
-    navigate('/');
+  const handleLogoutClick = () => {
     setUserDropdownOpen(false);
+    setMobileMenuOpen(false);
+    setShowLogoutConfirm(true);
+  };
+
+  const confirmLogout = async () => {
+    setShowLogoutConfirm(false);
+    await dispatch(logoutUser());
+    toast.success('Logged out successfully. Secure session terminated.');
+    navigate('/');
   };
 
   const handleSwitchHospital = (hospitalId) => {
@@ -408,8 +415,8 @@ export const Navbar = () => {
 
                     <div className="border-t border-slate-100 pt-1">
                       <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-2 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors text-left"
+                        onClick={handleLogoutClick}
+                        className="w-full flex items-center gap-2 px-4 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 transition-colors text-left cursor-pointer"
                       >
                         <LogOut className="w-4 h-4" />
                         <span>Sign Out of Session</span>
@@ -537,11 +544,8 @@ export const Navbar = () => {
                   <span>Open Portal</span>
                 </Link>
                 <button
-                  onClick={() => {
-                    handleLogout();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-rose-600 bg-rose-50 font-bold text-xs"
+                  onClick={handleLogoutClick}
+                  className="flex items-center justify-center gap-2 w-full py-2 rounded-lg text-rose-600 bg-rose-50 font-bold text-xs cursor-pointer"
                 >
                   <LogOut className="w-4 h-4" />
                   <span>Sign Out</span>
@@ -565,6 +569,44 @@ export const Navbar = () => {
                 </Link>
               </div>
             )}
+          </div>
+        </div>
+      )}
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div 
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 backdrop-blur-xs p-4 animate-fadeIn"
+          onClick={() => setShowLogoutConfirm(false)}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-sm rounded-3xl bg-white shadow-2xl border border-slate-200 p-6 text-center space-y-4 font-sans"
+          >
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto shadow-xs">
+              <LogOut className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="text-base font-extrabold text-slate-900">Sign Out of Session?</h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Signing out will safely terminate your active authenticated session and purge your session token from this device.
+              </p>
+            </div>
+            <div className="flex gap-2.5 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-bold hover:bg-slate-50 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmLogout}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-600/20 transition-all cursor-pointer"
+              >
+                Confirm Sign Out
+              </button>
+            </div>
           </div>
         </div>
       )}

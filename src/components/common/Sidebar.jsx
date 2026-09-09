@@ -188,15 +188,28 @@ export const Sidebar = ({ role = 'hospital' }) => {
         </div>
       </div>
 
-      {/* Statutory Compliance Footer Badge */}
-      <div className="mt-6 p-3 rounded-xl bg-gradient-to-br from-slate-50 to-primary-50/50 border border-slate-200/80 space-y-1">
-        <div className="flex items-center gap-1.5">
-          <ShieldCheck className="w-4 h-4 text-primary-600 flex-shrink-0" />
-          <span className="text-[11px] font-extrabold text-slate-800">CDSCO Verified Node</span>
+      {/* Security & Statutory Compliance Footer Badge */}
+      <div className="mt-6 p-3 rounded-xl bg-gradient-to-br from-slate-50 to-primary-50/50 border border-slate-200/80 space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <span className="text-[11px] font-extrabold text-slate-800">
+              {role === 'admin' ? 'Supervisory Authority' : 'Verified Hospital Node'}
+            </span>
+          </div>
+          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+            SECURE
+          </span>
         </div>
-        <p className="text-[10px] text-slate-500 leading-relaxed font-medium">
-          2°C - 8°C Cold Chain & Rule 65 statutory drug compliance active.
-        </p>
+        <div className="text-[10px] text-slate-500 leading-relaxed font-medium space-y-0.5">
+          <div className="flex items-center justify-between text-slate-600 font-mono">
+            <span>Role:</span>
+            <span className="font-bold uppercase text-primary-700">{role} (Demo Session)</span>
+          </div>
+          <p className="text-[10px] text-slate-400">
+            Client-side defense safeguards active. CDSCO Rule 65 protocol.
+          </p>
+        </div>
       </div>
     </aside>
   );

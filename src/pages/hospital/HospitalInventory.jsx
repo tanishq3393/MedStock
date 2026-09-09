@@ -236,6 +236,10 @@ export const HospitalInventory = () => {
       toast.error('Your hospital account is currently suspended. Operational activities are locked.');
       return;
     }
+    if (med.status === 'disposed') {
+      toast.error('Disposed batches are permanently archived under bio-medical waste regulations and cannot be edited.');
+      return;
+    }
     setEditingMedicine(med);
     setAddEditModalOpen(true);
   };
@@ -243,7 +247,11 @@ export const HospitalInventory = () => {
   const handleSaveMedicine = async (formData) => {
     try {
       if (editingMedicine) {
-        await dispatch(updateMedicineItem({ id: editingMedicine.id, data: formData }));
+        if (editingMedicine.status === 'disposed') {
+          toast.error('Disposed medicine batches cannot be reactivated or edited.');
+          return;
+        }
+        await dispatch(updateMedicineItem({ id: editingMedicine.id, data: formData })).unwrap();
         toast.success(`Updated ${formData.brandName} record in hospital inventory`);
       } else {
         const payload = {
@@ -251,13 +259,13 @@ export const HospitalInventory = () => {
           hospitalId: user?.id,
           hospitalName: user?.name || 'Apollo Hospital Central Pharmacy',
         };
-        await dispatch(addMedicineItem(payload));
+        await dispatch(addMedicineItem(payload)).unwrap();
         toast.success(`Added ${formData.brandName} to hospital inventory`);
       }
       setAddEditModalOpen(false);
       setEditingMedicine(null);
     } catch (err) {
-      toast.error('Failed to save medicine record: ' + err.message);
+      toast.error('Failed to save medicine record: ' + (err?.message || err));
     }
   };
 

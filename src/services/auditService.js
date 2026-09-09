@@ -25,8 +25,9 @@ export const auditService = {
     action,
     entityType,
     entityId,
-    hospitalId,
-    hospitalName,
+    hospitalId = null,
+    hospitalName = null,
+    actorRole = 'hospital',
     partnerHospitalId = null,
     partnerHospitalName = null,
     summary,
@@ -35,19 +36,30 @@ export const auditService = {
   }) {
     const auditTrail = getStoredItem(KEYS.AUDIT_TRAIL, []);
 
+    // Defense-in-depth: Never record passwords, tokens, or sensitive personal data
+    const safeMetadata = { ...metadata };
+    delete safeMetadata.password;
+    delete safeMetadata.token;
+    delete safeMetadata.secret;
+    delete safeMetadata.authToken;
+    delete safeMetadata.credentials;
+
     const newEvent = {
       id: 'audit-' + Date.now() + '-' + Math.floor(Math.random() * 1000),
       timestamp: new Date().toISOString(),
       action,
       entityType,
       entityId,
+      actorRole,
       hospitalId,
-      hospitalName: hospitalName || 'Hospital Facility',
+      hospitalName: hospitalName || (actorRole === 'admin' ? 'Supervisory Administrator' : 'Hospital Facility'),
       partnerHospitalId,
       partnerHospitalName,
       summary,
       resultingStatus,
-      metadata,
+      metadata: safeMetadata,
+      isDemoAudit: true,
+      disclaimer: 'DEMO AUDIT LOG - Real audit logging must be performed securely on the backend',
     };
 
     auditTrail.unshift(newEvent);
