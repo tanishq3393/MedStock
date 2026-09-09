@@ -293,23 +293,33 @@ export const AdminInventory = () => {
 
       {/* INVENTORY TABLE */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden w-full max-w-full">
-        <div className="overflow-x-auto w-full max-w-full">
-          <table className="min-w-full divide-y divide-slate-200/80 text-xs">
-            <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
+        <div className="w-full overflow-hidden">
+          <table className="w-full divide-y divide-slate-200/80 text-xs table-fixed">
+            <colgroup>
+              <col style={{ width: '19%' }} /> {/* Medicine Formulation */}
+              <col style={{ width: '15%' }} /> {/* Holding Hospital */}
+              <col style={{ width: '22%' }} /> {/* Stock Distribution */}
+              <col style={{ width: '7%' }} />  {/* Min Stock */}
+              <col style={{ width: '10%' }} /> {/* Expiry Date */}
+              <col style={{ width: '9%' }} />  {/* Status */}
+              <col style={{ width: '8%' }} />  {/* Last Updated */}
+              <col style={{ width: '10%' }} /> {/* Actions */}
+            </colgroup>
+            <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th className="px-5 py-3.5 text-left">Medicine Formulation</th>
-                <th className="px-4 py-3.5 text-left">Holding Hospital</th>
-                <th className="px-5 py-3.5 text-left">
+                <th className="px-3 py-3 text-left">Medicine Formulation</th>
+                <th className="px-2 py-3 text-left">Holding Hospital</th>
+                <th className="px-2 py-3 text-left">
                   <div className="flex items-center gap-1">
                     <span>Stock Distribution</span>
-                    <span className="text-[9px] font-normal text-slate-400">(Avail / Resv / Exp)</span>
+                    <span className="text-[9px] font-normal text-slate-400">(Avail/Resv/Exp)</span>
                   </div>
                 </th>
-                <th className="px-3 py-3.5 text-center">Min Stock</th>
-                <th className="px-4 py-3.5 text-left">Expiry Date</th>
-                <th className="px-4 py-3.5 text-center">Status</th>
-                <th className="px-4 py-3.5 text-left">Last Updated</th>
-                <th className="px-5 py-3.5 text-center">Actions</th>
+                <th className="px-1.5 py-3 text-center">Min Stock</th>
+                <th className="px-2 py-3 text-left">Expiry Date</th>
+                <th className="px-1.5 py-3 text-center">Status</th>
+                <th className="px-2 py-3 text-left">Last Updated</th>
+                <th className="px-2 py-3 text-center">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
@@ -318,29 +328,29 @@ export const AdminInventory = () => {
                   <tr key={item.id} className="hover:bg-teal-50/20 transition-colors group">
                     
                     {/* Medicine */}
-                    <td className="px-5 py-4">
-                      <div className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors">{item.medicine}</div>
-                      <div className="text-[11px] text-primary-700 font-semibold">{item.power}</div>
-                      <span className="text-[10px] text-slate-400 font-mono">Batch: {item.batchNumber}</span>
+                    <td className="px-3 py-3 overflow-hidden">
+                      <div className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors truncate text-xs" title={item.medicine}>{item.medicine}</div>
+                      <div className="text-[11px] text-primary-700 font-semibold truncate" title={item.power}>{item.power}</div>
+                      <span className="text-[10px] text-slate-400 font-mono truncate block">Batch: {item.batchNumber}</span>
                     </td>
 
                     {/* Hospital */}
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                    <td className="px-2 py-3 overflow-hidden">
+                      <div className="flex items-center gap-1.5 font-bold text-slate-800 min-w-0">
                         <Building2 className="w-3.5 h-3.5 text-primary-600 shrink-0" />
-                        <span>{item.hospital}</span>
+                        <span className="truncate block text-xs" title={item.hospital}>{item.hospital}</span>
                       </div>
                     </td>
 
                     {/* Stock Movement Progression Indicator: Available -> Reserved -> Expired */}
-                    <td className="px-5 py-4">
+                    <td className="px-2 py-3 overflow-hidden">
                       <div className="space-y-1">
-                        <div className="flex items-center gap-2 font-mono text-xs">
-                          <span className="font-bold text-emerald-700">{item.availableStock} Avail</span>
+                        <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                          <span className="font-bold text-emerald-700 whitespace-nowrap">{item.availableStock} Avail</span>
                           <span className="text-slate-300">→</span>
-                          <span className="font-medium text-amber-700">{item.reservedStock} Resv</span>
+                          <span className="font-medium text-amber-700 whitespace-nowrap">{item.reservedStock} Resv</span>
                           <span className="text-slate-300">→</span>
-                          <span className="font-bold text-purple-700">{item.expiredStock} Exp</span>
+                          <span className="font-bold text-purple-700 whitespace-nowrap">{item.expiredStock} Exp</span>
                         </div>
                         <div className="w-full h-1.5 bg-slate-100 rounded-full flex overflow-hidden">
                           <div style={{ width: `${Math.min(100, (item.availableStock / (item.totalStock || 1)) * 100)}%` }} className="bg-emerald-500" />
@@ -351,28 +361,28 @@ export const AdminInventory = () => {
                     </td>
 
                     {/* Minimum Stock */}
-                    <td className="px-3 py-4 text-center font-mono text-slate-600 font-semibold">
+                    <td className="px-1.5 py-3 text-center font-mono text-slate-600 font-semibold overflow-hidden text-xs">
                       {item.minimumStock}
                     </td>
 
                     {/* Expiry Date */}
-                    <td className="px-4 py-4 font-mono text-slate-700 font-semibold text-[11px]">
-                      {item.expiryDate}
+                    <td className="px-2 py-3 font-mono text-slate-700 font-semibold text-[11px] overflow-hidden">
+                      <span className="truncate block" title={item.expiryDate}>{item.expiryDate}</span>
                     </td>
 
                     {/* Status */}
-                    <td className="px-4 py-4 text-center">
+                    <td className="px-1.5 py-3 text-center overflow-hidden">
                       <StatusBadge status={item.status} />
                     </td>
 
                     {/* Last Updated */}
-                    <td className="px-4 py-4 font-mono text-slate-400 text-[11px]">
-                      {item.lastUpdated}
+                    <td className="px-2 py-3 font-mono text-slate-400 text-[10px] overflow-hidden">
+                      <span className="truncate block" title={item.lastUpdated}>{item.lastUpdated}</span>
                     </td>
 
                     {/* Actions */}
-                    <td className="px-5 py-4 text-center">
-                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                    <td className="px-2 py-3 text-center overflow-hidden">
+                      <div className="flex items-center justify-center gap-1">
                         
                         {/* Add Stock */}
                         <button
@@ -380,7 +390,7 @@ export const AdminInventory = () => {
                             setAddStockTarget(item);
                             setAddQuantity(50);
                           }}
-                          className="p-1.5 rounded-lg text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
+                          className="p-1 rounded text-emerald-700 bg-emerald-50 hover:bg-emerald-100 transition-colors"
                           title="Add Stock (Intake)"
                         >
                           <Plus className="w-3.5 h-3.5" />
@@ -392,7 +402,7 @@ export const AdminInventory = () => {
                             setRemoveStockTarget(item);
                             setRemoveQuantity(10);
                           }}
-                          className="p-1.5 rounded-lg text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
+                          className="p-1 rounded text-rose-700 bg-rose-50 hover:bg-rose-100 transition-colors"
                           title="Remove Stock (Damage / Recall)"
                         >
                           <Minus className="w-3.5 h-3.5" />
@@ -405,7 +415,7 @@ export const AdminInventory = () => {
                             setTransferDestination(hospitals.find((h) => h.id !== item.hospitalId)?.id || '');
                             setTransferQuantity(Math.min(25, item.availableStock));
                           }}
-                          className="p-1.5 rounded-lg text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
+                          className="p-1 rounded text-blue-700 bg-blue-50 hover:bg-blue-100 transition-colors"
                           title="Transfer Stock to Peer Facility"
                         >
                           <ArrowRightLeft className="w-3.5 h-3.5" />
@@ -414,7 +424,7 @@ export const AdminInventory = () => {
                         {/* History */}
                         <button
                           onClick={() => handleOpenHistory(item)}
-                          className="p-1.5 rounded-lg text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
+                          className="p-1 rounded text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors"
                           title="View Stock Movement History"
                         >
                           <History className="w-3.5 h-3.5" />

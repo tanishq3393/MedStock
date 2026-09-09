@@ -355,93 +355,149 @@ export const AdminFeedback = () => {
             </p>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200/80 text-xs">
-              <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[11px]">
-                <tr>
-                  <th className="py-3.5 px-4 text-left">Hospital Name</th>
-                  <th className="py-3.5 px-3 text-center">Rating</th>
-                  <th className="py-3.5 px-3 text-left">Feedback Category</th>
-                  <th className="py-3.5 px-4 text-left">Feedback / Comment</th>
-                  <th className="py-3.5 px-3 text-center">Submitted Date</th>
-                  <th className="py-3.5 px-3 text-center">Status</th>
-                  <th className="py-3.5 px-4 text-center">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                {filteredFeedbacks.map((fb) => (
-                  <tr key={fb.id} className="hover:bg-slate-50/70 transition-colors">
-                    
-                    {/* Hospital Name */}
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
-                          <Building2 className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="font-bold text-slate-900">{fb.hospitalName}</div>
-                          <div className="text-[10px] text-slate-400">{fb.location || 'Accredited Facility'}</div>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Rating */}
-                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                      <div className="inline-flex items-center gap-0.5 text-amber-400">
-                        {[...Array(5)].map((_, i) => (
-                          <Star 
-                            key={i} 
-                            className={`w-3.5 h-3.5 ${i < Number(fb.rating || 5) ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} 
-                          />
-                        ))}
-                      </div>
-                    </td>
-
-                    {/* Category */}
-                    <td className="py-3.5 px-3">
-                      <span className="px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
-                        {fb.category || 'Order / Delivery'}
-                      </span>
-                    </td>
-
-                    {/* Feedback / Comment */}
-                    <td className="py-3.5 px-4 max-w-xs">
-                      <p className="line-clamp-2 text-slate-600 text-xs leading-relaxed" title={fb.feedbackText || fb.comment}>
-                        "{fb.feedbackText || fb.comment}"
-                      </p>
-                      {fb.adminReply && (
-                        <div className="mt-1 text-[10px] text-teal-700 font-semibold flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3 text-teal-600" />
-                          <span>Admin Replied</span>
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Submitted Date */}
-                    <td className="py-3.5 px-3 text-center font-mono text-slate-500 text-[11px] whitespace-nowrap">
-                      {fb.date || '2024-08-25'}
-                    </td>
-
-                    {/* Status */}
-                    <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                      {getStatusBadge(fb.status)}
-                    </td>
-
-                    {/* Action */}
-                    <td className="py-3.5 px-4 text-center whitespace-nowrap">
-                      <button
-                        onClick={() => handleOpenDetails(fb)}
-                        className="px-3 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs transition-colors flex items-center gap-1 mx-auto"
-                      >
-                        <Eye className="w-3.5 h-3.5" />
-                        <span>Review</span>
-                      </button>
-                    </td>
-
+          <div className="w-full">
+            {/* Desktop & Tablet Table: 100% width, no horizontal scrollbar */}
+            <div className="hidden md:block w-full overflow-hidden">
+              <table className="w-full text-left border-collapse table-fixed text-xs">
+                <colgroup>
+                  <col style={{ width: '20%' }} /> {/* Hospital Name */}
+                  <col style={{ width: '13%' }} /> {/* Rating */}
+                  <col style={{ width: '15%' }} /> {/* Feedback Category */}
+                  <col style={{ width: '27%' }} /> {/* Feedback / Comment */}
+                  <col style={{ width: '10%' }} /> {/* Submitted Date */}
+                  <col style={{ width: '8%' }} />  {/* Status */}
+                  <col style={{ width: '7%' }} />  {/* Action */}
+                </colgroup>
+                <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
+                  <tr>
+                    <th className="py-3 px-3 text-left">Hospital Name</th>
+                    <th className="py-3 px-2 text-center">Rating</th>
+                    <th className="py-3 px-2 text-left">Feedback Category</th>
+                    <th className="py-3 px-2 text-left">Feedback / Comment</th>
+                    <th className="py-3 px-2 text-center">Submitted Date</th>
+                    <th className="py-3 px-1.5 text-center">Status</th>
+                    <th className="py-3 px-2 text-center">Action</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
+                  {filteredFeedbacks.map((fb) => (
+                    <tr key={fb.id} className="hover:bg-slate-50/70 transition-colors">
+                      
+                      {/* Hospital Name */}
+                      <td className="py-3 px-3 overflow-hidden">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
+                            <Building2 className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-bold text-slate-900 truncate text-xs" title={fb.hospitalName}>{fb.hospitalName}</div>
+                            <div className="text-[10px] text-slate-400 truncate" title={fb.location}>{fb.location || 'Accredited Facility'}</div>
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Rating */}
+                      <td className="py-3 px-2 text-center overflow-hidden">
+                        <div className="inline-flex items-center gap-0.5 text-amber-400">
+                          {[...Array(5)].map((_, i) => (
+                            <Star 
+                              key={i} 
+                              className={`w-3 h-3 ${i < Number(fb.rating || 5) ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} 
+                            />
+                          ))}
+                        </div>
+                      </td>
+
+                      {/* Category */}
+                      <td className="py-3 px-2 overflow-hidden">
+                        <span className="inline-block max-w-full truncate px-2 py-0.5 rounded-lg text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200" title={fb.category}>
+                          {fb.category || 'Order / Delivery'}
+                        </span>
+                      </td>
+
+                      {/* Feedback / Comment */}
+                      <td className="py-3 px-2 overflow-hidden text-slate-600 text-xs">
+                        <p className="truncate" title={fb.feedbackText || fb.comment}>
+                          "{fb.feedbackText || fb.comment}"
+                        </p>
+                        {fb.adminReply && (
+                          <div className="mt-0.5 text-[10px] text-teal-700 font-semibold flex items-center gap-1">
+                            <CheckCircle2 className="w-2.5 h-2.5 text-teal-600 shrink-0" />
+                            <span className="truncate">Admin Replied</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Submitted Date */}
+                      <td className="py-3 px-2 text-center font-mono text-slate-500 text-[11px] overflow-hidden">
+                        <span className="truncate block">{fb.date || '2024-08-25'}</span>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3 px-1.5 text-center overflow-hidden">
+                        {getStatusBadge(fb.status)}
+                      </td>
+
+                      {/* Action */}
+                      <td className="py-3 px-2 text-center overflow-hidden">
+                        <button
+                          onClick={() => handleOpenDetails(fb)}
+                          className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs transition-colors inline-flex items-center gap-1"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>Review</span>
+                        </button>
+                      </td>
+
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile Card List (< md) */}
+            <div className="md:hidden divide-y divide-slate-100">
+              {filteredFeedbacks.map((fb) => (
+                <div key={fb.id} className="p-4 space-y-2.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <h4 className="font-bold text-slate-900 text-xs">{fb.hospitalName}</h4>
+                      <p className="text-[10px] text-slate-400">{fb.location || 'Facility'}</p>
+                    </div>
+                    {getStatusBadge(fb.status)}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <div className="inline-flex items-center gap-0.5 text-amber-400">
+                      {[...Array(5)].map((_, i) => (
+                        <Star 
+                          key={i} 
+                          className={`w-3 h-3 ${i < Number(fb.rating || 5) ? 'fill-amber-400 text-amber-400' : 'text-slate-200'}`} 
+                        />
+                      ))}
+                    </div>
+                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                      {fb.category || 'Feedback'}
+                    </span>
+                  </div>
+
+                  <p className="text-xs text-slate-600 line-clamp-2">
+                    "{fb.feedbackText || fb.comment}"
+                  </p>
+
+                  <div className="flex items-center justify-between pt-1 text-[11px] text-slate-400">
+                    <span>{fb.date || '2024-08-25'}</span>
+                    <button
+                      onClick={() => handleOpenDetails(fb)}
+                      className="px-2.5 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 font-bold text-xs flex items-center gap-1"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>Review</span>
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
