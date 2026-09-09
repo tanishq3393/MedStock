@@ -41,6 +41,14 @@ export const payForRequest = createAsyncThunk('requests/pay', async ({ requestId
   }
 });
 
+export const failPaymentForRequest = createAsyncThunk('requests/failPayment', async ({ requestId, reason }, { rejectWithValue }) => {
+  try {
+    return await hospitalService.failPayment({ requestId, reason });
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 export const cancelRequisition = createAsyncThunk(
   'requests/cancelRequisition',
   async ({ requestId, reason, note, hospitalId }, { rejectWithValue }) => {
@@ -143,6 +151,21 @@ const requestSlice = createSlice({
         if (idx !== -1) state.outgoingRequests[idx] = updatedReq;
       })
       .addCase(payForRequest.rejected, (state, action) => {
+        state.isProcessingPayment = false;
+        state.error = action.payload;
+      })
+
+      // Fail Payment (Retry state)
+      .addCase(failPaymentForRequest.pending, (state) => {
+        state.isProcessingPayment = true;
+      })
+      .addCase(failPaymentForRequest.fulfilled, (state, action) => {
+        state.isProcessingPayment = false;
+        const updatedReq = action.payload.request;
+        const idx = state.outgoingRequests.findIndex((r) => r.id === updatedReq.id);
+        if (idx !== -1) state.outgoingRequests[idx] = updatedReq;
+      })
+      .addCase(failPaymentForRequest.rejected, (state, action) => {
         state.isProcessingPayment = false;
         state.error = action.payload;
       })

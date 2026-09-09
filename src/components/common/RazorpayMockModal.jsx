@@ -15,7 +15,7 @@ import confetti from 'canvas-confetti';
 import { calculateOrderPricing } from '../../utils/pricingUtils';
 import toast from 'react-hot-toast';
 
-export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }) => {
+export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess, onPaymentFailure }) => {
   const [selectedMethod, setSelectedMethod] = useState('upi');
   const [upiId, setUpiId] = useState('hospital.pharmacy@okaxis');
   const [cardNumber, setCardNumber] = useState('4532 8901 2345 6789');
@@ -44,7 +44,7 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
 
     try {
       // Simulate Razorpay Gateway handshake & OTP verification
-      await new Promise((r) => setTimeout(r, 1800));
+      await new Promise((r) => setTimeout(r, 1200));
 
       const result = await onPaymentSuccess({
         requestId: request.id,
@@ -70,6 +70,25 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
     } catch (err) {
       setIsProcessing(false);
       toast.error(err.message || 'Payment processing failed');
+    }
+  };
+
+  const handleSimulateFailure = async () => {
+    setIsProcessing(true);
+    try {
+      await new Promise((r) => setTimeout(r, 800));
+      if (onPaymentFailure) {
+        await onPaymentFailure({
+          requestId: request.id,
+          reason: 'Simulated Gateway Failure: Transaction declined by acquiring bank',
+        });
+      }
+      setIsProcessing(false);
+      toast.error('Payment Failed: Transaction declined by bank. You can retry payment.');
+      onClose();
+    } catch (err) {
+      setIsProcessing(false);
+      toast.error(err.message || 'Payment failure simulation error');
     }
   };
 
@@ -120,18 +139,32 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
           </div>
           
           {/* Order Summary Card with Itemized Breakdown */}
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2">
+          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
             <div className="flex justify-between items-start">
               <div>
-                <p className="text-xs text-slate-500 font-semibold">Paying To Provider:</p>
+                <div className="text-[11px] font-mono text-slate-500">
+                  Order/TXN ID: <strong className="text-slate-800 font-mono">#{request.transactionId || request.id}</strong>
+                </div>
+                <p className="text-xs text-slate-500 font-semibold mt-0.5">Providing Hospital:</p>
                 <h4 className="text-sm font-bold text-slate-800">{request.toHospitalName}</h4>
                 <p className="text-xs text-slate-600 mt-0.5">
-                  Item: <span className="font-medium text-slate-900">{request.medicineName}</span> ({request.quantity} units)
+                  Medicine: <span className="font-semibold text-slate-900">{request.medicineName}</span>
+                </p>
+                <p className="text-xs text-slate-600">
+                  Quantity: <span className="font-mono font-bold text-slate-900">{request.quantity} units</span>
                 </p>
               </div>
-              <div className="text-right">
-                <span className="text-xs text-slate-400">Total Escrow Payable</span>
-                <p className="text-lg font-extrabold text-primary-700">₹{totalPayable.toLocaleString()}</p>
+              <div className="text-right space-y-1">
+                <span className="text-xs text-slate-400 block">Total Settlement</span>
+                <p className="text-lg font-extrabold text-primary-700 font-mono leading-tight">₹{totalPayable.toLocaleString()}</p>
+                <div>
+                  <span className="text-[10px] text-slate-400 block uppercase font-mono">Payment Status</span>
+                  <span className={`inline-flex items-center gap-1 text-[11px] font-mono font-bold ${
+                    request.paymentStatus === 'failed' ? 'text-rose-600' : 'text-amber-700'
+                  }`}>
+                    {request.paymentStatus === 'failed' ? 'Payment Failed (Retry)' : 'Payment Pending'}
+                  </span>
+                </div>
               </div>
             </div>
 
@@ -279,25 +312,46 @@ export const RazorpayMockModal = ({ isOpen, onClose, request, onPaymentSuccess }
               </div>
             )}
 
-            {/* Pay Button */}
-            <div className="pt-3">
-              <button
-                type="submit"
-                disabled={isProcessing}
-                className="w-full py-2.5 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white text-xs font-bold shadow-lg shadow-primary-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-75"
-              >
-                {isProcessing ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>Authorizing Escrow Settlement with Bank...</span>
-                  </>
-                ) : (
-                  <>
-                    <ShieldCheck className="w-4 h-4 text-emerald-300" />
-                    <span>Authorize & Pay ₹{totalPayable.toLocaleString()}</span>
-                  </>
-                )}
-              </button>
+            {/* Modal Actions */}
+            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSimulateFailure}
+                  disabled={isProcessing}
+                  className="text-[11px] font-mono font-medium text-rose-600 hover:text-rose-700 hover:underline cursor-pointer"
+                  title="Simulate bank gateway failure to test payment retry behavior"
+                >
+                  [Simulate Payment Failure]
+                </button>
+              </div>
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  disabled={isProcessing}
+                  className="px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isProcessing}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-primary-600 to-primary-700 hover:from-primary-700 hover:to-primary-800 text-white text-xs font-bold shadow-md shadow-primary-500/25 flex items-center justify-center gap-2 transition-all disabled:opacity-75 cursor-pointer"
+                >
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Authorizing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-300" />
+                      <span>Pay Now / Proceed to Payment</span>
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </form>
 

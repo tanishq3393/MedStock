@@ -243,6 +243,16 @@ export const initializeStorage = () => {
         return req;
       });
 
+      // Ensure the 8 demo requests are present and front-loaded
+      const demoReqs = INITIAL_REQUESTS.filter((r) => r.id?.startsWith('req-demo-'));
+      demoReqs.forEach((demo) => {
+        const existingIdx = parsedReqs.findIndex((r) => r.id === demo.id);
+        if (existingIdx === -1) {
+          parsedReqs.unshift(demo);
+          modified = true;
+        }
+      });
+
       // Ensure the competing request test group exists if not present
       const hasCompeting = updatedReqs.some((r) => r.id === 'req-competing-1');
       if (!hasCompeting) {

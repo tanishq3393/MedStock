@@ -34,12 +34,16 @@ export const WorkflowTimeline = ({
       ];
     }
 
-    // Default: Requisition flow
+    // Default: Requisition flow (Finalized 8-stage lifecycle)
     return [
-      { key: 'pending', label: 'Requested' },
+      { key: 'requested', label: 'Requested' },
       { key: 'accepted', label: 'Accepted' },
-      { key: 'transferred', label: 'Dispatched' },
-      { key: 'received', label: 'Delivered' },
+      { key: 'paid', label: 'Paid' },
+      { key: 'preparing', label: 'Preparing' },
+      { key: 'dispatched', label: 'Dispatched' },
+      { key: 'in_transit', label: 'In Transit' },
+      { key: 'delivered', label: 'Delivered' },
+      { key: 'completed', label: 'Completed' },
     ];
   }, [steps, type]);
 
@@ -47,12 +51,16 @@ export const WorkflowTimeline = ({
   const activeIndex = React.useMemo(() => {
     if (typeof currentStepIndex === 'number') return currentStepIndex;
 
-    const s = (currentStatus || '').toLowerCase();
-    if (s === 'pending') return 0;
-    if (s === 'accepted' || s === 'approved' || s === 'processing') return 1;
-    if (s === 'transferred' || s === 'dispatched' || s === 'in_transit') return 2;
-    if (s === 'received' || s === 'delivered' || s === 'completed') return 3;
-    if (s === 'cancelled') return 0;
+    const s = (currentStatus || '').toLowerCase().trim();
+    if (s === 'pending' || s === 'requested' || s === 'reviewing') return 0;
+    if (s === 'accepted' || s === 'approved') return 1;
+    if (s === 'paid' || s === 'payment_completed') return 2;
+    if (s === 'preparing' || s === 'processing' || s === 'packed') return 3;
+    if (s === 'dispatched' || s === 'shipped') return 4;
+    if (s === 'in transit' || s === 'in_transit' || s === 'transit') return 5;
+    if (s === 'delivered' || s === 'received') return 6;
+    if (s === 'completed' || s === 'fulfilled') return 7;
+    if (s === 'cancelled' || s === 'rejected') return -1;
     return 0;
   }, [currentStepIndex, currentStatus]);
 
@@ -96,26 +104,26 @@ export const WorkflowTimeline = ({
             <div key={step.key || idx} className="relative z-10 flex flex-col items-center">
               {/* Circle / Icon */}
               <div 
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-mono font-bold transition-all ${
+                className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center text-[10px] sm:text-xs font-mono font-bold transition-all ${
                   isCancelledNode
-                    ? 'bg-rose-600 text-white shadow-md ring-4 ring-rose-100 scale-105'
+                    ? 'bg-rose-600 text-white shadow-md ring-2 sm:ring-4 ring-rose-100 scale-105'
                     : isPassed 
-                    ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-100'
+                    ? 'bg-emerald-600 text-white shadow-sm ring-1 sm:ring-2 ring-emerald-100'
                     : isCurrent
-                    ? 'bg-primary-600 text-white shadow-md ring-4 ring-primary-100 scale-110'
+                    ? 'bg-primary-600 text-white shadow-md ring-2 sm:ring-4 ring-primary-100 scale-110'
                     : isOrderRejected && idx === activeIndex
-                    ? 'bg-rose-600 text-white ring-4 ring-rose-100'
+                    ? 'bg-rose-600 text-white ring-2 sm:ring-4 ring-rose-100'
                     : 'bg-white border-2 border-slate-300 text-slate-400'
                 }`}
               >
                 {isCancelledNode ? (
-                  <Ban className="w-3.5 h-3.5 text-white" />
+                  <Ban className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white" />
                 ) : isPassed ? (
-                  <CheckCircle2 className="w-4 h-4 text-white" />
+                  <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 ) : isCurrent ? (
-                  <Clock className="w-3.5 h-3.5 text-white animate-pulse" />
+                  <Clock className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-white animate-pulse" />
                 ) : isOrderRejected && idx === activeIndex ? (
-                  <XCircle className="w-4 h-4 text-white" />
+                  <XCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white" />
                 ) : (
                   <span>{idx + 1}</span>
                 )}
@@ -123,7 +131,7 @@ export const WorkflowTimeline = ({
 
               {/* Label */}
               <span 
-                className={`text-[10px] font-mono tracking-tight mt-1.5 whitespace-nowrap text-center ${
+                className={`text-[8px] sm:text-[10px] font-mono tracking-tight mt-1 sm:mt-1.5 text-center leading-tight max-w-[44px] sm:max-w-none break-words sm:whitespace-nowrap ${
                   isCancelledNode
                     ? 'font-extrabold text-rose-700'
                     : isCurrent 

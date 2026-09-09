@@ -16,7 +16,7 @@ import {
   ShieldCheck,
   XCircle
 } from 'lucide-react';
-import { fetchOutgoingRequests, payForRequest, cancelRequisition } from '../../store/slices/requestSlice';
+import { fetchOutgoingRequests, payForRequest, failPaymentForRequest, cancelRequisition } from '../../store/slices/requestSlice';
 import StatusBadge from '../../components/common/StatusBadge';
 import RazorpayMockModal from '../../components/common/RazorpayMockModal';
 import Modal from '../../components/common/Modal';
@@ -62,6 +62,14 @@ export const MyRequests = () => {
     return result.payload;
   };
 
+  const handlePaymentFailure = async ({ requestId, reason }) => {
+    const result = await dispatch(failPaymentForRequest({ requestId, reason }));
+    if (result.meta.requestStatus === 'rejected') {
+      throw new Error(result.payload || 'Payment failure could not be registered');
+    }
+    return result.payload;
+  };
+
   const handleConfirmCancel = async ({ requestId, reason, note, policy, amounts }) => {
     try {
       await dispatch(cancelRequisition({
@@ -92,16 +100,26 @@ export const MyRequests = () => {
   const getStageIndex = (status) => {
     const map = {
       pending: 0,
-      reviewing: 1,
-      accepted: 2,
+      requested: 0,
+      reviewing: 0,
+      accepted: 1,
+      approved: 1,
+      paid: 2,
+      preparing: 3,
+      processing: 3,
       packed: 3,
-      paid: 4,
-      'in transit': 4,
-      delivered: 5,
+      dispatched: 4,
+      shipped: 4,
+      'in transit': 5,
+      'in_transit': 5,
+      delivered: 6,
+      received: 6,
+      completed: 7,
+      fulfilled: 7,
       rejected: -1,
       cancelled: -1
     };
-    return map[status.toLowerCase()] ?? 0;
+    return map[status?.toLowerCase()?.trim()] ?? 0;
   };
 
   const filtered = outgoingRequests.filter((r) => {
@@ -109,11 +127,12 @@ export const MyRequests = () => {
       (r.toHospitalName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
       (r.transactionId || '').toLowerCase().includes(searchTerm.toLowerCase());
     
+    const s = (r.status || '').toLowerCase();
     if (activeFilter === 'all') return matchesSearch;
-    if (activeFilter === 'pending') return matchesSearch && (r.status === 'pending' || r.status === 'reviewing');
-    if (activeFilter === 'actionable') return matchesSearch && r.status === 'accepted';
-    if (activeFilter === 'transit') return matchesSearch && (r.status === 'paid' || r.status === 'in transit');
-    if (activeFilter === 'cancelled') return matchesSearch && (r.status === 'cancelled' || r.status === 'cancelled by buyer');
+    if (activeFilter === 'pending') return matchesSearch && (s === 'pending' || s === 'reviewing');
+    if (activeFilter === 'actionable') return matchesSearch && s === 'accepted';
+    if (activeFilter === 'transit') return matchesSearch && (['paid', 'preparing', 'dispatched', 'shipped', 'in transit'].includes(s));
+    if (activeFilter === 'cancelled') return matchesSearch && (s === 'cancelled' || s === 'cancelled by buyer');
     return matchesSearch;
   });
 
@@ -286,26 +305,96 @@ export const MyRequests = () => {
                 </div>
 
                 <div className="flex items-center justify-between gap-3">
-                  <div className="text-left">
+                  <div className="text-left space-y-0.5">
                     <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Settlement</span>
-                    <span className="text-lg font-mono font-extrabold text-slate-900">
+                    <span className="text-lg font-mono font-extrabold text-slate-900 leading-tight block">
                       ₹{(req.totalAmount || 0).toLocaleString()}
                     </span>
+
+                    {/* Payment Status inside Existing Settlement Section */}
+                    {(() => {
+                      const isPaid = req.paymentStatus === 'paid' || req.paymentStatus === 'success' || ['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'delivered', 'completed'].includes((req.status || '').toLowerCase());
+                      const isFailed = req.paymentStatus === 'failed';
+                      const isRefunded = req.paymentStatus === 'refunded' || req.cancellation?.refundStatus;
+
+                      if (isRefunded) {
+                        return (
+                          <div className="pt-0.5 text-[11px] font-mono">
+                            <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
+                            <span className="text-purple-700 font-bold">Refunded</span>
+                          </div>
+                        );
+                      }
+
+                      if (isPaid) {
+                        return (
+                          <div className="pt-0.5 text-[11px] font-mono">
+                            <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
+                            <div className="flex items-center gap-1 text-emerald-700 font-bold">
+                              <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                              <span>Paid</span>
+                            </div>
+                            {req.paidDate && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                Paid on: <span className="text-slate-600">{new Date(req.paidDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      }
+
+                      if (req.status === 'accepted') {
+                        if (isFailed) {
+                          return (
+                            <div className="pt-0.5 text-[11px] font-mono">
+                              <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
+                              <div className="flex items-center gap-1 text-rose-600 font-bold">
+                                <XCircle className="w-3.5 h-3.5 text-rose-500" />
+                                <span>Payment Failed</span>
+                              </div>
+                            </div>
+                          );
+                        }
+                        return (
+                          <div className="pt-0.5 text-[11px] font-mono">
+                            <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
+                            <div className="flex items-center gap-1 text-amber-700 font-semibold">
+                              <Clock className="w-3 h-3 text-amber-600" />
+                              <span>Payment Pending</span>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      return null;
+                    })()}
                   </div>
 
                   <div className="flex items-center gap-2.5 flex-wrap justify-end">
-                    {req.status === 'accepted' && (
+                    {/* ONLY AFTER Accepted: Pay Now or Retry Payment */}
+                    {req.status === 'accepted' && req.paymentStatus !== 'failed' && (
                       <button
                         onClick={() => !isSuspended && setActivePaymentReq(req)}
                         disabled={isSuspended}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-105 cursor-pointer"
                       >
                         <CreditCard className="w-3.5 h-3.5" />
-                        <span>Pay Escrow</span>
+                        <span>Pay Now</span>
                       </button>
                     )}
 
-                    {(req.status === 'paid' || req.status === 'in transit') && (
+                    {req.status === 'accepted' && req.paymentStatus === 'failed' && (
+                      <button
+                        onClick={() => !isSuspended && setActivePaymentReq(req)}
+                        disabled={isSuspended}
+                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition-all hover:scale-105 cursor-pointer"
+                      >
+                        <CreditCard className="w-3.5 h-3.5" />
+                        <span>Retry Payment</span>
+                      </button>
+                    )}
+
+                    {['paid', 'preparing', 'dispatched', 'shipped', 'in transit'].includes(req.status?.toLowerCase()) && (
                       <Link
                         to={`/hospital/track?txn=${req.transactionId}`}
                         className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/20 transition-all cursor-pointer"
@@ -432,6 +521,7 @@ export const MyRequests = () => {
           onClose={() => setActivePaymentReq(null)}
           request={activePaymentReq}
           onPaymentSuccess={handlePaymentSuccess}
+          onPaymentFailure={handlePaymentFailure}
         />
       )}
 

@@ -820,6 +820,7 @@ export const hospitalService = {
 
       // 2. Mark this request as accepted
       targetReq.status = 'accepted';
+      targetReq.paymentStatus = 'pending';
       targetReq.rejectReason = null;
       targetReq.acceptedAt = new Date().toISOString();
 
@@ -938,7 +939,11 @@ export const hospitalService = {
     }
 
     // Update Requisition State
+    const hadPaid = !!(targetReq.paidDate || targetReq.paymentStatus === 'paid' || targetReq.paymentStatus === 'success');
     targetReq.status = 'cancelled';
+    if (hadPaid) {
+      targetReq.paymentStatus = 'refunded';
+    }
     targetReq.cancellation = {
       cancelledAt: new Date().toISOString(),
       cancelledBy: hospitalId || targetReq.fromHospitalId,
@@ -1021,11 +1026,22 @@ export const hospitalService = {
     const paymentId = 'pay_demo_' + Math.random().toString(36).substring(2, 11);
     const orderId = 'order_demo_' + Math.random().toString(36).substring(2, 10);
 
-    // Update Request
+    // Update Request: Accepted -> Payment Successful -> Paid (Lifecycle Stage 3)
     req.status = 'paid';
     req.paymentId = paymentId;
-    req.paymentStatus = 'success';
+    req.paymentStatus = 'paid';
     req.paidDate = new Date().toISOString();
+
+    if (!req.timeline) {
+      req.timeline = [
+        { step: 'Order Placed', timestamp: req.requestDate || new Date().toISOString(), completed: true },
+        { step: 'Accepted by Provider', timestamp: req.acceptedAt || req.requestDate || new Date().toISOString(), completed: true },
+      ];
+    }
+    req.timeline.push(
+      { step: 'Payment Successful', timestamp: req.paidDate, completed: true, details: `Escrow Ref: ${paymentId}` }
+    );
+
     setStoredItem(KEYS.REQUESTS, requests);
 
     // Record Payment
@@ -1038,7 +1054,7 @@ export const hospitalService = {
       amount: req.totalAmount,
       gstAmount: req.gstAmount || Math.round(req.totalAmount * 0.12),
       totalPaid: req.totalAmount,
-      paymentStatus: 'Success',
+      paymentStatus: 'Paid',
       date: new Date().toLocaleString(),
       razorpayPaymentId: paymentId + ' (Demo Simulator)',
       razorpayOrderId: orderId,
@@ -1062,21 +1078,21 @@ export const hospitalService = {
       receiverHospitalId: req.fromHospitalId,
       medicineName: req.medicineName,
       quantity: req.quantity,
-      status: 'Pickup Scheduled',
-      currentLocation: `${req.toHospitalName} Central Logistics Bay`,
-      destination: `${req.fromHospitalName} Pharmacy Intake Dock`,
-      eta: 'Tomorrow, 03:00 PM (Est. 24h Cold Transit)',
-      courierName: 'MediCold Bio-Express (Demo Fleet)',
-      courierContact: '+91 91122 33445 (Dispatcher: Vikram S.)',
-      vehicleNo: 'MH-04-EX-7741 (Temp Telemetry)',
-      temperature: '3.9°C (Compliant)',
+      status: 'In Preparation',
+      currentLocation: `${req.toHospitalName} Central Dispatch Dock`,
+      destination: `${req.fromHospitalName} Inward Receiving Dock`,
+      eta: 'Next Business Day, 04:00 PM',
+      courierName: 'MediCold Logistics Express Ltd.',
+      courierContact: '+91 91234 56789',
+      vehicleNo: 'MH-04-AZ-9912 (Cold Chain)',
+      temperature: '3.8°C (Compliant)',
       isDemoSimulation: true,
       timeline: [
-        { step: 'Requisition Accepted & Verified', date: new Date().toLocaleString(), completed: true, details: 'Exchange terms approved and stock earmarked.' },
-        { step: 'Payment Processed via Escrow Simulator', date: new Date().toLocaleString(), completed: true, details: `Ref: ${paymentId}, ₹${newPayment.totalPaid} placed in secure nodal escrow.` },
-        { step: 'Pickup Scheduled with Bio-Courier', date: 'In Progress', completed: true, details: 'Sealed cold-chain package awaiting dispatch courier.' },
-        { step: 'In Transit with Live IoT Temperature', date: 'Pending', completed: false, details: 'Active GPS and temperature logger.' },
-        { step: 'Delivered & Clinical Inspection Done', date: 'Pending', completed: false, details: 'Receiving dock inspection required before final escrow disbursement.' },
+        { step: 'Order Placed & Escrow Locked', date: new Date().toISOString(), completed: true },
+        { step: 'Pharmacy Batch Preparation', date: 'Pending', completed: false },
+        { step: 'Dispatched & Cold Seal Applied', date: 'Pending', completed: false },
+        { step: 'In Transit with Active IoT GPS', date: 'Pending', completed: false },
+        { step: 'Delivered to Receiving Hospital', date: 'Pending', completed: false },
       ],
       coordinates: {
         origin: [28.5273, 77.2155],
@@ -1088,19 +1104,146 @@ export const hospitalService = {
     setStoredItem(KEYS.TRACKING, trackingList);
 
     auditService.logEvent({
-      action: 'PAYMENT_PROCESSED',
+      action: 'PAYMENT_COMPLETED',
       entityType: 'PAYMENT',
       entityId: newPayment.id,
       hospitalId: req.fromHospitalId,
       hospitalName: req.fromHospitalName,
       partnerHospitalId: req.toHospitalId,
       partnerHospitalName: req.toHospitalName,
-      summary: `Payment of ₹${newPayment.totalPaid.toLocaleString()} processed in escrow for ${req.medicineName}. Shipment ${newTracking.trackingNumber} scheduled.`,
+      summary: `Escrow payment of ₹${req.totalAmount.toLocaleString()} completed for ${req.medicineName}. Order status moved to Paid.`,
       resultingStatus: 'paid',
-      metadata: { transactionId: req.transactionId, paymentId, totalPaid: newPayment.totalPaid },
+      metadata: { paymentId, transactionId: req.transactionId, amount: req.totalAmount },
     });
 
     return { request: req, payment: newPayment, tracking: newTracking };
+  },
+
+  async failPayment({ requestId, reason = 'Card declined / Sandbox simulation failure' }) {
+    await new Promise((r) => setTimeout(r, 400));
+    const requests = getStoredItem(KEYS.REQUESTS, []);
+    const index = requests.findIndex((r) => r.id === requestId);
+    if (index === -1) throw new Error('Requisition not found');
+
+    const req = requests[index];
+    assertHospitalActive(req.fromHospitalId);
+
+    // Keep order status at accepted, set payment status to failed
+    req.paymentStatus = 'failed';
+    req.paymentFailureReason = reason;
+    req.paymentFailedAt = new Date().toISOString();
+    setStoredItem(KEYS.REQUESTS, requests);
+
+    auditService.logEvent({
+      action: 'PAYMENT_FAILED',
+      entityType: 'PAYMENT',
+      entityId: req.id,
+      hospitalId: req.fromHospitalId,
+      hospitalName: req.fromHospitalName,
+      partnerHospitalId: req.toHospitalId,
+      partnerHospitalName: req.toHospitalName,
+      summary: `Payment simulation failed for ${req.medicineName}. Order remains Accepted for payment retry.`,
+      resultingStatus: 'accepted',
+      metadata: { transactionId: req.transactionId, reason },
+    });
+
+    return { request: req };
+  },
+
+  async advanceOrderFulfillment({ requestId }) {
+    await new Promise((r) => setTimeout(r, 200));
+    const requests = getStoredItem(KEYS.REQUESTS, []);
+    const index = requests.findIndex((r) => r.id === requestId);
+    if (index === -1) throw new Error('Requisition not found');
+
+    const req = requests[index];
+    const s = (req.status || '').toLowerCase().trim();
+
+    // Guard: Order cannot advance to Preparing or beyond without successful payment!
+    if (s === 'accepted' && req.paymentStatus !== 'paid' && req.paymentStatus !== 'success') {
+      throw new Error('Order cannot proceed to fulfillment until payment is successfully completed.');
+    }
+
+    const flowMap = {
+      accepted: 'paid',
+      paid: 'preparing',
+      preparing: 'dispatched',
+      dispatched: 'in transit',
+      'in transit': 'delivered',
+      delivered: 'completed',
+    };
+
+    const nextStatus = flowMap[s];
+    if (!nextStatus) return { request: req, nextStatus: s };
+
+    req.status = nextStatus;
+    if (!req.timeline) req.timeline = [];
+    req.timeline.push({
+      step: nextStatus === 'in transit' ? 'In Transit' : nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1),
+      timestamp: new Date().toISOString(),
+      completed: true,
+    });
+
+    // Requirement 16 Inventory Connection:
+    // When delivered or completed, credit receiving hospital's inventory
+    if ((nextStatus === 'delivered' || nextStatus === 'completed') && !req.stockReceivedByBuyer) {
+      const medicines = getStoredItem(KEYS.MEDICINES, []);
+      const buyerHospId = req.fromHospitalId;
+      const normBatch = (req.batchNo || 'BAT-9841').trim().toLowerCase();
+      const normName = (req.medicineName || '').trim().toLowerCase();
+
+      let targetMedIndex = medicines.findIndex((m) => {
+        if (m.hospitalId !== buyerHospId) return false;
+        const matchBatch = (m.batchNo || '').trim().toLowerCase() === normBatch;
+        const matchName = (m.brandName || m.medicineName || '').trim().toLowerCase() === normName;
+        return matchBatch && matchName;
+      });
+
+      if (targetMedIndex !== -1) {
+        medicines[targetMedIndex].quantity = Number(medicines[targetMedIndex].quantity || 0) + Number(req.quantity);
+        medicines[targetMedIndex].lastUpdated = new Date().toISOString().split('T')[0];
+      } else {
+        medicines.unshift({
+          id: 'med-' + Date.now() + '-rcv',
+          medicineId: req.medicineId || ('med-rcv-' + Date.now()),
+          brandName: req.medicineName,
+          medicineName: req.medicineName,
+          genericName: req.genericName || 'Active Formulation',
+          category: 'Essential Medicines',
+          form: req.form || 'Tablet',
+          power: req.power || '',
+          manufacturer: req.manufacturer || 'Approved Manufacturer',
+          batchNo: req.batchNo || 'BAT-RCV-' + Date.now().toString().slice(-4),
+          quantity: Number(req.quantity),
+          minStockLevel: 20,
+          mfgDate: req.mfgDate || '2024-01-01',
+          expiryDate: req.medicineExpiryDate || req.expiryDate || '2025-12-31',
+          unitOriginalPrice: Number(req.unitOriginalPrice || req.unitFinalPrice || 50),
+          hospitalId: buyerHospId,
+          hospitalName: req.fromHospitalName,
+          dateAdded: new Date().toISOString().split('T')[0],
+          lastUpdated: new Date().toISOString().split('T')[0],
+          notes: `Procured through inter-hospital requisition #${req.transactionId || req.id}`,
+        });
+      }
+      setStoredItem(KEYS.MEDICINES, medicines);
+      req.stockReceivedByBuyer = true;
+    }
+
+    setStoredItem(KEYS.REQUESTS, requests);
+
+    const trackingList = getStoredItem(KEYS.TRACKING, []);
+    const trkIdx = trackingList.findIndex((t) => t.transactionId === req.transactionId);
+    if (trkIdx !== -1) {
+      if (nextStatus === 'preparing') trackingList[trkIdx].status = 'In Preparation';
+      if (nextStatus === 'dispatched') trackingList[trkIdx].status = 'Dispatched';
+      if (nextStatus === 'in transit') trackingList[trkIdx].status = 'In Transit';
+      if (nextStatus === 'delivered') trackingList[trkIdx].status = 'Delivered';
+      if (nextStatus === 'completed') trackingList[trkIdx].status = 'Completed';
+      setStoredItem(KEYS.TRACKING, trackingList);
+    }
+
+    return { request: req, nextStatus };
   },
 
   // ==========================================

@@ -1210,50 +1210,178 @@ export const adminService = {
     const requests = getStoredItem(KEYS.REQUESTS, []);
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const medicines = getStoredItem(KEYS.MEDICINES, []);
+    const trackingList = getStoredItem(KEYS.TRACKING, []);
 
     const orders = requests.map((req, idx) => {
       const fromHosp = hospitals.find((h) => h.id === req.fromHospitalId) || {
+        id: req.fromHospitalId || 'hosp-1',
         name: req.fromHospitalName || 'Apollo Hospital',
         city: 'Mumbai',
+        state: 'Maharashtra',
         phone: '+91 98201 54321',
         email: 'apollo@smartmedishare.org',
+        registrationNo: 'MH-GOV-8821',
       };
       const toHosp = hospitals.find((h) => h.id === req.toHospitalId) || {
-        name: req.toHospitalName || 'Fortis Memorial',
+        id: req.toHospitalId || 'hosp-2',
+        name: req.toHospitalName || 'Fortis Memorial Research Institute',
         city: 'Gurgaon',
+        state: 'Haryana',
         phone: '+91 98112 33445',
         email: 'fortis@smartmedishare.org',
+        registrationNo: 'HR-MED-4412',
       };
       const med = medicines.find((m) => m.id === req.medicineId);
 
-      let normStatus = req.status || 'pending';
-      if (normStatus === 'accepted') normStatus = 'processing';
-      if (normStatus === 'dispatched') normStatus = 'shipped';
-      if (normStatus === 'paid') normStatus = 'delivered';
-      if (normStatus === 'rejected') normStatus = 'cancelled';
+      // Keep exact raw status without collapsing into fewer states
+      const rawStatus = (req.status || 'pending').toLowerCase().trim();
+      let normStatus = rawStatus;
+      if (rawStatus === 'shipped') normStatus = 'dispatched';
+      if (rawStatus === 'processing') normStatus = 'preparing';
+      if (rawStatus === 'under_review') normStatus = 'pending';
 
-      const unitPrice = Number(req.pricePerUnit || med?.unitOriginalPrice || 48);
+      let payStatus = 'pending';
+      if (req.paymentStatus === 'paid' || req.paymentStatus === 'success' || ['paid', 'preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(normStatus)) {
+        payStatus = 'paid';
+      } else if (req.paymentStatus === 'failed') {
+        payStatus = 'failed';
+      } else if (req.paymentStatus === 'refunded' || req.cancellation?.refundStatus) {
+        payStatus = 'refunded';
+      } else {
+        payStatus = 'pending';
+      }
+
+      const unitPrice = Number(req.unitFinalPrice || req.pricePerUnit || med?.unitOriginalPrice || 48);
       const qty = Number(req.quantity || 10);
       const totalAmt = Number(req.totalAmount || qty * unitPrice);
 
-      const timeline = req.timeline || [
-        { step: 'Order Placed', timestamp: req.requestDate || '2024-08-20', completed: true },
-        { step: 'Processing & Batch Validation', timestamp: req.requestDate || '2024-08-21', completed: ['processing', 'shipped', 'delivered'].includes(normStatus) },
-        { step: 'Cold-Chain Dispatch', timestamp: '2024-08-22', completed: ['shipped', 'delivered'].includes(normStatus) },
-        { step: 'Delivered to Receiving Facility', timestamp: '2024-08-23', completed: normStatus === 'delivered' },
-      ];
+      // Find matching logistics consignment if available
+      const tracking = trackingList.find(
+        (t) => t.transactionId === req.transactionId || t.trackingNumber === req.trackingNumber || t.medicineName === req.medicineName
+      );
+
+      const batchNo = req.batchNo || med?.batchNo || 'BAT-9841';
+      const expiryDate = req.medicineExpiryDate || med?.expiryDate || '2025-12-31';
+      const mfgDate = req.mfgDate || med?.mfgDate || '2024-01-15';
+      const expectedDelivery = req.expectedDelivery || (normStatus === 'completed' ? 'Delivered' : normStatus === 'delivered' ? 'Dock Intake Complete' : 'Within 24-48 Hours');
+      const logisticsSla = req.logisticsSla || (tracking ? `${tracking.temperature || 'Cold Chain 2°C - 8°C Verified'}` : 'Cold Chain 2°C - 8°C Verified');
+      const hasDiscrepancy = Boolean(req.hasDiscrepancy || req.discrepancy);
+      const discrepancy = req.discrepancy || (req.hasDiscrepancy ? 'Audit inspection note recorded' : null);
+
+      // Build structured order timeline history reflecting real milestones
+      const statusHistory = [];
+      const reqDateStr = req.requestDate ? new Date(req.requestDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Recorded';
+      statusHistory.push({
+        status: 'Requested',
+        timestamp: reqDateStr,
+        note: `Requisition created by ${fromHosp.name} for ${qty} units of ${req.medicineName}.`,
+        actor: fromHosp.name,
+      });
+
+      if (['accepted', 'paid', 'preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(normStatus) || req.acceptedAt) {
+        const acceptDateStr = req.acceptedAt ? new Date(req.acceptedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Verified';
+        statusHistory.push({
+          status: 'Accepted',
+          timestamp: acceptDateStr,
+          note: `Requisition accepted by ${toHosp.name}. Batch ${batchNo} reserved.`,
+          actor: toHosp.name,
+        });
+      }
+
+      if (payStatus === 'paid' || req.paidDate) {
+        const paidDateStr = req.paidDate ? new Date(req.paidDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Escrow Locked';
+        statusHistory.push({
+          status: 'Paid',
+          timestamp: paidDateStr,
+          note: `Settlement of ₹${totalAmt.toLocaleString('en-IN')} held securely in platform escrow. Ref: ${req.paymentId || 'PAY-DEMO-' + (req.transactionId || 'ESCROW')}`,
+          actor: 'Payment Gateway / Escrow',
+        });
+      } else if (payStatus === 'failed') {
+        statusHistory.push({
+          status: 'Payment Failed',
+          timestamp: req.paymentFailedAt ? new Date(req.paymentFailedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Failed',
+          note: req.paymentFailureReason || 'Card authorization network failure. Order awaiting retry.',
+          actor: 'Payment Gateway',
+        });
+      }
+
+      if (['preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(normStatus) || req.preparingAt) {
+        const prepDateStr = req.preparingAt ? new Date(req.preparingAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Dock Preparation';
+        statusHistory.push({
+          status: 'Preparing',
+          timestamp: prepDateStr,
+          note: `Pharmacists at ${toHosp.name} verifying batch cold-seal packaging & temperature sensor insertion.`,
+          actor: toHosp.name,
+        });
+      }
+
+      if (['dispatched', 'in transit', 'delivered', 'completed'].includes(normStatus) || req.dispatchedAt) {
+        const dispDateStr = req.dispatchedAt ? new Date(req.dispatchedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Dock Cleared';
+        statusHistory.push({
+          status: 'Dispatched',
+          timestamp: dispDateStr,
+          note: `Consignment sealed and handed over to ${tracking?.courierName || 'MediCold Logistics Express Ltd.'}.`,
+          actor: tracking?.courierName || 'Carrier Dispatch',
+        });
+      }
+
+      if (['in transit', 'delivered', 'completed'].includes(normStatus) || req.inTransitAt) {
+        const transitDateStr = req.inTransitAt ? new Date(req.inTransitAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'En Route';
+        statusHistory.push({
+          status: 'In Transit',
+          timestamp: transitDateStr,
+          note: `Consignment in transit. IoT Telemetry active: ${tracking?.temperature || '3.8°C (Compliant)'}. Current location: ${tracking?.currentLocation || 'NH-48 Corridor'}.`,
+          actor: 'IoT Telemetry Gate',
+        });
+      }
+
+      if (['delivered', 'completed'].includes(normStatus) || req.deliveredAt) {
+        const delvDateStr = req.deliveredAt ? new Date(req.deliveredAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Intake Dock';
+        statusHistory.push({
+          status: 'Delivered',
+          timestamp: delvDateStr,
+          note: `Consignment arrived at ${fromHosp.name}. Inward dock inspection and physical temperature scan verified.`,
+          actor: fromHosp.name,
+        });
+      }
+
+      if (normStatus === 'completed' || req.completedAt) {
+        const complDateStr = req.completedAt ? new Date(req.completedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Ledger Finalized';
+        statusHistory.push({
+          status: 'Completed',
+          timestamp: complDateStr,
+          note: `Pharmacy inventory balances synchronized. Escrow released to ${toHosp.name}. Requisition lifecycle completed.`,
+          actor: 'MediStock Settlement Engine',
+        });
+      }
+
+      if (normStatus === 'cancelled') {
+        statusHistory.push({
+          status: 'Cancelled',
+          timestamp: req.cancellation?.cancelledAt ? new Date(req.cancellation.cancelledAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Cancelled',
+          note: `Requisition cancelled: ${req.cancellation?.reason || req.statusNote || 'Requirement modified by hospital.'}`,
+          actor: fromHosp.name,
+        });
+      }
+
+      if (normStatus === 'rejected') {
+        statusHistory.push({
+          status: 'Rejected',
+          timestamp: reqDateStr,
+          note: `Requisition declined by peer hospital: ${req.rejectReason || 'Stock needed for acute inpatient emergency.'}`,
+          actor: toHosp.name,
+        });
+      }
 
       return {
         id: req.id,
-        orderId: (req.id || `req-${idx}`).toUpperCase().replace('REQ-', 'ORD-MED-'),
-        hospital: {
-          id: fromHosp.id,
-          name: fromHosp.name,
-          city: fromHosp.city || 'Mumbai',
-          contact: fromHosp.phone || '+91 98201 54321',
-          email: fromHosp.email || 'hospital@smartmedishare.org',
-          partnerName: toHosp.name,
-        },
+        orderId: (req.transactionId || req.id || `req-${idx}`).toUpperCase().replace('REQ-', 'ORD-'),
+        transactionId: req.transactionId || (req.id || '').toUpperCase(),
+        medicineName: req.medicineName || med?.brandName || 'Essential Pharmaceutical',
+        hospital: fromHosp,
+        requestingHospital: fromHosp,
+        fulfillingHospital: toHosp,
+        providingHospital: toHosp,
         items: [
           {
             name: req.medicineName || med?.brandName || 'Essential Pharmaceutical Compound',
@@ -1261,44 +1389,125 @@ export const adminService = {
             quantity: qty,
             unitPrice,
             total: totalAmt,
+            batchNo,
+            expiryDate,
+            mfgDate,
           }
         ],
         totalItems: qty,
+        quantity: qty,
         totalAmount: totalAmt,
+        settlementAmount: totalAmt,
+        paymentStatus: payStatus,
+        paymentReference: req.paymentId || (payStatus === 'paid' ? 'PAY-' + (req.transactionId || 'ESCROW') : null),
+        paidDate: req.paidDate || null,
         orderDate: req.requestDate || '2024-08-20',
         status: normStatus,
-        statusHistory: timeline,
+        priority: req.urgency || req.priority || (req.statusNote?.includes('ICU') || req.notes?.includes('ICU') ? 'Emergency' : 'Standard Routine'),
+        urgency: req.urgency || (req.notes?.includes('ICU') ? 'Emergency' : 'Standard Routine'),
+        notes: req.notes || 'Standard pharmaceutical requisition via centralized peer exchange.',
+        batchNo,
+        expiryDate,
+        mfgDate,
+        expectedDelivery,
+        logisticsSla,
+        hasDiscrepancy,
+        discrepancy,
+        trackingInfo: tracking || null,
+        statusHistory,
+        cancellation: req.cancellation || null,
       };
     });
 
     if (!statusFilter || statusFilter === 'all') return orders;
-    return orders.filter((o) => o.status.toLowerCase() === statusFilter.toLowerCase());
+
+    // Support all requested filters:
+    // All Orders, Requested, Accepted, Paid, Preparing, Dispatched, In Transit, Delivered, Completed, Cancelled, Rejected, Payment Pending, Payment Failed, Discrepancy
+    const sf = statusFilter.toLowerCase().trim();
+    return orders.filter((o) => {
+      const s = (o.status || '').toLowerCase().trim();
+      const ps = (o.paymentStatus || '').toLowerCase().trim();
+
+      if (sf === 'requested' || sf === 'pending') {
+        return s === 'pending' || s === 'requested';
+      }
+      if (sf === 'accepted') {
+        return s === 'accepted';
+      }
+      if (sf === 'paid') {
+        return s === 'paid';
+      }
+      if (sf === 'preparing' || sf === 'processing') {
+        return s === 'preparing' || s === 'processing';
+      }
+      if (sf === 'dispatched' || sf === 'shipped') {
+        return s === 'dispatched' || s === 'shipped';
+      }
+      if (sf === 'in transit' || sf === 'in_transit' || sf === 'transit') {
+        return s === 'in transit' || s === 'in_transit';
+      }
+      if (sf === 'delivered') {
+        return s === 'delivered';
+      }
+      if (sf === 'completed') {
+        return s === 'completed';
+      }
+      if (sf === 'cancelled') {
+        return s === 'cancelled';
+      }
+      if (sf === 'rejected') {
+        return s === 'rejected';
+      }
+      if (sf === 'payment pending' || sf === 'payment_pending') {
+        return ps === 'pending' && s === 'accepted';
+      }
+      if (sf === 'payment failed' || sf === 'payment_failed') {
+        return ps === 'failed';
+      }
+      if (sf === 'discrepancy') {
+        return o.hasDiscrepancy || Boolean(o.discrepancy);
+      }
+
+      return s === sf;
+    });
   },
 
   async updateOrderStatus(orderId, targetStatus, note = '') {
     await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
     const requests = getStoredItem(KEYS.REQUESTS, []);
-    const index = requests.findIndex((r) => r.id === orderId || r.id?.toUpperCase().replace('REQ-', 'ORD-MED-') === orderId);
+    const index = requests.findIndex((r) => 
+      r.id === orderId || 
+      r.id?.toUpperCase().replace('REQ-', 'ORD-') === orderId ||
+      r.transactionId === orderId
+    );
     if (index === -1) throw new Error('Order record not found');
 
     const req = requests[index];
     const prevStatus = req.status;
 
-    let rawStatus = targetStatus;
-    if (targetStatus === 'processing') rawStatus = 'accepted';
-    if (targetStatus === 'shipped') rawStatus = 'dispatched';
-    if (targetStatus === 'delivered') rawStatus = 'delivered';
-    if (targetStatus === 'cancelled') rawStatus = 'rejected';
+    // Lifecycle transition safety check:
+    // Do NOT allow the order to proceed to Preparing before successful payment
+    const targetNorm = targetStatus.toLowerCase().trim();
+    if (['preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(targetNorm)) {
+      const isPaid = req.paymentStatus === 'paid' || req.paymentStatus === 'success' || req.status === 'paid';
+      if (!isPaid) {
+        throw new Error(`Cannot advance order to ${targetStatus}: payment has not been successfully completed by the requesting hospital.`);
+      }
+    }
 
-    req.status = rawStatus;
+    req.status = targetNorm;
     req.statusNote = note;
+    if (targetNorm === 'preparing' && !req.preparingAt) req.preparingAt = new Date().toISOString();
+    if (targetNorm === 'dispatched' && !req.dispatchedAt) req.dispatchedAt = new Date().toISOString();
+    if (targetNorm === 'in transit' && !req.inTransitAt) req.inTransitAt = new Date().toISOString();
+    if (targetNorm === 'delivered' && !req.deliveredAt) req.deliveredAt = new Date().toISOString();
+    if (targetNorm === 'completed' && !req.completedAt) req.completedAt = new Date().toISOString();
+
     if (!req.timeline) {
       req.timeline = [
-        { step: 'Order Placed', timestamp: req.requestDate || '2024-08-20', completed: true },
-        { step: 'Processing & Batch Validation', timestamp: new Date().toISOString(), completed: ['processing', 'shipped', 'delivered'].includes(targetStatus) },
-        { step: 'Cold-Chain Dispatch', timestamp: new Date().toISOString(), completed: ['shipped', 'delivered'].includes(targetStatus) },
-        { step: 'Delivered to Receiving Facility', timestamp: new Date().toISOString(), completed: targetStatus === 'delivered' },
+        { step: 'Order Placed', timestamp: req.requestDate || new Date().toISOString(), completed: true },
+        { step: 'Status updated by Admin to ' + targetStatus, timestamp: new Date().toISOString(), completed: true, note },
       ];
     } else {
       req.timeline.push({
@@ -1310,7 +1519,7 @@ export const adminService = {
     }
     setStoredItem(KEYS.REQUESTS, requests);
 
-    const displayId = (req.id || '').toUpperCase().replace('REQ-', 'ORD-MED-');
+    const displayId = (req.transactionId || req.id || '').toUpperCase().replace('REQ-', 'ORD-');
     auditService.logEvent({
       action: 'ORDER_STATUS_UPDATED',
       entityType: 'Orders',
