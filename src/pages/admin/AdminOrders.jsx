@@ -24,7 +24,7 @@ import { adminService } from '../../services/adminService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import { formatCurrency } from '../../utils/formatters';
+import { formatCurrency, formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
 
 const STATUS_TABS = [
@@ -282,80 +282,108 @@ export const AdminOrders = () => {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden w-full max-w-full">
-          <div className="overflow-x-auto w-full max-w-full">
-            <table className="w-full text-left border-collapse">
+          {/* Desktop & Tablet Table (No horizontal scrollbar, 100% table-fixed layout) */}
+          <div className="hidden md:block w-full overflow-hidden">
+            <table className="w-full text-left border-collapse table-fixed text-xs">
+              <colgroup>
+                <col style={{ width: '16%' }} /> {/* Order ID */}
+                <col style={{ width: '23%' }} /> {/* Hospital / Requester */}
+                <col style={{ width: '9%' }} />  {/* Items */}
+                <col style={{ width: '13%' }} /> {/* Order Date */}
+                <col style={{ width: '12%' }} /> {/* Total Amount */}
+                <col style={{ width: '12%' }} /> {/* Status */}
+                <col style={{ width: '15%' }} /> {/* Actions */}
+              </colgroup>
               <thead>
                 <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Order ID</th>
-                  <th className="py-3 px-4">Hospital / Requester</th>
-                  <th className="py-3 px-4 text-center">Items</th>
-                  <th className="py-3 px-4">Order Date</th>
-                  <th className="py-3 px-4 text-right">Total Amount</th>
-                  <th className="py-3 px-4 text-center">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-3">Order ID</th>
+                  <th className="py-3 px-2.5">Hospital / Requester</th>
+                  <th className="py-3 px-2 text-center">Items</th>
+                  <th className="py-3 px-2">Order Date</th>
+                  <th className="py-3 px-2 text-right">Total Amount</th>
+                  <th className="py-3 px-2 text-center">Status</th>
+                  <th className="py-3 px-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-xs">
+              <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                 {filteredOrders.map((order) => (
                   <tr key={order.id} className="hover:bg-slate-50/60 transition-colors group">
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-bold text-slate-900">#{order.orderId}</span>
+                    
+                    {/* Order ID */}
+                    <td className="py-3 px-3 overflow-hidden">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-mono font-bold text-slate-900 truncate text-xs">#{order.orderId}</span>
                         {order.urgency === 'Emergency' && (
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase bg-red-100 text-red-700 border border-red-200">
+                          <span className="px-1 py-0.5 rounded text-[9px] font-black uppercase bg-red-100 text-red-700 border border-red-200 shrink-0">
                             STAT
                           </span>
                         )}
                       </div>
-                      <span className="text-[10px] text-slate-400 font-mono">
+                      <span className="text-[10px] text-slate-400 font-medium truncate block" title={order.items?.[0]?.name}>
                         {order.items?.[0]?.name || 'Pharmaceutical Package'}
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-4">
-                      <div className="flex items-start gap-2.5">
-                        <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0 mt-0.5">
+                    {/* Hospital / Requester */}
+                    <td className="py-3 px-2.5 overflow-hidden">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-7 h-7 rounded-lg bg-teal-50 text-teal-700 flex items-center justify-center shrink-0">
                           <Building2 className="w-3.5 h-3.5" />
                         </div>
-                        <div>
-                          <div className="font-bold text-slate-800">{order.hospital?.name}</div>
-                          <div className="text-[11px] text-slate-400 font-medium">
-                            {order.hospital?.city}, {order.hospital?.state}
+                        <div className="min-w-0 flex-1">
+                          <div className="font-bold text-slate-800 truncate text-xs" title={order.hospital?.name}>
+                            {order.hospital?.name || 'Hospital Facility'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-medium truncate" title={`${order.hospital?.city || ''}, ${order.hospital?.state || ''}`}>
+                            {order.hospital?.city || 'Facility Node'}{order.hospital?.state ? `, ${order.hospital.state}` : ''}
                           </div>
                         </div>
                       </div>
                     </td>
 
-                    <td className="py-3.5 px-4 text-center font-mono font-semibold text-slate-700">
-                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs">
+                    {/* Items */}
+                    <td className="py-3 px-2 text-center overflow-hidden font-mono font-semibold text-slate-700">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-xs whitespace-nowrap">
                         {order.totalItems} units
                       </span>
                     </td>
 
-                    <td className="py-3.5 px-4 text-slate-600 font-medium whitespace-nowrap">
-                      {order.orderDate}
+                    {/* Order Date */}
+                    <td className="py-3 px-2 overflow-hidden text-slate-600">
+                      <span className="font-mono font-medium text-xs block truncate" title={order.orderDate}>
+                        {formatDate(order.orderDate)}
+                      </span>
+                      <span className="text-[10px] text-slate-400 font-mono block truncate">
+                        {order.orderDate && !isNaN(new Date(order.orderDate).getTime()) 
+                          ? new Date(order.orderDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                          : 'Recorded'}
+                      </span>
                     </td>
 
-                    <td className="py-3.5 px-4 text-right font-mono font-bold text-slate-900 whitespace-nowrap">
+                    {/* Total Amount */}
+                    <td className="py-3 px-2 text-right overflow-hidden font-mono font-bold text-slate-900 text-xs whitespace-nowrap">
                       {formatCurrency(order.totalAmount)}
                     </td>
 
-                    <td className="py-3.5 px-4 text-center">
+                    {/* Status */}
+                    <td className="py-3 px-2 text-center overflow-hidden">
                       <StatusBadge status={order.status} />
                     </td>
 
-                    <td className="py-3.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-2">
+                    {/* Actions */}
+                    <td className="py-3 px-3 text-right overflow-hidden">
+                      <div className="flex items-center justify-end gap-1.5">
                         <button
                           onClick={() => setSelectedOrder(order)}
-                          className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-semibold transition-colors flex items-center gap-1"
+                          className="px-2 py-1 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-[11px] font-semibold transition-colors flex items-center gap-1 shrink-0"
+                          title="View Order Details"
                         >
                           <Eye className="w-3.5 h-3.5" />
-                          Details
+                          <span>Details</span>
                         </button>
 
                         {/* Quick Action Menu */}
-                        <div className="relative group/action">
+                        <div className="relative shrink-0">
                           <select
                             value=""
                             onChange={(e) => {
@@ -363,7 +391,7 @@ export const AdminOrders = () => {
                                 handleOpenStatusConfirm(order, e.target.value);
                               }
                             }}
-                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1.5 rounded-lg border border-slate-200 cursor-pointer focus:outline-none"
+                            className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1 rounded-lg border border-slate-200 cursor-pointer focus:outline-none"
                           >
                             <option value="" disabled>Status ▾</option>
                             <option value="Pending" disabled={order.status === 'Pending'}>Mark Pending</option>
@@ -380,6 +408,73 @@ export const AdminOrders = () => {
               </tbody>
             </table>
           </div>
+
+          {/* Mobile Card List (< md) */}
+          <div className="md:hidden divide-y divide-slate-100">
+            {filteredOrders.map((order) => (
+              <div key={order.id} className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-mono font-bold text-slate-900 text-xs">#{order.orderId}</span>
+                      {order.urgency === 'Emergency' && (
+                        <span className="px-1 py-0.5 rounded text-[9px] font-black uppercase bg-red-100 text-red-700 border border-red-200">
+                          STAT
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-400 font-medium truncate block">
+                      {order.items?.[0]?.name || 'Pharmaceutical Package'}
+                    </span>
+                  </div>
+                  <StatusBadge status={order.status} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-100">
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Hospital</span>
+                    <span className="text-slate-800 font-bold truncate block">{order.hospital?.name}</span>
+                    <span className="text-[10px] text-slate-400 truncate block">{order.hospital?.city}</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 font-bold uppercase block">Total Value</span>
+                    <span className="font-mono font-bold text-slate-900">{formatCurrency(order.totalAmount)}</span>
+                    <span className="text-[10px] text-slate-400 block">{order.totalItems} units</span>
+                  </div>
+                  <div className="col-span-2 pt-1 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-500">
+                    <span>Date: {formatDate(order.orderDate)}</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    onClick={() => setSelectedOrder(order)}
+                    className="px-2.5 py-1.5 rounded-lg bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-semibold flex items-center gap-1"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    Details
+                  </button>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        handleOpenStatusConfirm(order, e.target.value);
+                      }
+                    }}
+                    className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2 py-1.5 rounded-lg border border-slate-200 cursor-pointer focus:outline-none"
+                  >
+                    <option value="" disabled>Status ▾</option>
+                    <option value="Pending" disabled={order.status === 'Pending'}>Mark Pending</option>
+                    <option value="Processing" disabled={order.status === 'Processing'}>Mark Processing</option>
+                    <option value="Shipped" disabled={order.status === 'Shipped'}>Mark Shipped</option>
+                    <option value="Delivered" disabled={order.status === 'Delivered'}>Mark Delivered</option>
+                    <option value="Cancelled" disabled={order.status === 'Cancelled'}>Cancel Requisition</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+
           <div className="p-3.5 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500 font-medium">
             <span>Showing {filteredOrders.length} of {orders.length} orders</span>
             <span className="font-mono text-[11px] text-slate-400">Ledger checksum verified</span>
