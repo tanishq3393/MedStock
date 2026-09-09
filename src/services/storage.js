@@ -27,18 +27,63 @@ const KEYS = {
 
 // Initialize localStorage with mock data if not present, and seamlessly merge new mock data
 export const initializeStorage = () => {
-  // 1. Hospitals: initialize or merge missing
+  // 1. Hospitals: initialize or merge missing & normalize future-ready document models
   const storedHospitals = localStorage.getItem(KEYS.HOSPITALS);
   if (!storedHospitals) {
-    localStorage.setItem(KEYS.HOSPITALS, JSON.stringify(INITIAL_HOSPITALS));
+    const normalizedInit = INITIAL_HOSPITALS.map((hosp) => ({
+      ...hosp,
+      documents: (hosp.documents || []).map((doc, idx) => ({
+        id: doc.id || `doc-${hosp.id}-${idx + 1}`,
+        hospitalId: hosp.id,
+        documentType: doc.documentType || doc.type || 'Registration Certificate',
+        documentName: doc.documentName || doc.name || 'Document.pdf',
+        name: doc.name || doc.documentName || 'Document.pdf',
+        type: doc.type || doc.documentType || 'Registration Certificate',
+        documentStatus: doc.documentStatus || (doc.verified ? 'verified' : (hosp.status === 'verified' ? 'verified' : (doc.rejectionReason ? 'rejected' : 'pending'))),
+        uploadedAt: doc.uploadedAt || hosp.registeredDate || '2024-08-01',
+        reviewedAt: doc.reviewedAt || (doc.verified ? hosp.verifiedDate || '2024-08-02' : null),
+        rejectionReason: doc.rejectionReason || null,
+        documentUrl: doc.documentUrl || `/documents/${doc.name || 'document.pdf'}`,
+        size: doc.size || '2.4 MB',
+        verified: doc.verified ?? (doc.documentStatus === 'verified'),
+      })),
+    }));
+    localStorage.setItem(KEYS.HOSPITALS, JSON.stringify(normalizedInit));
   } else {
     try {
-      const parsedHosp = JSON.parse(storedHospitals);
+      let parsedHosp = JSON.parse(storedHospitals);
       const existingHospIds = new Set(parsedHosp.map((h) => h.id));
       const missingHosp = INITIAL_HOSPITALS.filter((h) => !existingHospIds.has(h.id));
       if (missingHosp.length > 0) {
-        localStorage.setItem(KEYS.HOSPITALS, JSON.stringify([...parsedHosp, ...missingHosp]));
+        parsedHosp = [...parsedHosp, ...missingHosp];
       }
+      
+      const normalizedHosp = parsedHosp.map((hosp) => {
+        const normalizedDocs = (hosp.documents || []).map((doc, idx) => {
+          const docId = doc.id || `doc-${hosp.id}-${idx + 1}`;
+          const docStatus = doc.documentStatus || (doc.verified ? 'verified' : (hosp.status === 'verified' ? 'verified' : (doc.rejectionReason ? 'rejected' : 'pending')));
+          return {
+            id: docId,
+            hospitalId: hosp.id,
+            documentType: doc.documentType || doc.type || 'Registration Certificate',
+            documentName: doc.documentName || doc.name || 'Document.pdf',
+            name: doc.name || doc.documentName || 'Document.pdf',
+            type: doc.type || doc.documentType || 'Registration Certificate',
+            documentStatus: docStatus,
+            uploadedAt: doc.uploadedAt || hosp.registeredDate || '2024-08-01',
+            reviewedAt: doc.reviewedAt || (docStatus === 'verified' ? hosp.verifiedDate || '2024-08-02' : null),
+            rejectionReason: doc.rejectionReason || null,
+            documentUrl: doc.documentUrl || `/documents/${doc.name || 'document.pdf'}`,
+            size: doc.size || '2.4 MB',
+            verified: docStatus === 'verified',
+          };
+        });
+        return {
+          ...hosp,
+          documents: normalizedDocs,
+        };
+      });
+      localStorage.setItem(KEYS.HOSPITALS, JSON.stringify(normalizedHosp));
     } catch (e) {
       console.error('Failed to migrate hospitals', e);
     }
@@ -478,4 +523,155 @@ export const isHospitalSuspended = (hospitalId) => {
   return hospitals.some((hospital) => hospital.id === hospitalId && hospital.status?.toLowerCase() === 'suspended');
 };
 
+export const getLiveHospitalRecord = (hospitalId) => {
+  if (!hospitalId) return null;
+  const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+  return hospitals.find((h) => h.id === hospitalId || h.email?.toLowerCase() === hospitalId?.toLowerCase()) || null;
+};
+
+export const isHospitalOperational = (hospitalId) => {
+  if (!hospitalId) return false;
+  const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+  const hosp = hospitals.find((h) => h.id === hospitalId || h.email?.toLowerCase() === hospitalId?.toLowerCase());
+  return hosp ? hosp.status === 'verified' : false;
+};
+
+export const MANDATORY_DOCUMENTS = [
+  {
+    type: 'Registration Certificate',
+    label: 'Hospital Registration Certificate',
+    description: 'Clinical Establishment Act or State Health Authority Registration',
+    required: true,
+  },
+  {
+    type: 'Drug License',
+    label: 'Pharmacy Drug License (Form 20B/21B)',
+    description: 'State Drug Controller Form 20B/21B retail & wholesale permit',
+    required: true,
+  },
+  {
+    type: 'GST Certificate',
+    label: 'GSTIN Registration Document',
+    description: 'Valid Central/State GST compliance registration document',
+    required: true,
+  },
+  {
+    type: 'Authorization Letter',
+    label: 'Director / Board Authorization Letter',
+    description: 'Official Board resolution designating authorized pharmacy signatory',
+    required: true,
+  },
+];
+
+export const getHospitalDocumentChecklist = (hospitalDocuments = []) => {
+  const docs = hospitalDocuments || [];
+
+  const checklist = MANDATORY_DOCUMENTS.map((req) => {
+    const match = docs.find((d) => {
+      const dType = (d.documentType || d.type || '').toLowerCase();
+      const dName = (d.documentName || d.name || '').toLowerCase();
+
+      if (req.type === 'Registration Certificate') {
+        return (
+          dType.includes('registration') ||
+          dType.includes('establishment') ||
+          dType.includes('accreditation') ||
+          dType.includes('charter') ||
+          dName.includes('reg')
+        );
+      }
+      if (req.type === 'Drug License') {
+        return (
+          dType.includes('drug') ||
+          dType.includes('license') ||
+          dType.includes('form20') ||
+          dType.includes('form21') ||
+          dName.includes('lic') ||
+          dName.includes('drug')
+        );
+      }
+      if (req.type === 'GST Certificate') {
+        return dType.includes('gst') || dName.includes('gst');
+      }
+      if (req.type === 'Authorization Letter') {
+        return (
+          dType.includes('authoriz') ||
+          dType.includes('resolution') ||
+          dType.includes('attorney') ||
+          dName.includes('authoriz') ||
+          dName.includes('resolution')
+        );
+      }
+      return dType.includes(req.type.toLowerCase()) || dName.includes(req.type.toLowerCase());
+    });
+
+    if (match) {
+      return {
+        id: match.id || `doc-${req.type.toLowerCase().replace(/\s+/g, '-')}`,
+        documentType: req.type,
+        label: req.label,
+        documentName: match.documentName || match.name,
+        name: match.name || match.documentName,
+        size: match.size || '2.4 MB',
+        uploadedAt: match.uploadedAt || '2024-01-15',
+        documentUrl: match.documentUrl || `/documents/${match.name || 'document.pdf'}`,
+        status: 'Submitted',
+        submissionStatus: 'submitted',
+        required: true,
+        isSubmitted: true,
+      };
+    }
+
+    return {
+      id: `missing-${req.type.toLowerCase().replace(/\s+/g, '-')}`,
+      documentType: req.type,
+      label: req.label,
+      documentName: req.label,
+      name: req.label,
+      size: null,
+      uploadedAt: null,
+      documentUrl: null,
+      status: 'Missing',
+      submissionStatus: 'missing',
+      required: true,
+      isSubmitted: false,
+    };
+  });
+
+  const matchedDocNames = new Set(
+    checklist.filter((c) => c.isSubmitted).map((c) => c.documentName)
+  );
+  const additionalDocs = docs
+    .filter((d) => !matchedDocNames.has(d.documentName || d.name))
+    .map((d, idx) => ({
+      id: d.id || `doc-extra-${idx}`,
+      documentType: d.documentType || d.type || 'Supporting Document',
+      label: d.documentType || d.type || 'Supporting Document',
+      documentName: d.documentName || d.name,
+      name: d.name || d.documentName,
+      size: d.size || '2.0 MB',
+      uploadedAt: d.uploadedAt || '2024-01-15',
+      documentUrl: d.documentUrl || `/documents/${d.name || 'document.pdf'}`,
+      status: 'Submitted',
+      submissionStatus: 'submitted',
+      required: false,
+      isSubmitted: true,
+    }));
+
+  const allItems = [...checklist, ...additionalDocs];
+  const missingItems = checklist.filter((c) => !c.isSubmitted);
+  const isComplete = missingItems.length === 0;
+
+  return {
+    items: allItems,
+    checklist,
+    additionalDocs,
+    missingItems,
+    isComplete,
+    submittedCount: allItems.filter((i) => i.isSubmitted).length,
+    totalRequired: MANDATORY_DOCUMENTS.length,
+  };
+};
+
 export { KEYS };
+

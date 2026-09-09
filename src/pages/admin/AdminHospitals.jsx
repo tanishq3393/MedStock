@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { 
   Building2, 
   Search, 
@@ -45,6 +45,7 @@ import toast from 'react-hot-toast';
 
 export const AdminHospitals = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { hospitals, isLoading } = useSelector((state) => state.admin);
   const [searchParams, setSearchParams] = useSearchParams();
 
@@ -94,7 +95,8 @@ export const AdminHospitals = () => {
       hosp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       hosp.city.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (hosp.registrationNo && hosp.registrationNo.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (hosp.email && hosp.email.toLowerCase().includes(searchTerm.toLowerCase()));
+      (hosp.email && hosp.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (hosp.phone && hosp.phone.toLowerCase().includes(searchTerm.toLowerCase()));
 
     const matchesStatus = 
       statusFilter === 'all' ? true : hosp.status?.toLowerCase() === statusFilter.toLowerCase();
@@ -105,6 +107,7 @@ export const AdminHospitals = () => {
     if (sortBy === 'name-desc') return b.name.localeCompare(a.name);
     if (sortBy === 'orders-desc') return getHospitalOrderCount(b.id) - getHospitalOrderCount(a.id);
     if (sortBy === 'date-desc') return new Date(b.registeredDate || '2024-01-01') - new Date(a.registeredDate || '2024-01-01');
+    if (sortBy === 'date-asc') return new Date(a.registeredDate || '2024-01-01') - new Date(b.registeredDate || '2024-01-01');
     return 0;
   });
 
@@ -262,6 +265,7 @@ export const AdminHospitals = () => {
                 className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
                 <option value="date-desc">Newest Registered</option>
+                <option value="date-asc">Oldest Registered</option>
                 <option value="name-asc">Hospital Name (A-Z)</option>
                 <option value="name-desc">Hospital Name (Z-A)</option>
                 <option value="orders-desc">Most Orders</option>
@@ -390,26 +394,13 @@ export const AdminHospitals = () => {
                         {/* Actions */}
                         <td className="py-3 px-2 text-center overflow-hidden">
                           <div className="flex items-center justify-center">
-                            {isPending ? (
-                              <button
-                                onClick={() => setReviewApplicationTarget(hosp)}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-bold text-[10px] shadow-sm transition-all"
-                              >
-                                <FileCheck2 className="w-3 h-3" />
-                                <span>Review</span>
-                              </button>
-                            ) : (
-                              <button
-                                onClick={() => {
-                                  setSelectedHospitalForDetails(hosp);
-                                  setDetailsTab('info');
-                                }}
-                                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-700 font-bold text-[10px] border border-slate-200 transition-all"
-                              >
-                                <Eye className="w-3 h-3" />
-                                <span>Details</span>
-                              </button>
-                            )}
+                            <button
+                              onClick={() => navigate(`/admin/hospital-details?hospitalId=${hosp.id}`)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-primary-50 hover:bg-primary-100 text-primary-700 font-bold text-[10px] border border-primary-200 shadow-sm transition-all"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span>{isPending ? 'Review' : 'View'}</span>
+                            </button>
                           </div>
                         </td>
 
@@ -477,26 +468,13 @@ export const AdminHospitals = () => {
 
                 <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                   <span className="text-[10px] text-slate-400 font-mono">Reg: {hosp.registeredDate}</span>
-                  {isPending ? (
-                    <button
-                      onClick={() => setReviewApplicationTarget(hosp)}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-sm transition-all"
-                    >
-                      <FileCheck2 className="w-3.5 h-3.5" />
-                      <span>Review App</span>
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => {
-                        setSelectedHospitalForDetails(hosp);
-                        setDetailsTab('info');
-                      }}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-700 font-bold text-xs transition-all"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Details</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => navigate(`/admin/hospital-details?hospitalId=${hosp.id}`)}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-sm transition-all"
+                  >
+                    <Eye className="w-3.5 h-3.5" />
+                    <span>{isPending ? 'Review Application' : 'View Details'}</span>
+                  </button>
                 </div>
               </div>
             );

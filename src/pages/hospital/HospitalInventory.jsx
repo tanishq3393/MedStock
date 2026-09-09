@@ -40,7 +40,7 @@ import Modal from '../../components/common/Modal';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
-import { isHospitalSuspended } from '../../services/storage';
+import { isHospitalSuspended, getLiveHospitalRecord, isHospitalOperational } from '../../services/storage';
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
 
 export const HospitalInventory = () => {
@@ -48,7 +48,14 @@ export const HospitalInventory = () => {
   const navigate = useNavigate();
   const { user } = useSelector((state) => state.auth);
   const { inventory = [], isLoading } = useSelector((state) => state.hospital);
-  const isSuspended = isHospitalSuspended(user?.id);
+
+  const liveHospital = useMemo(() => {
+    return getLiveHospitalRecord(user?.id) || user;
+  }, [user]);
+
+  const currentStatus = (liveHospital?.status || user?.status || 'verified').toLowerCase();
+  const isOperationalLocked = currentStatus !== 'verified';
+  const isSuspended = currentStatus === 'suspended';
 
   // Filter & Search states
   const [searchTerm, setSearchTerm] = useState('');
@@ -223,8 +230,14 @@ export const HospitalInventory = () => {
   }, [evaluatedInventory, searchTerm, selectedStatusFilter, selectedFormFilter, sortBy]);
 
   const handleOpenAdd = () => {
-    if (isSuspended) {
-      toast.error('Your hospital account is currently suspended. Operational activities are locked.');
+    if (isOperationalLocked) {
+      if (currentStatus === 'pending' || currentStatus === 'under_review') {
+        toast.error('Hospital registration is under review. Inventory additions will be enabled once verified.');
+      } else if (currentStatus === 'suspended') {
+        toast.error('Your hospital account is currently suspended. Operational activities are locked.');
+      } else {
+        toast.error('Your hospital registration was rejected. Operational activities are locked.');
+      }
       return;
     }
     setEditingMedicine(null);
@@ -232,8 +245,8 @@ export const HospitalInventory = () => {
   };
 
   const handleOpenEdit = (med) => {
-    if (isSuspended) {
-      toast.error('Your hospital account is currently suspended. Operational activities are locked.');
+    if (isOperationalLocked) {
+      toast.error('Operational activities are restricted for unverified or suspended facilities.');
       return;
     }
     if (med.status === 'disposed') {
@@ -245,6 +258,10 @@ export const HospitalInventory = () => {
   };
 
   const handleSaveMedicine = async (formData) => {
+    if (isOperationalLocked) {
+      toast.error('Operational activities are restricted for unverified or suspended facilities.');
+      return;
+    }
     try {
       if (editingMedicine) {
         if (editingMedicine.status === 'disposed') {
@@ -270,6 +287,10 @@ export const HospitalInventory = () => {
   };
 
   const handleDelete = async () => {
+    if (isOperationalLocked) {
+      toast.error('Operational activities are restricted for unverified or suspended facilities.');
+      return;
+    }
     if (!deleteConfirmMed) return;
     try {
       await dispatch(deleteMedicineItem(deleteConfirmMed.id));
@@ -336,6 +357,41 @@ export const HospitalInventory = () => {
 
   return (
     <div className="space-y-7 pb-10">
+
+      {/* Compliance Status Operational Notice (Section 11 Requirement) */}
+      {isOperationalLocked && (
+        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+          currentStatus === 'pending' || currentStatus === 'under_review'
+            ? 'bg-amber-500/10 border-amber-500/30 text-amber-950'
+            : currentStatus === 'suspended'
+            ? 'bg-purple-500/10 border-purple-500/30 text-purple-950'
+            : 'bg-rose-500/10 border-rose-500/30 text-rose-950'
+        }`}>
+          <div className="flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 shrink-0 text-current mt-0.5" />
+            <div>
+              <div className="font-bold text-sm">
+                Operational Stock Management Restricted • Status: <span className="capitalize">{currentStatus.replace('_', ' ')}</span>
+              </div>
+              <p className="text-xs opacity-90 mt-0.5">
+                {currentStatus === 'pending' || currentStatus === 'under_review' ? (
+                  <span>Your hospital registration is currently under review. Stock operations (adding, updating, or importing medicines) will be unlocked once MEDEX Administration validates your regulatory documents.</span>
+                ) : currentStatus === 'suspended' ? (
+                  <span>Your hospital account is suspended ({liveHospital?.suspensionReason || 'Administrative hold'}). Operational stock modifications are disabled.</span>
+                ) : (
+                  <span>Your hospital registration was rejected ({liveHospital?.rejectionReason || 'Documentation declined'}). Operational stock modifications are disabled.</span>
+                )}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/hospital/profile"
+            className="px-3.5 py-1.5 rounded-xl font-bold bg-white text-slate-800 border border-slate-200 hover:bg-slate-50 shadow-sm transition-all whitespace-nowrap self-start sm:self-center"
+          >
+            Review Profile
+          </Link>
+        </div>
+      )}
       
       {/* 1. Page Header (WHERE AM I? + WHAT CAN I DO NEXT?) */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/80 pb-5">
@@ -356,15 +412,15 @@ export const HospitalInventory = () => {
         <div className="flex items-center gap-3">
           <button
             onClick={() => {
-              if (isSuspended) {
-                toast.error('Your hospital account is currently suspended. Operational activities are locked.');
+              if (isOperationalLocked) {
+                toast.error('Operational activities are locked for unverified or suspended facilities.');
                 return;
               }
               setImportModalOpen(true);
             }}
-            disabled={isSuspended}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-primary-200 bg-primary-50/70 hover:bg-primary-100 text-primary-800 text-xs font-bold transition-all shadow-sm disabled:opacity-50"
-            title="Import existing hospital inventory from a CSV file"
+            disabled={isOperationalLocked}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl border border-primary-200 bg-primary-50/70 hover:bg-primary-100 text-primary-800 text-xs font-bold transition-all shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+            title={isOperationalLocked ? "Importing locked for unverified facility" : "Import existing hospital inventory from a CSV file"}
           >
             <Upload className="w-4 h-4 text-primary-600" />
             <span>Import CSV</span>
@@ -381,8 +437,9 @@ export const HospitalInventory = () => {
 
           <button
             onClick={handleOpenAdd}
-            disabled={isSuspended}
-            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02] disabled:opacity-50 disabled:pointer-events-none"
+            disabled={isOperationalLocked}
+            className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02] disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:scale-100"
+            title={isOperationalLocked ? "Add Medicine locked for unverified facility" : "Register a new medicine batch"}
           >
             <PlusCircle className="w-4 h-4" />
             <span>+ Add Medicine</span>
@@ -713,16 +770,18 @@ export const HospitalInventory = () => {
                             {!isDisposed && (
                               <button
                                 onClick={() => handleOpenEdit(med)}
-                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
-                                title="Edit medicine parameters"
+                                disabled={isOperationalLocked}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={isOperationalLocked ? "Editing locked for unverified facility" : "Edit medicine parameters"}
                               >
                                 <Edit3 className="w-3.5 h-3.5" />
                               </button>
                             )}
                             <button
                               onClick={() => setDeleteConfirmMed(med)}
-                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                              title="Delete from inventory"
+                              disabled={isOperationalLocked}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
+                              title={isOperationalLocked ? "Deletion locked for unverified facility" : "Delete from inventory"}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -955,8 +1014,8 @@ export const HospitalInventory = () => {
                   setSelectedMedicineForDetails(null);
                   handleOpenEdit(med);
                 }}
-                disabled={selectedMedicineForDetails.status === 'disposed'}
-                className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs text-center disabled:opacity-50"
+                disabled={selectedMedicineForDetails.status === 'disposed' || isOperationalLocked}
+                className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs text-center disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Edit Parameters
               </button>
@@ -966,7 +1025,8 @@ export const HospitalInventory = () => {
                   setSelectedMedicineForDetails(null);
                   setDeleteConfirmMed(med);
                 }}
-                className="py-2.5 px-4 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs"
+                disabled={isOperationalLocked}
+                className="py-2.5 px-4 rounded-xl border border-rose-200 text-rose-700 hover:bg-rose-50 font-bold text-xs disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Delete Record
               </button>

@@ -16,9 +16,13 @@ import {
   AlertCircle,
   Loader2,
   Pill,
-  Sparkles
+  Sparkles,
+  X,
+  Upload,
+  Plus
 } from 'lucide-react';
 import { signupHospitalUser } from '../../store/slices/authSlice';
+import { getHospitalDocumentChecklist, MANDATORY_DOCUMENTS } from '../../services/storage';
 import toast from 'react-hot-toast';
 
 export const HospitalSignupPage = () => {
@@ -47,18 +51,62 @@ export const HospitalSignupPage = () => {
     confirmPassword: '',
   });
 
-  const { isLoading } = useSelector((state) => state.auth);
-  const dispatch = useDispatch();
-  const navigate = useNavigate();
+  const docChecklist = getHospitalDocumentChecklist(formData.documents || []);
+
+  const handleRemoveDoc = (docTypeOrName) => {
+    setFormData((prev) => {
+      const filtered = (prev.documents || []).filter((d) => {
+        const typeMatch = (d.type || d.documentType || '').toLowerCase().includes(docTypeOrName.toLowerCase());
+        const nameMatch = (d.name || d.documentName || '').toLowerCase().includes(docTypeOrName.toLowerCase());
+        return !typeMatch && !nameMatch;
+      });
+      return {
+        ...prev,
+        documents: filtered,
+      };
+    });
+    toast.success('Document removed from registration dossier');
+  };
+
+  const handleAttachMandatoryDoc = (reqDoc) => {
+    const sampleFilename = `${reqDoc.type.replace(/\s+/g, '_')}_Official_Filing.pdf`;
+    const newDoc = {
+      name: sampleFilename,
+      documentName: sampleFilename,
+      size: '2.4 MB',
+      type: reqDoc.type,
+      documentType: reqDoc.type,
+      verified: false,
+    };
+    setFormData((prev) => ({
+      ...prev,
+      documents: [...(prev.documents || []).filter((d) => {
+        const t = (d.type || d.documentType || '').toLowerCase();
+        return !t.includes(reqDoc.type.toLowerCase());
+      }), newDoc],
+    }));
+    toast.success(`Uploaded ${reqDoc.label}`);
+  };
 
   // Dropzone hook for uploading additional PDFs
   const onDrop = (acceptedFiles) => {
-    const newDocs = acceptedFiles.map((file) => ({
-      name: file.name,
-      size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-      type: file.name.toLowerCase().includes('gst') ? 'GSTIN Certificate' : 'Statutory Drug License',
-      verified: false,
-    }));
+    const newDocs = acceptedFiles.map((file) => {
+      const lower = file.name.toLowerCase();
+      let matchedType = 'Supporting Document';
+      if (lower.includes('reg') || lower.includes('establishment')) matchedType = 'Registration Certificate';
+      else if (lower.includes('drug') || lower.includes('license') || lower.includes('form20') || lower.includes('form21')) matchedType = 'Drug License';
+      else if (lower.includes('gst')) matchedType = 'GST Certificate';
+      else if (lower.includes('authoriz') || lower.includes('board') || lower.includes('resolution')) matchedType = 'Authorization Letter';
+
+      return {
+        name: file.name,
+        documentName: file.name,
+        size: `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+        type: matchedType,
+        documentType: matchedType,
+        verified: false,
+      };
+    });
     setFormData((prev) => ({
       ...prev,
       documents: [...prev.documents, ...newDocs],
@@ -85,8 +133,10 @@ export const HospitalSignupPage = () => {
         return;
       }
     } else if (step === 3) {
-      if (formData.documents.length === 0) {
-        toast.error('Please upload at least 1 compliance document');
+      const checklist = getHospitalDocumentChecklist(formData.documents);
+      if (!checklist.isComplete) {
+        const missingLabels = checklist.missingItems.map((m) => m.label).join(', ');
+        toast.error(`Please upload all required documents before submitting your application. Missing: ${missingLabels}`);
         return;
       }
     }
@@ -99,6 +149,16 @@ export const HospitalSignupPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+
+    // Validation: All required documents are strictly compulsory
+    const checklist = getHospitalDocumentChecklist(formData.documents);
+    if (!checklist.isComplete) {
+      const missingLabels = checklist.missingItems.map((m) => m.label).join(', ');
+      toast.error(`Cannot submit application: Please upload all required documents (${missingLabels})`);
+      setStep(3);
+      return;
+    }
+
     if (formData.password.length < 6) {
       toast.error('Password must be at least 6 characters long');
       return;
@@ -111,7 +171,7 @@ export const HospitalSignupPage = () => {
     try {
       const resultAction = await dispatch(signupHospitalUser(formData));
       if (signupHospitalUser.fulfilled.match(resultAction)) {
-        toast.success('Account created! Please verify your official contact email.');
+        toast.success('Account created! Application submitted for supervisory administrative review.');
         navigate(`/verify-email?email=${encodeURIComponent(formData.email)}&role=hospital`, { replace: true });
       } else {
         toast.error(resultAction.payload || 'Signup failed');
@@ -379,16 +439,42 @@ export const HospitalSignupPage = () => {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">Step 3: Statutory CDSCO & Drug Controller Audit</h3>
-                    <p className="text-[10px] text-slate-400">PDF documents required for hospital accreditation</p>
+                    <p className="text-[10px] text-slate-400">All 4 statutory compliance documents are compulsory for application submission</p>
                   </div>
                 </div>
                 <span className="text-xs font-mono text-slate-400">3 of 4</span>
               </div>
 
+              {/* Validation Status Notification Banner */}
+              {!docChecklist.isComplete ? (
+                <div className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-xs text-rose-800 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                    <span>Mandatory Documents Incomplete ({docChecklist.submittedCount} of {docChecklist.totalRequired} Attached)</span>
+                  </div>
+                  <p className="text-[11px] text-rose-700 leading-relaxed">
+                    Please upload all required documents before submitting your application.
+                  </p>
+                  <div className="text-[11px] font-semibold text-rose-800 pt-0.5">
+                    Missing required document(s): {docChecklist.missingItems.map((m) => m.label).join(', ')}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3.5 rounded-2xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-800 space-y-1">
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>All Required Documents Uploaded ({docChecklist.submittedCount} of {docChecklist.totalRequired})</span>
+                  </div>
+                  <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    Your statutory compliance dossier is complete and ready for institutional verification.
+                  </p>
+                </div>
+              )}
+
               {/* Drag & Drop Zone */}
               <div
                 {...getRootProps()}
-                className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition-all ${
+                className={`border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all ${
                   isDragActive ? 'border-teal-500 bg-teal-50/60' : 'border-slate-300 hover:border-teal-400 bg-slate-50/50'
                 }`}
               >
@@ -400,24 +486,100 @@ export const HospitalSignupPage = () => {
                 <p className="text-[10px] text-slate-400 mt-1">Accepts PDF files up to 20MB per statutory document</p>
               </div>
 
-              {/* Document List Preview */}
-              <div className="space-y-2 pt-2">
-                <p className="text-xs font-bold text-slate-700">Attached Documents ({formData.documents.length}):</p>
-                <div className="space-y-1.5">
-                  {formData.documents.map((doc, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-                      <div className="flex items-center gap-2.5">
-                        <FileCheck className="w-4 h-4 text-teal-600 shrink-0" />
-                        <div>
-                          <div className="font-bold text-slate-800">{doc.name}</div>
-                          <div className="text-[10px] text-slate-400">{doc.type} • {doc.size}</div>
+              {/* Compulsory Statutory Document Checklist */}
+              <div className="space-y-2 pt-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Compulsory Statutory Documents ({docChecklist.submittedCount} / {docChecklist.totalRequired}):</p>
+                  <span className="text-[10px] font-mono text-slate-400">All 4 Required</span>
+                </div>
+
+                <div className="space-y-2">
+                  {docChecklist.checklist.map((item) => (
+                    <div
+                      key={item.documentType}
+                      className={`p-3 rounded-2xl border transition-all text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                        item.isSubmitted ? 'bg-slate-50 border-slate-200/90' : 'bg-rose-50/40 border-rose-200'
+                      }`}
+                    >
+                      <div className="flex items-start sm:items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                          item.isSubmitted ? 'bg-teal-50 text-teal-700 border border-teal-100' : 'bg-rose-100 text-rose-600'
+                        }`}>
+                          <FileText className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-slate-900 truncate">{item.label}</span>
+                            <span className="text-[10px] font-bold text-rose-600 font-mono shrink-0">*Compulsory</span>
+                          </div>
+                          {item.isSubmitted ? (
+                            <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                              <span className="font-mono text-slate-700 font-semibold">{item.documentName}</span> • {item.size}
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-rose-600 font-medium mt-0.5">
+                              Document missing — Please upload before submitting application
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <span className="text-[10px] font-bold text-teal-800 bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
-                        Audit Pending
-                      </span>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-2 shrink-0">
+                        {item.isSubmitted ? (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <CheckCircle2 className="w-3 h-3" />
+                              Submitted
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDoc(item.documentType)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                              title="Remove document to test missing status or re-upload"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-300">
+                              <AlertCircle className="w-3 h-3" />
+                              Missing
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => handleAttachMandatoryDoc(item)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-[11px] font-bold shadow-sm transition-all"
+                            >
+                              <Upload className="w-3 h-3" />
+                              <span>Upload</span>
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                   ))}
+
+                  {/* Additional Documents if any */}
+                  {docChecklist.additionalDocs.length > 0 && (
+                    <div className="pt-2 space-y-1.5">
+                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Additional Supporting Filings:</p>
+                      {docChecklist.additionalDocs.map((doc, idx) => (
+                        <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <FileCheck className="w-4 h-4 text-teal-600 shrink-0" />
+                            <div className="truncate">
+                              <span className="font-bold text-slate-800">{doc.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono ml-2">{doc.size}</span>
+                            </div>
+                          </div>
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            Submitted
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -485,6 +647,29 @@ export const HospitalSignupPage = () => {
                 />
               </div>
 
+              {/* Supporting Documents Recap */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 font-bold text-slate-900">
+                    <FileCheck className="w-4 h-4 text-teal-600" />
+                    <span>Supporting Regulatory Dossier</span>
+                  </div>
+                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                    {docChecklist.submittedCount} of {docChecklist.totalRequired} Submitted
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                  {docChecklist.checklist.map((item) => (
+                    <div key={item.documentType} className="p-2 rounded-xl bg-white border border-slate-200/70 flex items-center justify-between">
+                      <span className="font-medium text-slate-700 truncate mr-2">{item.label}</span>
+                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
+                        Submitted
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-600 space-y-1.5">
                 <div className="flex items-center gap-1.5 font-bold text-slate-900">
                   <ShieldCheck className="w-4 h-4 text-teal-600" />
@@ -506,18 +691,18 @@ export const HospitalSignupPage = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isLoading}
-                  className="inline-flex items-center gap-2 px-7 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/25 transition-all disabled:opacity-75"
+                  disabled={isLoading || !docChecklist.isComplete}
+                  className="inline-flex items-center gap-2 px-7 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {isLoading ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting Registration Dossier...</span>
+                      <span>Submitting Complete Application...</span>
                     </>
                   ) : (
                     <>
                       <ShieldCheck className="w-4 h-4" />
-                      <span>Submit Hospital Dossier</span>
+                      <span>Submit Complete Application</span>
                     </>
                   )}
                 </button>

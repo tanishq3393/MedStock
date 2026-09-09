@@ -23,7 +23,9 @@ import {
   Activity,
   Trash2,
   FileCheck2,
-  Building2
+  Building2,
+  AlertCircle,
+  Clock
 } from 'lucide-react';
 import { fetchHospitalDashboard, fetchInventory } from '../../store/slices/hospitalSlice';
 import PurchasesBarChart from '../../components/charts/PurchasesBarChart';
@@ -34,6 +36,7 @@ import SpatialInventoryOverview from '../../components/spatial/SpatialInventoryO
 import LiveSupplyNetworkMap from '../../components/spatial/LiveSupplyNetworkMap';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
+import { getLiveHospitalRecord } from '../../services/storage';
 
 export const HospitalDashboard = () => {
   const dispatch = useDispatch();
@@ -41,6 +44,19 @@ export const HospitalDashboard = () => {
   const { dashboardData, inventory = [], disposals = [], isLoading } = useSelector((state) => state.hospital);
 
   const [timeRange, setTimeRange] = useState('6M'); // 7D | 30D | 3M | 6M | 1Y
+  const [hospitalRecord, setHospitalRecord] = useState(() => 
+    getLiveHospitalRecord(user?.hospitalId || user?.id) || user
+  );
+
+  useEffect(() => {
+    const updateRecord = () => {
+      const rec = getLiveHospitalRecord(user?.hospitalId || user?.id);
+      if (rec) setHospitalRecord(rec);
+    };
+    updateRecord();
+    window.addEventListener('storage', updateRecord);
+    return () => window.removeEventListener('storage', updateRecord);
+  }, [user]);
 
   useEffect(() => {
     if (user?.id) {
@@ -105,6 +121,132 @@ export const HospitalDashboard = () => {
   return (
     <div className="space-y-7 pb-10">
       
+      {/* PERSISTENT VERIFICATION STATUS CARD (Section 10 Requirement) */}
+      {(() => {
+        const status = (hospitalRecord?.status || user?.status || 'verified').toLowerCase();
+        
+        if (status === 'pending' || status === 'under_review') {
+          return (
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-5 text-amber-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center shrink-0 text-amber-700">
+                  <Clock className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-amber-950">Registration Under Review</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-amber-200 text-amber-800">
+                      Pending Verification
+                    </span>
+                  </div>
+                  <p className="text-xs text-amber-800/90 mt-0.5 max-w-2xl font-medium">
+                    Your hospital registration is currently under review. Operational features (Inventory, Medicine requests/orders, and Marketplace) will remain restricted until verified by the MEDEX Administration.
+                  </p>
+                </div>
+              </div>
+              <Link
+                to="/hospital/profile"
+                className="px-4 py-2 text-xs font-bold text-amber-900 bg-amber-200 hover:bg-amber-300 rounded-xl transition-colors whitespace-nowrap self-start sm:self-center"
+              >
+                View Verification Status
+              </Link>
+            </div>
+          );
+        }
+
+        if (status === 'rejected') {
+          return (
+            <div className="bg-rose-500/10 border border-rose-500/30 rounded-2xl p-5 text-rose-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-rose-500/20 border border-rose-500/30 flex items-center justify-center shrink-0 text-rose-700">
+                  <AlertCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-rose-950">Hospital Registration Rejected</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-rose-200 text-rose-800">
+                      Application Declined
+                    </span>
+                  </div>
+                  <p className="text-xs text-rose-800/90 mt-0.5 font-medium">
+                    Your hospital registration was rejected.
+                  </p>
+                  {hospitalRecord?.rejectionReason && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-white/80 border border-rose-200 text-xs font-medium text-rose-900">
+                      <span className="font-bold">Rejection Reason: </span>
+                      {hospitalRecord.rejectionReason}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <Link
+                to="/hospital/profile"
+                className="px-4 py-2 text-xs font-bold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-colors whitespace-nowrap self-start sm:self-center shadow-sm"
+              >
+                Review Application & Resubmit
+              </Link>
+            </div>
+          );
+        }
+
+        if (status === 'suspended') {
+          return (
+            <div className="bg-purple-500/10 border border-purple-500/30 rounded-2xl p-5 text-purple-900 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3.5">
+                <div className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0 text-purple-700">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-bold text-sm text-purple-950">Hospital Account Suspended</h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-200 text-purple-800">
+                      Administrative Hold
+                    </span>
+                  </div>
+                  <p className="text-xs text-purple-800/90 mt-0.5 font-medium">
+                    Your hospital account has been suspended.
+                  </p>
+                  {hospitalRecord?.suspensionReason && (
+                    <div className="mt-2 p-2.5 rounded-xl bg-white/80 border border-purple-200 text-xs font-medium text-purple-900">
+                      <span className="font-bold">Suspension Reason: </span>
+                      {hospitalRecord.suspensionReason}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="px-3.5 py-2 text-xs font-semibold text-purple-800 bg-purple-100 rounded-xl whitespace-nowrap self-start sm:self-center">
+                Contact MEDEX Support
+              </div>
+            </div>
+          );
+        }
+
+        // Verified status
+        return (
+          <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-2xl p-4 text-emerald-950 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 text-emerald-700">
+                <ShieldCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-xs text-emerald-950">Verified Healthcare Facility</span>
+                  <span className="px-2 py-0.2 rounded-full text-[9px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    Active
+                  </span>
+                </div>
+                <p className="text-[11px] text-emerald-800/90 font-medium">
+                  Your hospital has been successfully verified. You can now access MEDEX services.
+                </p>
+              </div>
+            </div>
+            <div className="text-[10px] text-emerald-700 font-mono font-semibold self-start sm:self-center">
+              Facility ID: {hospitalRecord?.id || user?.id || 'HOSP-VERIFIED'}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* 1. SOPHISTICATED SPATIAL HERO */}
       <div className="relative rounded-3xl bg-gradient-to-br from-[#091522] via-[#0E2433] to-[#0A1B28] p-6 sm:p-8 text-white border border-primary-500/25 shadow-2xl overflow-hidden">
         {/* Glow backdrop illumination */}

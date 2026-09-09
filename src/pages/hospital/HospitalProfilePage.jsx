@@ -259,7 +259,7 @@ export const HospitalProfilePage = () => {
               </h2>
             </div>
             <span className="text-[11px] text-slate-400 font-medium">
-              Verified by State Drug Controller
+              Statutory Supporting Filings
             </span>
           </div>
 
@@ -274,15 +274,14 @@ export const HospitalProfilePage = () => {
                     <FileText className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xs font-bold text-slate-900 truncate">{doc.type}</p>
-                    <p className="text-[10px] text-slate-400 font-mono truncate">{doc.name} • {doc.size || 'PDF'}</p>
+                    <p className="text-xs font-bold text-slate-900 truncate">{doc.type || doc.documentType}</p>
+                    <p className="text-[10px] text-slate-400 font-mono truncate">{doc.name || doc.documentName} • {doc.size || 'PDF'}</p>
                   </div>
                 </div>
-                {doc.verified && (
-                  <span title="Verified document" className="text-emerald-600 flex-shrink-0">
-                    <CheckCircle2 className="w-4 h-4" />
-                  </span>
-                )}
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                  <CheckCircle2 className="w-3 h-3" />
+                  Submitted
+                </span>
               </div>
             ))}
           </div>

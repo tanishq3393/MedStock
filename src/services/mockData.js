@@ -241,6 +241,26 @@ export const INITIAL_HOSPITALS = [
       { name: 'SGRH_Society_Registration.pdf', size: '4.3 MB', type: 'Registration Certificate', verified: true },
       { name: 'Delhi_State_Pharmacy_License.pdf', size: '3.1 MB', type: 'Drug License', verified: true },
     ],
+  },
+  {
+    id: 'hosp-13',
+    name: 'Sanjeevani Multispeciality Hospital',
+    registrationNo: 'MH-PUN-2021-9988',
+    authorizedPerson: 'Dr. Ramesh Kulkarni (Medical Superintendent)',
+    email: 'sanjeevani.pune@smartmedishare.org',
+    phone: '+91 98230 77889',
+    address: 'Near Deccan Gymkhana, Shivaji Nagar',
+    city: 'Pune',
+    state: 'Maharashtra',
+    pincode: '411004',
+    status: 'suspended',
+    registeredDate: '2024-03-22',
+    verifiedDate: '2024-03-24',
+    suspensionReason: 'Cold-chain storage failure detected during regulatory inspection; operations quarantined.',
+    documents: [
+      { id: 'doc-hosp-13-1', hospitalId: 'hosp-13', name: 'Sanjeevani_Hospital_Reg.pdf', documentName: 'Sanjeevani_Hospital_Reg.pdf', type: 'Registration Certificate', documentType: 'Registration Certificate', size: '3.5 MB', verified: true, documentStatus: 'verified', uploadedAt: '2024-03-22', reviewedAt: '2024-03-24' },
+      { id: 'doc-hosp-13-2', hospitalId: 'hosp-13', name: 'Drug_License_Form20B.pdf', documentName: 'Drug_License_Form20B.pdf', type: 'Drug License', documentType: 'Drug License', size: '2.8 MB', verified: false, documentStatus: 'rejected', rejectionReason: 'Cold-chain endorsement revoked by drug inspector.', uploadedAt: '2024-03-22', reviewedAt: '2024-08-10' },
+    ],
   }
 ];
 

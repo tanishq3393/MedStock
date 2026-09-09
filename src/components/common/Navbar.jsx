@@ -175,6 +175,15 @@ export const Navbar = () => {
           {/* Right Action Bar */}
           <div className="flex items-center gap-3">
             
+            {/* Subtle Demo Data indicator (Section 19 Requirement) */}
+            <div 
+              className="hidden md:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-100/90 border border-slate-200/80 text-[10px] font-bold text-slate-500 font-mono select-none"
+              title="Simulation Environment: Running on local client-side offline mock storage data. APIs ready for backend connect."
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+              <span>Demo Data</span>
+            </div>
+
             {/* Notification Bell Dropdown */}
             {isAuthenticated && (
               <div className="relative">

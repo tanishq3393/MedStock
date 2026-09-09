@@ -26,14 +26,21 @@ import EmptyState from '../../components/common/EmptyState';
 import CancelRequestModal from '../../components/hospital/CancelRequestModal';
 import { getCancellationPolicy, getCancellationBadgeProps } from '../../utils/cancellationPolicy';
 import toast from 'react-hot-toast';
-import { isHospitalSuspended } from '../../services/storage';
+import { isHospitalSuspended, getLiveHospitalRecord } from '../../services/storage';
 import { getRequestRemainingTime } from '../../utils/expiryUtils';
 
 export const MyRequests = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
   const { outgoingRequests, isLoading } = useSelector((state) => state.requests);
-  const isSuspended = isHospitalSuspended(user?.id);
+
+  const liveHospital = React.useMemo(() => {
+    return getLiveHospitalRecord(user?.id) || user;
+  }, [user]);
+
+  const currentStatus = (liveHospital?.status || user?.status || 'verified').toLowerCase();
+  const isOperationalLocked = currentStatus !== 'verified';
+  const isSuspended = currentStatus === 'suspended';
 
   const [activePaymentReq, setActivePaymentReq] = useState(null);
   const [cancelModalReq, setCancelModalReq] = useState(null);
@@ -112,6 +119,32 @@ export const MyRequests = () => {
 
   return (
     <div className="space-y-6">
+
+      {/* Compliance Status Notice */}
+      {isOperationalLocked && (
+        <div className={`p-4 rounded-2xl border flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs ${
+          currentStatus === 'pending' || currentStatus === 'under_review'
+            ? 'bg-amber-500/10 border-amber-500/30 text-amber-950'
+            : currentStatus === 'suspended'
+            ? 'bg-purple-500/10 border-purple-500/30 text-purple-950'
+            : 'bg-rose-500/10 border-rose-500/30 text-rose-950'
+        }`}>
+          <div>
+            <div className="font-bold text-sm">
+              Requisition Operations Restricted • Status: <span className="capitalize">{currentStatus.replace('_', ' ')}</span>
+            </div>
+            <p className="text-xs opacity-90 mt-0.5">
+              {currentStatus === 'pending' || currentStatus === 'under_review' ? (
+                <span>Submitting new procurement requisitions is restricted until your facility accreditation is verified by MEDEX Administration.</span>
+              ) : currentStatus === 'suspended' ? (
+                <span>Your facility account has been suspended ({liveHospital?.suspensionReason || 'Administrative hold'}). Requisition submissions are disabled.</span>
+              ) : (
+                <span>Your facility registration was rejected ({liveHospital?.rejectionReason || 'Documentation declined'}). Requisition submissions are disabled.</span>
+              )}
+            </p>
+          </div>
+        </div>
+      )}
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -129,13 +162,23 @@ export const MyRequests = () => {
           </p>
         </div>
 
-        <Link
-          to="/hospital/marketplace"
-          className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02]"
-        >
-          <Send className="w-3.5 h-3.5" />
-          <span>New Requisition</span>
-        </Link>
+        {isOperationalLocked ? (
+          <button
+            onClick={() => toast.error('Requisitions are locked for unverified or suspended facilities.')}
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-200 text-slate-500 text-xs font-bold cursor-not-allowed"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>New Requisition</span>
+          </button>
+        ) : (
+          <Link
+            to="/hospital/marketplace"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02]"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>New Requisition</span>
+          </Link>
+        )}
       </div>
 
       {/* Filter and Search Bar */}

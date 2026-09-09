@@ -57,6 +57,22 @@ export const setReviewStatusAction = createAsyncThunk('admin/setReviewStatus', a
   }
 });
 
+export const verifyHospitalDocumentAction = createAsyncThunk('admin/verifyDocument', async ({ hospitalId, documentId }, { rejectWithValue }) => {
+  try {
+    return await adminService.verifyHospitalDocument(hospitalId, documentId);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
+export const rejectHospitalDocumentAction = createAsyncThunk('admin/rejectDocument', async ({ hospitalId, documentId, reason }, { rejectWithValue }) => {
+  try {
+    return await adminService.rejectHospitalDocument(hospitalId, documentId, reason);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 export const fetchHospitalDetails = createAsyncThunk('admin/fetchHospitalDetails', async (hospitalId, { rejectWithValue }) => {
   try {
     return await adminService.getHospitalDetails(hospitalId);
@@ -196,6 +212,18 @@ const adminSlice = createSlice({
         const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
         if (index !== -1) state.hospitals[index] = action.payload;
         if (state.selectedHospital?.id === action.payload.id) state.selectedHospital = action.payload;
+      })
+      .addCase(verifyHospitalDocumentAction.fulfilled, (state, action) => {
+        const updatedHosp = action.payload.hospital;
+        const index = state.hospitals.findIndex((h) => h.id === updatedHosp.id);
+        if (index !== -1) state.hospitals[index] = updatedHosp;
+        if (state.selectedHospital?.id === updatedHosp.id) state.selectedHospital = updatedHosp;
+      })
+      .addCase(rejectHospitalDocumentAction.fulfilled, (state, action) => {
+        const updatedHosp = action.payload.hospital;
+        const index = state.hospitals.findIndex((h) => h.id === updatedHosp.id);
+        if (index !== -1) state.hospitals[index] = updatedHosp;
+        if (state.selectedHospital?.id === updatedHosp.id) state.selectedHospital = updatedHosp;
       })
 
       // Details

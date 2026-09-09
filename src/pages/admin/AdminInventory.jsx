@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { 
   Boxes, 
@@ -18,7 +18,8 @@ import {
   ArrowUpRight,
   TrendingDown,
   ShieldCheck,
-  RotateCcw
+  RotateCcw,
+  ArrowUpDown
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -35,6 +36,8 @@ export const AdminInventory = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [hospitalFilter, setHospitalFilter] = useState('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('default');
 
   // Modals state
   const [addStockTarget, setAddStockTarget] = useState(null);
@@ -57,7 +60,7 @@ export const AdminInventory = () => {
   const loadInventory = async () => {
     setIsLoading(true);
     try {
-      const res = await adminService.getInventory(statusFilter, searchTerm, hospitalFilter);
+      const res = await adminService.getInventory(statusFilter, searchTerm, hospitalFilter, categoryFilter);
       setInventoryData(res);
     } catch (err) {
       console.error('Failed to load inventory', err);
@@ -68,7 +71,7 @@ export const AdminInventory = () => {
 
   useEffect(() => {
     loadInventory();
-  }, [statusFilter, searchTerm, hospitalFilter]);
+  }, [statusFilter, searchTerm, hospitalFilter, categoryFilter]);
 
   // Handlers
   const handleConfirmAddStock = async (e) => {
@@ -143,11 +146,48 @@ export const AdminInventory = () => {
   };
 
   const summary = {
+    totalMedicines: inventoryData?.summary?.totalMedicines ?? 0,
     totalStockUnits: inventoryData?.summary?.totalStockUnits ?? inventoryData?.summary?.totalStock ?? 0,
-    lowStockCount: inventoryData?.summary?.lowStockCount ?? inventoryData?.summary?.lowStock ?? 0,
-    outOfStockCount: inventoryData?.summary?.outOfStockCount ?? inventoryData?.summary?.outOfStock ?? 0,
-    expiredCount: inventoryData?.summary?.expiredCount ?? inventoryData?.summary?.expired ?? 0,
+    lowStock: inventoryData?.summary?.lowStock ?? inventoryData?.summary?.lowStockCount ?? 0,
+    outOfStock: inventoryData?.summary?.outOfStock ?? inventoryData?.summary?.outOfStockCount ?? 0,
+    expiringSoon: inventoryData?.summary?.expiringSoon ?? 0,
+    expired: inventoryData?.summary?.expired ?? inventoryData?.summary?.expiredCount ?? 0,
   };
+
+  const availableCategories = useMemo(() => {
+    const defaultCats = [
+      'Antibiotics', 
+      'Analgesics', 
+      'Cardiovascular', 
+      'Respiratory', 
+      'Diabetes Care', 
+      'Emergency & Critical Care', 
+      'Antivirals', 
+      'IV Fluids', 
+      'Vitamins & Minerals'
+    ];
+    const dynamicCats = (inventoryData.items || []).map((i) => i.category).filter(Boolean);
+    return Array.from(new Set([...defaultCats, ...dynamicCats])).sort();
+  }, [inventoryData.items]);
+
+  const sortedItems = useMemo(() => {
+    if (!inventoryData.items) return [];
+    const list = [...inventoryData.items];
+    switch (sortBy) {
+      case 'qty_desc':
+        return list.sort((a, b) => (b.availableStock || 0) - (a.availableStock || 0));
+      case 'qty_asc':
+        return list.sort((a, b) => (a.availableStock || 0) - (b.availableStock || 0));
+      case 'expiry_asc':
+        return list.sort((a, b) => new Date(a.expiryDate || '9999-12-31') - new Date(b.expiryDate || '9999-12-31'));
+      case 'expiry_desc':
+        return list.sort((a, b) => new Date(b.expiryDate || '1970-01-01') - new Date(a.expiryDate || '1970-01-01'));
+      case 'updated_desc':
+        return list.sort((a, b) => new Date(b.lastUpdated || 0) - new Date(a.lastUpdated || 0));
+      default:
+        return list;
+    }
+  }, [inventoryData.items, sortBy]);
 
   return (
     <div className="space-y-6">
@@ -162,7 +202,7 @@ export const AdminInventory = () => {
               <Boxes className="w-3.5 h-3.5 text-cyan-400" />
               Centralized Healthcare Inventory
             </span>
-            <span className="text-xs text-slate-400 font-mono">Consolidated Stock Matrix</span>
+            <span className="text-xs text-slate-400 font-mono">Consolidated Multi-Hospital Stock Matrix</span>
           </div>
           <h1 className="text-2xl font-black tracking-tight text-white">Central Inventory Management</h1>
           <p className="text-xs text-slate-300 max-w-xl font-normal">
@@ -170,72 +210,92 @@ export const AdminInventory = () => {
           </p>
         </div>
 
-        <div className="relative z-10">
+        <div className="relative z-10 flex items-center gap-3">
           <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md text-right">
-            <div className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">Total Stock Reserve</div>
+            <div className="text-[10px] uppercase font-bold text-cyan-300 tracking-wider">Total Stock Units</div>
             <div className="text-lg font-black text-white font-mono">
-              {summary.totalStockUnits?.toLocaleString('en-IN') || 0} Units
+              {summary.totalStockUnits?.toLocaleString('en-IN') || 0}
+            </div>
+          </div>
+          <div className="px-4 py-2 rounded-xl bg-white/5 border border-white/10 backdrop-blur-md text-right">
+            <div className="text-[10px] uppercase font-bold text-teal-300 tracking-wider">Distinct SKUs</div>
+            <div className="text-lg font-black text-white font-mono">
+              {summary.totalMedicines}
             </div>
           </div>
         </div>
       </div>
 
-      {/* 4 DASHBOARD CARDS */}
-      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 5 SUMMARY STATISTIC CARDS (Calculated from real inventory data) */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         
-        {/* Card 1: Total Stock */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+        {/* Card 1: Total Medicines (Distinct SKUs) */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-1.5">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Stock</span>
-            <div className="w-9 h-9 rounded-xl bg-primary-50 border border-primary-100 text-primary-700 flex items-center justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Medicines</span>
+            <div className="w-8 h-8 rounded-xl bg-teal-50 border border-teal-100 text-teal-700 flex items-center justify-center">
+              <Package className="w-4 h-4" />
+            </div>
+          </div>
+          <div>
+            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.totalMedicines}</h3>
+            <span className="text-[10px] text-teal-700 font-semibold truncate block">Master catalog SKUs</span>
+          </div>
+        </div>
+
+        {/* Card 2: Total Stock Units */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-1.5">
+          <div className="flex justify-between items-start">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Stock Units</span>
+            <div className="w-8 h-8 rounded-xl bg-primary-50 border border-primary-100 text-primary-700 flex items-center justify-center">
               <Boxes className="w-4 h-4" />
             </div>
           </div>
           <div>
             <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.totalStockUnits?.toLocaleString('en-IN')}</h3>
-            <span className="text-[11px] text-primary-700 font-semibold">Total active doses across facilities</span>
+            <span className="text-[10px] text-primary-700 font-semibold truncate block">Aggregated hospital doses</span>
           </div>
         </div>
 
-        {/* Card 2: Low Stock */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+        {/* Card 3: Low Stock */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-1.5">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Low Stock</span>
-            <div className="w-9 h-9 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Low Stock</span>
+            <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 text-amber-700 flex items-center justify-center">
               <AlertCircle className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.lowStockCount}</h3>
-            <span className="text-[11px] text-amber-700 font-semibold">Below minimum threshold buffer</span>
+            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.lowStock}</h3>
+            <span className="text-[10px] text-amber-700 font-semibold truncate block">Below safety threshold</span>
           </div>
         </div>
 
-        {/* Card 3: Out of Stock */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+        {/* Card 4: Out of Stock */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-1.5">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Out of Stock</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 flex items-center justify-center">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Out of Stock</span>
+            <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-100 text-rose-700 flex items-center justify-center">
               <AlertTriangle className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.outOfStockCount}</h3>
-            <span className="text-[11px] text-rose-700 font-semibold">Depleted inventory batches</span>
+            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.outOfStock}</h3>
+            <span className="text-[10px] text-rose-700 font-semibold truncate block">Depleted stock records</span>
           </div>
         </div>
 
-        {/* Card 4: Expired Medicines */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm space-y-2">
+        {/* Card 5: Expiring Soon */}
+        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm space-y-1.5 col-span-2 sm:col-span-1">
           <div className="flex justify-between items-start">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Expired Medicines</span>
-            <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 text-purple-700 flex items-center justify-center">
-              <RotateCcw className="w-4 h-4" />
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Expiring Soon</span>
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 text-indigo-700 flex items-center justify-center">
+              <Clock className="w-4 h-4" />
             </div>
           </div>
           <div>
-            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.expiredCount}</h3>
-            <span className="text-[11px] text-purple-700 font-semibold">Quarantined for bio-destruction</span>
+            <h3 className="text-2xl font-black text-slate-900 font-mono">{summary.expiringSoon}</h3>
+            <span className="text-[10px] text-indigo-700 font-semibold truncate block">Within 90-day window</span>
           </div>
         </div>
 
@@ -262,7 +322,7 @@ export const AdminInventory = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               <option value="all">All Statuses</option>
               <option value="In Stock">In Stock</option>
@@ -273,18 +333,50 @@ export const AdminInventory = () => {
             </select>
           </div>
 
+          {/* Category Filter */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-medium">Category:</span>
+            <select
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+              className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 max-w-[130px] truncate"
+            >
+              <option value="all">All Categories</option>
+              {availableCategories.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+
           {/* Hospital Filter */}
           <div className="flex items-center gap-1.5">
             <span className="text-slate-400 font-medium">Hospital:</span>
             <select
               value={hospitalFilter}
               onChange={(e) => setHospitalFilter(e.target.value)}
-              className="px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500 max-w-[140px] truncate"
             >
               <option value="all">All Hospitals</option>
               {hospitals.map((h) => (
                 <option key={h.id} value={h.id}>{h.name}</option>
               ))}
+            </select>
+          </div>
+
+          {/* Sorting */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-slate-400 font-medium">Sort:</span>
+            <select
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value)}
+              className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="default">Default</option>
+              <option value="qty_desc">Quantity: High → Low</option>
+              <option value="qty_asc">Quantity: Low → High</option>
+              <option value="expiry_asc">Expiry: Soonest</option>
+              <option value="expiry_desc">Expiry: Latest</option>
+              <option value="updated_desc">Recently Updated</option>
             </select>
           </div>
 
@@ -296,9 +388,9 @@ export const AdminInventory = () => {
         <div className="w-full overflow-hidden">
           <table className="w-full divide-y divide-slate-200/80 text-xs table-fixed">
             <colgroup>
-              <col style={{ width: '19%' }} /> {/* Medicine Formulation */}
-              <col style={{ width: '15%' }} /> {/* Holding Hospital */}
-              <col style={{ width: '22%' }} /> {/* Stock Distribution */}
+              <col style={{ width: '21%' }} /> {/* Medicine, ID & Category */}
+              <col style={{ width: '14%' }} /> {/* Holding Hospital & ID */}
+              <col style={{ width: '21%' }} /> {/* Stock Distribution */}
               <col style={{ width: '7%' }} />  {/* Min Stock */}
               <col style={{ width: '10%' }} /> {/* Expiry Date */}
               <col style={{ width: '9%' }} />  {/* Status */}
@@ -307,7 +399,7 @@ export const AdminInventory = () => {
             </colgroup>
             <thead className="bg-slate-50/80 text-slate-600 font-bold uppercase tracking-wider text-[10px]">
               <tr>
-                <th className="px-3 py-3 text-left">Medicine Formulation</th>
+                <th className="px-3 py-3 text-left">Medicine & Category</th>
                 <th className="px-2 py-3 text-left">Holding Hospital</th>
                 <th className="px-2 py-3 text-left">
                   <div className="flex items-center gap-1">
@@ -323,23 +415,34 @@ export const AdminInventory = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-              {inventoryData.items?.length > 0 ? (
-                inventoryData.items.map((item) => (
+              {sortedItems.length > 0 ? (
+                sortedItems.map((item) => (
                   <tr key={item.id} className="hover:bg-teal-50/20 transition-colors group">
                     
                     {/* Medicine */}
                     <td className="px-3 py-3 overflow-hidden">
-                      <div className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors truncate text-xs" title={item.medicine}>{item.medicine}</div>
-                      <div className="text-[11px] text-primary-700 font-semibold truncate" title={item.power}>{item.power}</div>
-                      <span className="text-[10px] text-slate-400 font-mono truncate block">Batch: {item.batchNumber}</span>
+                      <div className="font-bold text-slate-900 group-hover:text-primary-600 transition-colors truncate text-xs" title={item.medicineName || item.medicine}>
+                        {item.medicineName || item.medicine}
+                      </div>
+                      <div className="flex items-center gap-1.5 text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                        <span className="font-mono text-primary-700 font-semibold">{item.medicineId || item.id}</span>
+                        <span className="text-slate-300">•</span>
+                        <span className="truncate bg-slate-100 text-slate-600 px-1 rounded">{item.category}</span>
+                      </div>
+                      <span className="text-[10px] text-slate-400 font-mono truncate block mt-0.5">Batch: {item.batchNumber}</span>
                     </td>
 
                     {/* Hospital */}
                     <td className="px-2 py-3 overflow-hidden">
                       <div className="flex items-center gap-1.5 font-bold text-slate-800 min-w-0">
                         <Building2 className="w-3.5 h-3.5 text-primary-600 shrink-0" />
-                        <span className="truncate block text-xs" title={item.hospital}>{item.hospital}</span>
+                        <span className="truncate block text-xs" title={item.hospitalName || item.hospital}>
+                          {item.hospitalName || item.hospital}
+                        </span>
                       </div>
+                      <span className="text-[10px] text-slate-400 font-mono truncate block pl-5">
+                        {item.hospitalId || 'HOSP-FAC'}
+                      </span>
                     </td>
 
                     {/* Stock Movement Progression Indicator: Available -> Reserved -> Expired */}

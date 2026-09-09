@@ -1,4 +1,4 @@
-import { getStoredItem, setStoredItem, KEYS } from './storage';
+import { getStoredItem, setStoredItem, KEYS, getHospitalDocumentChecklist } from './storage';
 import { auditService } from './auditService';
 
 export const authService = {
@@ -121,8 +121,32 @@ export const authService = {
     await new Promise((r) => setTimeout(r, 600));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
 
+    // Strict validation: every mandatory statutory document must be submitted
+    const docChecklist = getHospitalDocumentChecklist(formData.documents || []);
+    if (!docChecklist.isComplete) {
+      const missingLabels = docChecklist.missingItems.map((m) => m.label).join(', ');
+      throw new Error(`Application submission blocked: All required documents must be submitted before registration. Missing: ${missingLabels}`);
+    }
+
+    const newHospitalId = 'hosp-' + Date.now();
+    const normalizedDocs = docChecklist.items.filter((d) => d.isSubmitted).map((doc, idx) => ({
+      id: doc.id || `doc-${newHospitalId}-${idx + 1}`,
+      hospitalId: newHospitalId,
+      documentType: doc.documentType,
+      documentName: doc.documentName || `${doc.documentType.replace(/\s+/g, '_')}.pdf`,
+      name: doc.documentName || `${doc.documentType.replace(/\s+/g, '_')}.pdf`,
+      type: doc.documentType,
+      required: true,
+      submissionStatus: 'submitted',
+      status: 'Submitted',
+      size: doc.size || '2.4 MB',
+      uploadedAt: new Date().toISOString().split('T')[0],
+      documentUrl: doc.documentUrl || `/documents/${doc.documentName || 'document.pdf'}`,
+      uploadedBy: formData.authorizedPerson || 'Hospital Administrator',
+    }));
+
     const newHospital = {
-      id: 'hosp-' + Date.now(),
+      id: newHospitalId,
       name: formData.name,
       registrationNo: formData.registrationNo,
       authorizedPerson: formData.authorizedPerson,
@@ -135,16 +159,29 @@ export const authService = {
       status: 'pending', // Requires admin verification
       registeredDate: new Date().toISOString().split('T')[0],
       verifiedDate: null,
-      documents: formData.documents || [
-        { name: 'Registration_Certificate.pdf', size: '2.4 MB', type: 'Registration Certificate', verified: false },
-        { name: 'Drug_License.pdf', size: '1.8 MB', type: 'Drug License', verified: false },
-        { name: 'GST_Certificate.pdf', size: '1.2 MB', type: 'GST Certificate', verified: false },
-        { name: 'Authorization_Letter.pdf', size: '1.0 MB', type: 'Authorization Letter', verified: false },
-      ],
+      documents: normalizedDocs,
     };
 
     hospitals.unshift(newHospital);
     setStoredItem(KEYS.HOSPITALS, hospitals);
+
+    // Record application-level audit event
+    auditService.logEvent({
+      action: 'HOSPITAL_APPLICATION_SUBMITTED',
+      entityType: 'Hospitals',
+      entityId: newHospital.id,
+      hospitalId: newHospital.id,
+      hospitalName: newHospital.name,
+      actor: newHospital.authorizedPerson,
+      adminUser: newHospital.authorizedPerson,
+      summary: `Hospital registration application submitted by ${newHospital.name} (${newHospital.registrationNo}) with all ${normalizedDocs.length} required statutory documents.`,
+      resultingStatus: 'pending',
+      metadata: {
+        registrationNo: newHospital.registrationNo,
+        submittedDocuments: normalizedDocs.length,
+        documents: normalizedDocs.map((d) => d.documentType),
+      },
+    });
 
     const user = {
       id: newHospital.id,

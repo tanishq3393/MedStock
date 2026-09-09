@@ -158,19 +158,17 @@ export const adminService = {
     hospital.verifiedDate = new Date().toISOString().split('T')[0];
     hospital.rejectionReason = null;
     hospital.isDemoSimulation = true;
-    if (hospital.documents) {
-      hospital.documents = hospital.documents.map((d) => ({ ...d, verified: true }));
-    }
 
     setStoredItem(KEYS.HOSPITALS, hospitals);
 
     auditService.logEvent({
-      action: 'HOSPITAL_VERIFIED',
-      entityType: 'VERIFICATION',
+      action: 'HOSPITAL_APPLICATION_APPROVED',
+      entityType: 'Hospitals',
       entityId: hospital.id,
       hospitalId: hospital.id,
       hospitalName: hospital.name,
-      summary: `Accreditation audit approved for ${hospital.name}. Form 20B/21B permits validated in demo verification engine.`,
+      adminUser: 'Super Administrator',
+      summary: `Hospital application approved for ${hospital.name} (${hospital.registrationNo}). Institutional trading privileges and centralized inventory access activated.`,
       resultingStatus: 'verified',
       metadata: { registrationNo: hospital.registrationNo },
     });
@@ -194,12 +192,13 @@ export const adminService = {
     setStoredItem(KEYS.HOSPITALS, hospitals);
 
     auditService.logEvent({
-      action: 'HOSPITAL_REJECTED',
-      entityType: 'VERIFICATION',
+      action: 'HOSPITAL_APPLICATION_REJECTED',
+      entityType: 'Hospitals',
       entityId: hospital.id,
       hospitalId: hospital.id,
       hospitalName: hospital.name,
-      summary: `Application rejected for ${hospital.name}. Reason: ${hospital.rejectionReason}`,
+      adminUser: 'Super Administrator',
+      summary: `Hospital application rejected for ${hospital.name}. Rejection reason: ${hospital.rejectionReason}`,
       resultingStatus: 'rejected',
       metadata: { reason: hospital.rejectionReason },
     });
@@ -298,6 +297,63 @@ export const adminService = {
     });
 
     return hospitals[index];
+  },
+
+  async verifyHospitalDocument(hospitalId, documentId) {
+    await new Promise((r) => setTimeout(r, 200));
+    assertAdminSession();
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hospIndex = hospitals.findIndex((h) => h.id === hospitalId);
+    if (hospIndex === -1) throw new Error('Hospital not found');
+
+    const hospital = hospitals[hospIndex];
+    const docs = hospital.documents || [];
+    const docIndex = docs.findIndex((d) => d.id === documentId || d.name === documentId || d.documentName === documentId);
+    if (docIndex === -1) throw new Error('Document not found');
+
+    docs[docIndex] = {
+      ...docs[docIndex],
+      documentStatus: 'verified',
+      verified: true,
+      reviewedAt: new Date().toISOString().split('T')[0],
+      rejectionReason: null,
+    };
+
+    hospital.documents = docs;
+    hospitals[hospIndex] = hospital;
+    setStoredItem(KEYS.HOSPITALS, hospitals);
+
+    return { hospital, document: docs[docIndex] };
+  },
+
+  async rejectHospitalDocument(hospitalId, documentId, reason) {
+    await new Promise((r) => setTimeout(r, 200));
+    assertAdminSession();
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) throw new Error('Rejection reason is required');
+
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hospIndex = hospitals.findIndex((h) => h.id === hospitalId);
+    if (hospIndex === -1) throw new Error('Hospital not found');
+
+    const hospital = hospitals[hospIndex];
+    const docs = hospital.documents || [];
+    const docIndex = docs.findIndex((d) => d.id === documentId || d.name === documentId || d.documentName === documentId);
+    if (docIndex === -1) throw new Error('Document not found');
+
+    docs[docIndex] = {
+      ...docs[docIndex],
+      documentStatus: 'rejected',
+      verified: false,
+      reviewedAt: new Date().toISOString().split('T')[0],
+      rejectionReason: trimmedReason,
+    };
+
+    hospital.documents = docs;
+    hospitals[hospIndex] = hospital;
+    setStoredItem(KEYS.HOSPITALS, hospitals);
+
+    return { hospital, document: docs[docIndex] };
   },
 
   async getHospitalDetails(hospitalId) {
@@ -523,7 +579,7 @@ export const adminService = {
   // ==========================================
   // 6. CENTRAL INVENTORY OVERSIGHT
   // ==========================================
-  async getInventory(statusFilter = 'all', searchTerm = '', hospitalFilter = 'all') {
+  async getInventory(statusFilter = 'all', searchTerm = '', hospitalFilter = 'all', categoryFilter = 'all') {
     await new Promise((r) => setTimeout(r, 150));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
@@ -541,6 +597,8 @@ export const adminService = {
     let lowStockCount = 0;
     let outOfStockCount = 0;
     let expiredUnits = 0;
+    let expiringSoonCount = 0;
+    const uniqueMedicinesSet = new Set();
 
     const items = medicines.map((med) => {
       const hosp = hospitals.find((h) => h.id === med.hospitalId) || { name: med.hospitalName || 'Health Facility' };
@@ -549,18 +607,26 @@ export const adminService = {
       const reserved = reservedMap[med.id] || 0;
       const available = Math.max(0, qty - reserved);
 
+      if (med.brandName) {
+        uniqueMedicinesSet.add(med.brandName.trim().toLowerCase());
+      }
+
       let computedStatus = 'in_stock';
       if (exp.isExpired) {
         computedStatus = 'expired';
         expiredUnits += 1;
-      } else if (qty === 0) {
+      } else if (available === 0) {
         computedStatus = 'out_of_stock';
         outOfStockCount += 1;
-      } else if (qty <= (med.minStockLevel || 20) || exp.isLowStock) {
+      } else if (available <= (med.minStockLevel || 20) || exp.isLowStock) {
         computedStatus = 'low_stock';
         lowStockCount += 1;
       } else {
         computedStatus = 'in_stock';
+      }
+
+      if (exp.isNearExpiry && !exp.isExpired) {
+        expiringSoonCount += 1;
       }
 
       totalUnits += qty;
@@ -568,29 +634,42 @@ export const adminService = {
       return {
         id: med.id,
         medicine: med.brandName,
+        medicineName: med.brandName,
+        medicineId: med.id,
         genericName: med.genericName || 'Active Pharmaceutical Ingredient',
         category: med.category || 'Essential Medicines',
         hospital: hosp.name,
+        hospitalName: hosp.name,
         hospitalId: med.hospitalId,
         availableStock: available,
+        availableQuantity: available,
         totalStock: qty,
         reservedStock: reserved,
+        reservedQuantity: reserved,
         expiredStock: exp.isExpired ? qty : 0,
         minimumStock: med.minStockLevel || 20,
         expiryDate: med.expiryDate,
         status: computedStatus,
-        lastUpdated: med.dateAdded || '2024-09-01',
+        stockStatus: computedStatus,
+        lastUpdated: med.lastUpdated || med.dateAdded || '2024-09-01',
         batchNumber: med.batchNo || 'BATCH-2024',
         unitOriginalPrice: med.unitOriginalPrice || 50,
       };
     });
 
-    // Summary counts for dashboard cards
+    // Summary counts calculated from inventory data (Requirement 4)
     const summary = {
-      totalStock: totalUnits,
+      totalMedicines: uniqueMedicinesSet.size || medicines.length,
+      totalStockUnits: totalUnits,
       lowStock: lowStockCount,
       outOfStock: outOfStockCount,
+      expiringSoon: expiringSoonCount,
       expired: expiredUnits,
+      // Compatibility aliases
+      totalStock: totalUnits,
+      lowStockCount,
+      outOfStockCount,
+      expiredCount: expiredUnits,
     };
 
     // Filter items
@@ -599,19 +678,34 @@ export const adminService = {
         !searchTerm ||
         item.medicine.toLowerCase().includes(searchTerm.toLowerCase()) ||
         item.genericName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        item.hospital.toLowerCase().includes(searchTerm.toLowerCase());
+        item.hospital.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.hospitalId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.medicineId?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.batchNumber?.toLowerCase().includes(searchTerm.toLowerCase());
 
-      const matchStatus =
-        !statusFilter ||
-        statusFilter === 'all' ||
-        item.status === statusFilter;
+      let matchStatus = true;
+      if (statusFilter && statusFilter !== 'all') {
+        const normFilter = statusFilter.toLowerCase().replace(/[\s_-]+/g, '');
+        if (normFilter === 'expiringsoon') {
+          const exp = calculateMedicineExpiry(item.expiryDate);
+          matchStatus = exp.isNearExpiry && !exp.isExpired;
+        } else {
+          const normItemStatus = (item.status || '').toLowerCase().replace(/[\s_-]+/g, '');
+          matchStatus = normItemStatus === normFilter;
+        }
+      }
 
       const matchHosp =
         !hospitalFilter ||
         hospitalFilter === 'all' ||
         item.hospitalId === hospitalFilter;
 
-      return matchSearch && matchStatus && matchHosp;
+      const matchCategory =
+        !categoryFilter ||
+        categoryFilter === 'all' ||
+        item.category.toLowerCase() === categoryFilter.toLowerCase();
+
+      return matchSearch && matchStatus && matchHosp && matchCategory;
     });
 
     return {

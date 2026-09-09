@@ -234,6 +234,70 @@ export const alertService = {
       }
     });
 
+    // 6. Hospital Verification Status Alert (Persistent status notification for the hospital)
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hosp = hospitals.find((h) => h.id === hospitalId || h.email?.toLowerCase() === hospitalId?.toLowerCase());
+    if (hosp) {
+      const status = (hosp.status || 'verified').toLowerCase();
+      if (status === 'pending' || status === 'under_review' || status === 'documents_missing') {
+        generatedAlerts.unshift({
+          id: `alert-hosp-status-${hosp.id}-${status}`,
+          group: 'action',
+          severity: 'ACTION',
+          category: 'REGISTRATION_STATUS',
+          title: 'Registration Under Review',
+          desc: 'Your hospital registration is currently under review. Operational modules will unlock upon statutory compliance audit approval by MEDEX administration.',
+          link: '/hospital/dashboard',
+          actionText: 'View Status',
+          timestamp: hosp.registeredDate ? new Date(hosp.registeredDate).toISOString() : new Date().toISOString(),
+          urgent: true,
+          sourceId: hosp.id,
+        });
+      } else if (status === 'rejected') {
+        generatedAlerts.unshift({
+          id: `alert-hosp-status-${hosp.id}-rejected`,
+          group: 'critical',
+          severity: 'CRITICAL',
+          category: 'REGISTRATION_REJECTED',
+          title: 'Institutional Registration Rejected',
+          desc: `Your hospital registration was rejected.${hosp.rejectionReason ? ` Reason: ${hosp.rejectionReason}` : ''}`,
+          link: '/hospital/dashboard',
+          actionText: 'Review Reason',
+          timestamp: new Date().toISOString(),
+          urgent: true,
+          sourceId: hosp.id,
+        });
+      } else if (status === 'suspended') {
+        generatedAlerts.unshift({
+          id: `alert-hosp-status-${hosp.id}-suspended`,
+          group: 'critical',
+          severity: 'CRITICAL',
+          category: 'ACCOUNT_SUSPENDED',
+          title: 'Hospital Operations Suspended',
+          desc: `Your hospital account has been suspended.${hosp.suspensionReason ? ` Reason: ${hosp.suspensionReason}` : ''}`,
+          link: '/hospital/dashboard',
+          actionText: 'Inspect Suspension',
+          timestamp: hosp.suspendedAt || new Date().toISOString(),
+          urgent: true,
+          sourceId: hosp.id,
+        });
+      } else if (status === 'verified') {
+        generatedAlerts.push({
+          id: `alert-hosp-status-${hosp.id}-verified`,
+          group: 'info',
+          severity: 'INFORMATION',
+          category: 'REGISTRATION_VERIFIED',
+          title: 'Accreditation Approved',
+          desc: 'Your hospital has been successfully verified. You can now access MEDEX services.',
+          link: '/hospital/inventory',
+          actionText: 'Manage Stock',
+          timestamp: hosp.verifiedDate ? new Date(hosp.verifiedDate).toISOString() : new Date().toISOString(),
+          urgent: false,
+          sourceId: hosp.id,
+        });
+      }
+    }
+
     // Sort by severity (CRITICAL first, then ACTION, then INFORMATION) and timestamp descending
     const severityWeight = { CRITICAL: 3, WARNING: 2, ACTION: 2, INFORMATION: 1 };
 
