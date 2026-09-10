@@ -1031,6 +1031,7 @@ export const hospitalService = {
     req.paymentId = paymentId;
     req.paymentStatus = 'paid';
     req.paidDate = new Date().toISOString();
+    req.paymentCompletedAt = req.paidDate;
 
     if (!req.timeline) {
       req.timeline = [
@@ -1160,12 +1161,13 @@ export const hospitalService = {
     const s = (req.status || '').toLowerCase().trim();
 
     // Guard: Order cannot advance to Preparing or beyond without successful payment!
-    if (s === 'accepted' && req.paymentStatus !== 'paid' && req.paymentStatus !== 'success') {
-      throw new Error('Order cannot proceed to fulfillment until payment is successfully completed.');
+    const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(String(req.paymentStatus || '').toLowerCase().trim());
+    if (['accepted', 'pending', 'requested'].includes(s) && !isPaid) {
+      throw new Error('Order cannot proceed to fulfillment until payment is successfully completed by the requesting hospital.');
     }
 
     const flowMap = {
-      accepted: 'paid',
+      accepted: isPaid ? 'preparing' : 'accepted',
       paid: 'preparing',
       preparing: 'dispatched',
       dispatched: 'in transit',
@@ -1174,9 +1176,12 @@ export const hospitalService = {
     };
 
     const nextStatus = flowMap[s];
-    if (!nextStatus) return { request: req, nextStatus: s };
+    if (!nextStatus || nextStatus === s) return { request: req, nextStatus: s };
 
     req.status = nextStatus;
+    if (['preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(nextStatus)) {
+      req.paymentStatus = 'paid';
+    }
     if (!req.timeline) req.timeline = [];
     req.timeline.push({
       step: nextStatus === 'in transit' ? 'In Transit' : nextStatus.charAt(0).toUpperCase() + nextStatus.slice(1),

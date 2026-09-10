@@ -231,37 +231,87 @@ export const initializeStorage = () => {
         modified = true;
       }
 
-      const updatedReqs = parsedReqs.map((req) => {
-        if (!req.expiryDate && req.requestDate) {
-          modified = true;
-          const d = new Date(req.requestDate);
-          return {
-            ...req,
-            expiryDate: new Date(d.getTime() + 48 * 3600 * 1000).toISOString(),
-          };
-        }
-        return req;
-      });
-
-      // Ensure the 8 demo requests are present and front-loaded
+      // Ensure all demo requests are present and updated with consistent values
       const demoReqs = INITIAL_REQUESTS.filter((r) => r.id?.startsWith('req-demo-'));
       demoReqs.forEach((demo) => {
         const existingIdx = parsedReqs.findIndex((r) => r.id === demo.id);
         if (existingIdx === -1) {
           parsedReqs.unshift(demo);
           modified = true;
+        } else {
+          // If stored demo request has inconsistent payment/order status, update to latest consistent mock state
+          const stored = parsedReqs[existingIdx];
+          if (
+            stored.paymentStatus !== demo.paymentStatus || 
+            (demo.status === 'paid' && stored.status !== 'paid' && stored.status === 'accepted')
+          ) {
+            parsedReqs[existingIdx] = {
+              ...stored,
+              status: demo.status,
+              paymentStatus: demo.paymentStatus,
+              paymentId: demo.paymentId || stored.paymentId,
+              paidDate: demo.paidDate || stored.paidDate,
+              paymentCompletedAt: demo.paymentCompletedAt || stored.paymentCompletedAt || demo.paidDate,
+            };
+            modified = true;
+          }
         }
       });
 
       // Ensure the competing request test group exists if not present
-      const hasCompeting = updatedReqs.some((r) => r.id === 'req-competing-1');
+      const hasCompeting = parsedReqs.some((r) => r.id === 'req-competing-1');
       if (!hasCompeting) {
         const competingSample = INITIAL_REQUESTS.filter((r) => r.id?.startsWith('req-competing'));
         if (competingSample.length > 0) {
-          updatedReqs.unshift(...competingSample);
+          parsedReqs.unshift(...competingSample);
           modified = true;
         }
       }
+
+      // Universal Order & Payment State Synchronization (Sections 3, 5, 6, 20)
+      const updatedReqs = parsedReqs.map((req) => {
+        let changed = false;
+        const s = (req.status || 'pending').toLowerCase().trim();
+        let ps = (req.paymentStatus || '').toLowerCase().trim();
+
+        // 1. Normalize payment status aliases
+        if (['success', 'successful', 'completed', 'settled'].includes(ps)) {
+          ps = 'paid';
+          req.paymentStatus = 'paid';
+          changed = true;
+        }
+
+        // 2. Synchronize fulfillment orders with paid payment state
+        if (['paid', 'preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(s)) {
+          if (req.paymentStatus !== 'paid') {
+            req.paymentStatus = 'paid';
+            changed = true;
+          }
+          if (!req.paidDate) {
+            req.paidDate = req.requestDate || new Date().toISOString();
+            changed = true;
+          }
+          if (!req.paymentCompletedAt) {
+            req.paymentCompletedAt = req.paidDate;
+            changed = true;
+          }
+        } else if (s === 'accepted' && ps !== 'failed' && ps !== 'paid') {
+          if (req.paymentStatus !== 'pending') {
+            req.paymentStatus = 'pending';
+            changed = true;
+          }
+        }
+
+        // 3. Ensure 48-hour expiryDate exists
+        if (!req.expiryDate && req.requestDate) {
+          const d = new Date(req.requestDate);
+          req.expiryDate = new Date(d.getTime() + 48 * 3600 * 1000).toISOString();
+          changed = true;
+        }
+
+        if (changed) modified = true;
+        return req;
+      });
 
       if (modified) {
         localStorage.setItem(KEYS.REQUESTS, JSON.stringify(updatedReqs));

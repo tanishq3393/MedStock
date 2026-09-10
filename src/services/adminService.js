@@ -1212,6 +1212,8 @@ export const adminService = {
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const trackingList = getStoredItem(KEYS.TRACKING, []);
 
+    let needSync = false;
+
     const orders = requests.map((req, idx) => {
       const fromHosp = hospitals.find((h) => h.id === req.fromHospitalId) || {
         id: req.fromHospitalId || 'hosp-1',
@@ -1240,13 +1242,28 @@ export const adminService = {
       if (rawStatus === 'processing') normStatus = 'preparing';
       if (rawStatus === 'under_review') normStatus = 'pending';
 
+      const rawPay = (req.paymentStatus || '').toLowerCase().trim();
       let payStatus = 'pending';
-      if (req.paymentStatus === 'paid' || req.paymentStatus === 'success' || ['paid', 'preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(normStatus)) {
+
+      if (['paid', 'success', 'successful', 'completed', 'settled'].includes(rawPay)) {
         payStatus = 'paid';
-      } else if (req.paymentStatus === 'failed') {
+        if (req.paymentStatus !== 'paid') {
+          req.paymentStatus = 'paid';
+          needSync = true;
+        }
+      } else if (rawPay === 'failed') {
         payStatus = 'failed';
-      } else if (req.paymentStatus === 'refunded' || req.cancellation?.refundStatus) {
+      } else if (rawPay === 'refunded' || req.cancellation?.refundStatus) {
         payStatus = 'refunded';
+      } else if (['paid', 'preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(normStatus)) {
+        // Legitimate fulfillment order: ensure payment status is synchronized with order status
+        payStatus = 'paid';
+        if (req.paymentStatus !== 'paid') {
+          req.paymentStatus = 'paid';
+          if (!req.paidDate) req.paidDate = req.requestDate || new Date().toISOString();
+          if (!req.paymentCompletedAt) req.paymentCompletedAt = req.paidDate;
+          needSync = true;
+        }
       } else {
         payStatus = 'pending';
       }
@@ -1419,6 +1436,10 @@ export const adminService = {
       };
     });
 
+    if (needSync) {
+      setStoredItem(KEYS.REQUESTS, requests);
+    }
+
     if (!statusFilter || statusFilter === 'all') return orders;
 
     // Support all requested filters:
@@ -1467,6 +1488,9 @@ export const adminService = {
       if (sf === 'discrepancy') {
         return o.hasDiscrepancy || Boolean(o.discrepancy);
       }
+      if (sf === 'insufficient stock' || sf === 'insufficient_stock') {
+        return s === 'insufficient stock' || s === 'insufficient_stock';
+      }
 
       return s === sf;
     });
@@ -1486,23 +1510,99 @@ export const adminService = {
     const req = requests[index];
     const prevStatus = req.status;
 
-    // Lifecycle transition safety check:
-    // Do NOT allow the order to proceed to Preparing before successful payment
+    // Normalizing statuses & payment verification
     const targetNorm = targetStatus.toLowerCase().trim();
-    if (['preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(targetNorm)) {
-      const isPaid = req.paymentStatus === 'paid' || req.paymentStatus === 'success' || req.status === 'paid';
+    const currentNorm = (req.status || 'pending').toLowerCase().trim();
+    const currentPay = (req.paymentStatus || '').toLowerCase().trim();
+
+    // Check payment state: normalized check
+    const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(currentPay) || 
+                   (['paid', 'preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(currentNorm) && currentPay !== 'failed');
+
+    // 1. Rejected or cancelled orders cannot continue through normal lifecycle (Section 10 & 11)
+    if (['rejected', 'cancelled'].includes(currentNorm)) {
+      throw new Error(`Cannot advance order: Requisition is currently ${currentNorm} and cannot proceed through fulfillment.`);
+    }
+
+    // 2. Admin MUST NOT bypass payment by manually marking an unpaid order as Paid (Section 2 & 14)
+    if (targetNorm === 'paid') {
       if (!isPaid) {
-        throw new Error(`Cannot advance order to ${targetStatus}: payment has not been successfully completed by the requesting hospital.`);
+        throw new Error('Admin cannot manually mark an order as Paid. Payment must be completed by the requesting hospital.');
+      }
+      req.status = 'paid';
+      req.paymentStatus = 'paid';
+      if (!req.paidDate) req.paidDate = new Date().toISOString();
+      if (!req.paymentCompletedAt) req.paymentCompletedAt = req.paidDate;
+    }
+
+    // 3. Status transition sequence validation (Section 4 & 9)
+    else if (targetNorm === 'accepted') {
+      if (currentNorm !== 'pending' && currentNorm !== 'requested') {
+        throw new Error(`Invalid transition: Cannot move order from ${req.status} to Accepted.`);
+      }
+      req.status = 'accepted';
+      req.paymentStatus = 'pending';
+      if (!req.acceptedAt) req.acceptedAt = new Date().toISOString();
+    } else if (targetNorm === 'preparing') {
+      // For: Accepted -> Preparing require successful payment. For: Paid -> Preparing allow if payment completed.
+      if (!isPaid) {
+        throw new Error(`Cannot advance order to Preparing: payment has not been successfully completed by the requesting hospital.`);
+      }
+      if (currentNorm !== 'paid' && currentNorm !== 'accepted') {
+        throw new Error(`Invalid transition: Cannot advance order to Preparing from "${req.status}". Order must be Paid first.`);
+      }
+      req.status = 'preparing';
+      req.paymentStatus = 'paid';
+      if (!req.preparingAt) req.preparingAt = new Date().toISOString();
+    } else if (targetNorm === 'dispatched') {
+      // For: Preparing -> Dispatched allow if paymentStatus === successful/paid
+      if (!isPaid) {
+        throw new Error(`Cannot advance order to Dispatched: payment has not been successfully completed by the requesting hospital.`);
+      }
+      if (currentNorm !== 'preparing') {
+        throw new Error(`Invalid transition: Cannot advance order directly from "${req.status}" to Dispatched. Order must be in Preparing status first.`);
+      }
+      req.status = 'dispatched';
+      req.paymentStatus = 'paid';
+      if (!req.dispatchedAt) req.dispatchedAt = new Date().toISOString();
+    } else if (targetNorm === 'in transit') {
+      if (!isPaid) {
+        throw new Error(`Cannot advance order to In Transit: payment has not been successfully completed by the requesting hospital.`);
+      }
+      if (currentNorm !== 'dispatched') {
+        throw new Error(`Invalid transition: Cannot move order from "${req.status}" to In Transit. Order must be Dispatched first.`);
+      }
+      req.status = 'in transit';
+      req.paymentStatus = 'paid';
+      if (!req.inTransitAt) req.inTransitAt = new Date().toISOString();
+    } else if (targetNorm === 'delivered') {
+      if (!isPaid) {
+        throw new Error(`Cannot advance order to Delivered: payment has not been successfully completed by the requesting hospital.`);
+      }
+      if (currentNorm !== 'in transit') {
+        throw new Error(`Invalid transition: Cannot move order from "${req.status}" to Delivered. Order must be In Transit first.`);
+      }
+      req.status = 'delivered';
+      req.paymentStatus = 'paid';
+      if (!req.deliveredAt) req.deliveredAt = new Date().toISOString();
+    } else if (targetNorm === 'completed') {
+      if (!isPaid) {
+        throw new Error(`Cannot advance order to Completed: payment has not been successfully completed by the requesting hospital.`);
+      }
+      if (currentNorm !== 'delivered') {
+        throw new Error(`Invalid transition: Cannot move order from "${req.status}" to Completed. Order must be Delivered first.`);
+      }
+      req.status = 'completed';
+      req.paymentStatus = 'paid';
+      if (!req.completedAt) req.completedAt = new Date().toISOString();
+    } else {
+      req.status = targetNorm;
+      if (['preparing', 'dispatched', 'in transit', 'delivered', 'completed'].includes(targetNorm)) {
+        req.paymentStatus = 'paid';
       }
     }
 
-    req.status = targetNorm;
     req.statusNote = note;
-    if (targetNorm === 'preparing' && !req.preparingAt) req.preparingAt = new Date().toISOString();
-    if (targetNorm === 'dispatched' && !req.dispatchedAt) req.dispatchedAt = new Date().toISOString();
-    if (targetNorm === 'in transit' && !req.inTransitAt) req.inTransitAt = new Date().toISOString();
-    if (targetNorm === 'delivered' && !req.deliveredAt) req.deliveredAt = new Date().toISOString();
-    if (targetNorm === 'completed' && !req.completedAt) req.completedAt = new Date().toISOString();
 
     if (!req.timeline) {
       req.timeline = [
@@ -1517,6 +1617,64 @@ export const adminService = {
         note,
       });
     }
+
+    // Inventory Synchronization (Requirements 25, 26, 28)
+    if ((targetNorm === 'delivered' || targetNorm === 'completed') && !req.stockReceivedByBuyer) {
+      const medicines = getStoredItem(KEYS.MEDICINES, []);
+      const buyerHospId = req.fromHospitalId;
+      const normBatch = (req.batchNo || 'BAT-9841').trim().toLowerCase();
+      const normName = (req.medicineName || '').trim().toLowerCase();
+
+      let targetMedIndex = medicines.findIndex((m) => {
+        if (m.hospitalId !== buyerHospId) return false;
+        const matchBatch = (m.batchNo || '').trim().toLowerCase() === normBatch;
+        const matchName = (m.brandName || m.medicineName || '').trim().toLowerCase() === normName;
+        return matchBatch && matchName;
+      });
+
+      if (targetMedIndex !== -1) {
+        medicines[targetMedIndex].quantity = Number(medicines[targetMedIndex].quantity || 0) + Number(req.quantity);
+        medicines[targetMedIndex].lastUpdated = new Date().toISOString().split('T')[0];
+      } else {
+        medicines.unshift({
+          id: 'med-' + Date.now() + '-rcv',
+          medicineId: req.medicineId || ('med-rcv-' + Date.now()),
+          brandName: req.medicineName,
+          medicineName: req.medicineName,
+          genericName: req.genericName || 'Active Formulation',
+          category: 'Essential Medicines',
+          form: req.form || 'Tablet',
+          power: req.power || '',
+          manufacturer: req.manufacturer || 'Approved Manufacturer',
+          batchNo: req.batchNo || 'BAT-RCV-' + Date.now().toString().slice(-4),
+          quantity: Number(req.quantity),
+          minStockLevel: 20,
+          mfgDate: req.mfgDate || '2024-01-01',
+          expiryDate: req.medicineExpiryDate || req.expiryDate || '2025-12-31',
+          unitOriginalPrice: Number(req.unitOriginalPrice || req.unitFinalPrice || 50),
+          hospitalId: buyerHospId,
+          hospitalName: req.fromHospitalName,
+          dateAdded: new Date().toISOString().split('T')[0],
+          lastUpdated: new Date().toISOString().split('T')[0],
+          notes: `Procured through inter-hospital requisition #${req.transactionId || req.id}`,
+        });
+      }
+      setStoredItem(KEYS.MEDICINES, medicines);
+      req.stockReceivedByBuyer = true;
+    }
+
+    // Sync Tracking records in KEYS.TRACKING
+    const trackingList = getStoredItem(KEYS.TRACKING, []);
+    const trkIdx = trackingList.findIndex((t) => t.transactionId === req.transactionId);
+    if (trkIdx !== -1) {
+      if (targetNorm === 'preparing') trackingList[trkIdx].status = 'In Preparation';
+      if (targetNorm === 'dispatched') trackingList[trkIdx].status = 'Dispatched';
+      if (targetNorm === 'in transit') trackingList[trkIdx].status = 'In Transit';
+      if (targetNorm === 'delivered') trackingList[trkIdx].status = 'Delivered';
+      if (targetNorm === 'completed') trackingList[trkIdx].status = 'Completed';
+      setStoredItem(KEYS.TRACKING, trackingList);
+    }
+
     setStoredItem(KEYS.REQUESTS, requests);
 
     const displayId = (req.transactionId || req.id || '').toUpperCase().replace('REQ-', 'ORD-');

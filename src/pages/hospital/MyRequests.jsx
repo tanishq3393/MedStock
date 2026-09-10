@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import { 
@@ -14,27 +14,41 @@ import {
   ChevronRight,
   Sparkles,
   ShieldCheck,
-  XCircle
+  XCircle,
+  Eye,
+  Filter,
+  RotateCcw,
+  Calendar,
+  ArrowUpDown,
+  AlertTriangle,
+  Package
 } from 'lucide-react';
-import { fetchOutgoingRequests, payForRequest, failPaymentForRequest, cancelRequisition } from '../../store/slices/requestSlice';
+import { 
+  fetchOutgoingRequests, 
+  payForRequest, 
+  failPaymentForRequest, 
+  cancelRequisition 
+} from '../../store/slices/requestSlice';
 import StatusBadge from '../../components/common/StatusBadge';
 import RazorpayMockModal from '../../components/common/RazorpayMockModal';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import WorkflowTimeline from '../../components/common/WorkflowTimeline';
 import EmptyState from '../../components/common/EmptyState';
 import CancelRequestModal from '../../components/hospital/CancelRequestModal';
+import OrderDetailsModal from '../../components/common/OrderDetailsModal';
 import { getCancellationPolicy, getCancellationBadgeProps } from '../../utils/cancellationPolicy';
 import toast from 'react-hot-toast';
 import { isHospitalSuspended, getLiveHospitalRecord } from '../../services/storage';
 import { getRequestRemainingTime } from '../../utils/expiryUtils';
+import { hospitalService } from '../../services/hospitalService';
+import { formatDate } from '../../utils/formatters';
 
 export const MyRequests = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.auth);
-  const { outgoingRequests, isLoading } = useSelector((state) => state.requests);
+  const { outgoingRequests = [], isLoading } = useSelector((state) => state.requests);
 
-  const liveHospital = React.useMemo(() => {
+  const liveHospital = useMemo(() => {
     return getLiveHospitalRecord(user?.id) || user;
   }, [user]);
 
@@ -42,11 +56,23 @@ export const MyRequests = () => {
   const isOperationalLocked = currentStatus !== 'verified';
   const isSuspended = currentStatus === 'suspended';
 
+  // Modal states
+  const [selectedOrderForDetails, setSelectedOrderForDetails] = useState(null);
   const [activePaymentReq, setActivePaymentReq] = useState(null);
   const [cancelModalReq, setCancelModalReq] = useState(null);
   const [rejectReasonModal, setRejectReasonModal] = useState(null);
+
+  // Search & Filters
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeFilter, setActiveFilter] = useState('all');
+  const [activeTabFilter, setActiveTabFilter] = useState('all');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const [providingHospitalFilter, setProvidingHospitalFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortField, setSortField] = useState('requestDate');
+  const [sortOrder, setSortOrder] = useState('desc');
 
   useEffect(() => {
     if (user?.id) {
@@ -54,11 +80,158 @@ export const MyRequests = () => {
     }
   }, [dispatch, user?.id]);
 
+  // Keep selected order in sync when outgoingRequests update
+  useEffect(() => {
+    if (selectedOrderForDetails) {
+      const fresh = outgoingRequests.find((r) => r.id === selectedOrderForDetails.id || r.transactionId === selectedOrderForDetails.transactionId);
+      if (fresh) {
+        setSelectedOrderForDetails(fresh);
+      }
+    }
+  }, [outgoingRequests]);
+
+  // Unique providing hospitals for filter dropdown
+  const uniqueProvidingHospitals = useMemo(() => {
+    const set = new Set();
+    outgoingRequests.forEach((r) => {
+      if (r.toHospitalName) set.add(r.toHospitalName);
+    });
+    return Array.from(set).sort();
+  }, [outgoingRequests]);
+
+  // Tab counts
+  const tabCounts = useMemo(() => {
+    const counts = { all: 0, actionable: 0, transit: 0, pending: 0, cancelled: 0 };
+    outgoingRequests.forEach((r) => {
+      counts.all += 1;
+      const s = (r.status || '').toLowerCase().trim();
+      if (s === 'accepted') counts.actionable += 1;
+      if (['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'in_transit'].includes(s)) counts.transit += 1;
+      if (s === 'pending' || s === 'requested' || s === 'reviewing') counts.pending += 1;
+      if (s === 'cancelled' || s === 'cancelled by buyer') counts.cancelled += 1;
+    });
+    return counts;
+  }, [outgoingRequests]);
+
+  // Filtered and sorted outgoing requests
+  const filtered = useMemo(() => {
+    const term = searchTerm.toLowerCase().trim();
+
+    return outgoingRequests
+      .filter((r) => {
+        const s = (r.status || '').toLowerCase().trim();
+        const ps = (r.paymentStatus || '').toLowerCase().trim();
+        const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(ps);
+
+        // 1. Tab filter
+        if (activeTabFilter === 'actionable' && s !== 'accepted') return false;
+        if (activeTabFilter === 'transit' && !['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'in_transit'].includes(s)) return false;
+        if (activeTabFilter === 'pending' && !['pending', 'requested', 'reviewing'].includes(s)) return false;
+        if (activeTabFilter === 'cancelled' && s !== 'cancelled' && s !== 'cancelled by buyer') return false;
+
+        // 2. Order Status dropdown
+        if (orderStatusFilter !== 'all') {
+          if (orderStatusFilter === 'requested' && !(s === 'pending' || s === 'requested' || s === 'reviewing')) return false;
+          else if (orderStatusFilter === 'in transit' && !(s === 'in transit' || s === 'in_transit')) return false;
+          else if (orderStatusFilter === 'dispatched' && !(s === 'dispatched' || s === 'shipped')) return false;
+          else if (orderStatusFilter === 'preparing' && !(s === 'preparing' || s === 'processing')) return false;
+          else if (orderStatusFilter === 'cancelled' && !(s === 'cancelled' || s === 'cancelled by buyer')) return false;
+          else if (orderStatusFilter === 'insufficient_stock' && !(s === 'insufficient_stock' || s === 'insufficient stock')) return false;
+          else if (!['requested', 'in transit', 'dispatched', 'preparing', 'cancelled', 'insufficient_stock'].includes(orderStatusFilter) && s !== orderStatusFilter) return false;
+        }
+
+        // 3. Payment Status dropdown
+        if (paymentStatusFilter !== 'all') {
+          if (paymentStatusFilter === 'paid' && !isPaid) return false;
+          if (paymentStatusFilter === 'pending' && !(ps === 'pending' && s === 'accepted')) return false;
+          if (paymentStatusFilter === 'failed' && ps !== 'failed') return false;
+          if (paymentStatusFilter === 'refunded' && !(ps === 'refunded' || r.cancellation?.refundStatus)) return false;
+        }
+
+        // 4. Providing Hospital dropdown
+        if (providingHospitalFilter !== 'all' && r.toHospitalName !== providingHospitalFilter) return false;
+
+        // 5. Priority dropdown
+        if (priorityFilter !== 'all') {
+          const isEmergency = r.urgency === 'Emergency' || r.priority === 'Emergency' || r.notes?.includes('ICU');
+          if (priorityFilter === 'emergency' && !isEmergency) return false;
+          if (priorityFilter === 'standard' && isEmergency) return false;
+        }
+
+        // 6. Date Range filter
+        if (startDate) {
+          const rDate = new Date(r.requestDate || r.createdAt);
+          if (rDate < new Date(startDate)) return false;
+        }
+        if (endDate) {
+          const rDate = new Date(r.requestDate || r.createdAt);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (rDate > end) return false;
+        }
+
+        // 7. Search term matching: Medicine, TXN, Providing Hospital
+        if (term) {
+          const medMatch = (r.medicineName || '').toLowerCase().includes(term);
+          const hospMatch = (r.toHospitalName || '').toLowerCase().includes(term);
+          const txnMatch = (r.transactionId || '').toLowerCase().includes(term) || (r.id || '').toLowerCase().includes(term);
+          const batchMatch = (r.batchNo || '').toLowerCase().includes(term);
+          if (!medMatch && !hospMatch && !txnMatch && !batchMatch) return false;
+        }
+
+        return true;
+      })
+      .sort((a, b) => {
+        let valA = a[sortField];
+        let valB = b[sortField];
+        if (sortField === 'totalAmount') {
+          valA = Number(valA) || 0;
+          valB = Number(valB) || 0;
+        } else if (sortField === 'quantity') {
+          valA = Number(valA) || 0;
+          valB = Number(valB) || 0;
+        } else {
+          valA = String(valA || '').toLowerCase();
+          valB = String(valB || '').toLowerCase();
+        }
+        if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
+        if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
+        return 0;
+      });
+  }, [
+    outgoingRequests, 
+    activeTabFilter, 
+    orderStatusFilter, 
+    paymentStatusFilter, 
+    providingHospitalFilter, 
+    priorityFilter, 
+    startDate, 
+    endDate, 
+    searchTerm, 
+    sortField, 
+    sortOrder
+  ]);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setActiveTabFilter('all');
+    setOrderStatusFilter('all');
+    setPaymentStatusFilter('all');
+    setProvidingHospitalFilter('all');
+    setPriorityFilter('all');
+    setStartDate('');
+    setEndDate('');
+    setSortField('requestDate');
+    setSortOrder('desc');
+  };
+
   const handlePaymentSuccess = async ({ requestId, paymentMethod }) => {
     const result = await dispatch(payForRequest({ requestId, paymentMethod }));
     if (result.meta.requestStatus === 'rejected') {
       throw new Error(result.payload || 'Payment could not be processed');
     }
+    toast.success('Payment successfully processed! Order moved to Paid.');
+    dispatch(fetchOutgoingRequests(user?.id));
     return result.payload;
   };
 
@@ -67,6 +240,8 @@ export const MyRequests = () => {
     if (result.meta.requestStatus === 'rejected') {
       throw new Error(result.payload || 'Payment failure could not be registered');
     }
+    toast.error('Payment simulation failed. Requisition remains Accepted for retry.');
+    dispatch(fetchOutgoingRequests(user?.id));
     return result.payload;
   };
 
@@ -82,59 +257,22 @@ export const MyRequests = () => {
         `Requisition cancelled successfully. Demo refund initiated: ₹${(amounts?.refundAmount || 0).toLocaleString()} (${policy?.refundPercent || 100}% refund).`
       );
       setCancelModalReq(null);
+      dispatch(fetchOutgoingRequests(user?.id));
     } catch (err) {
       toast.error(err?.message || 'Failed to cancel requisition');
       throw err;
     }
   };
 
-  const stages = [
-    { key: 'requested', label: 'REQUESTED' },
-    { key: 'reviewing', label: 'REVIEWING' },
-    { key: 'accepted', label: 'APPROVED' },
-    { key: 'packed', label: 'PACKED' },
-    { key: 'paid', label: 'IN TRANSIT' },
-    { key: 'delivered', label: 'DELIVERED' }
-  ];
-
-  const getStageIndex = (status) => {
-    const map = {
-      pending: 0,
-      requested: 0,
-      reviewing: 0,
-      accepted: 1,
-      approved: 1,
-      paid: 2,
-      preparing: 3,
-      processing: 3,
-      packed: 3,
-      dispatched: 4,
-      shipped: 4,
-      'in transit': 5,
-      'in_transit': 5,
-      delivered: 6,
-      received: 6,
-      completed: 7,
-      fulfilled: 7,
-      rejected: -1,
-      cancelled: -1
-    };
-    return map[status?.toLowerCase()?.trim()] ?? 0;
+  const handleConfirmDelivery = async (order) => {
+    try {
+      await hospitalService.advanceOrderFulfillment({ requestId: order.id });
+      toast.success('Dock intake confirmed! Requisition marked as Completed and stock added to inventory.');
+      dispatch(fetchOutgoingRequests(user?.id));
+    } catch (err) {
+      toast.error(err?.message || 'Failed to confirm delivery');
+    }
   };
-
-  const filtered = outgoingRequests.filter((r) => {
-    const matchesSearch = (r.medicineName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.toHospitalName || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (r.transactionId || '').toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const s = (r.status || '').toLowerCase();
-    if (activeFilter === 'all') return matchesSearch;
-    if (activeFilter === 'pending') return matchesSearch && (s === 'pending' || s === 'reviewing');
-    if (activeFilter === 'actionable') return matchesSearch && s === 'accepted';
-    if (activeFilter === 'transit') return matchesSearch && (['paid', 'preparing', 'dispatched', 'shipped', 'in transit'].includes(s));
-    if (activeFilter === 'cancelled') return matchesSearch && (s === 'cancelled' || s === 'cancelled by buyer');
-    return matchesSearch;
-  });
 
   return (
     <div className="space-y-6">
@@ -165,7 +303,7 @@ export const MyRequests = () => {
         </div>
       )}
       
-      {/* Header */}
+      {/* Header Section */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -177,7 +315,7 @@ export const MyRequests = () => {
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-0.5">
-            Track stage milestones of pharmaceutical procurements submitted to partner healthcare facilities.
+            Track stage milestones of pharmaceutical procurements submitted to partner healthcare facilities. Click any order row to view full tracking, timeline, and batch details.
           </p>
         </div>
 
@@ -192,7 +330,7 @@ export const MyRequests = () => {
         ) : (
           <Link
             to="/hospital/marketplace"
-            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02]"
+            className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all hover:scale-[1.02] cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
             <span>New Requisition</span>
@@ -200,308 +338,385 @@ export const MyRequests = () => {
         )}
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            placeholder="Search by Medicine, Hospital, or TXN..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
-          />
+      {/* Unified Filters & Search Toolbar (Section 6) */}
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-3.5">
+        {/* Row 1: Search & Status Tabs */}
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3">
+          <div className="relative w-full lg:w-80">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              placeholder="Search by Medicine, Hospital, or TXN..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:ring-2 focus:ring-primary-500/20 focus:border-primary-600 focus:outline-none font-medium transition-all"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 text-xs font-bold w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 scrollbar-thin">
+            {[
+              { id: 'all', label: 'All Orders', count: tabCounts.all },
+              { id: 'actionable', label: 'Ready for Escrow', count: tabCounts.actionable },
+              { id: 'transit', label: 'In Transit', count: tabCounts.transit },
+              { id: 'pending', label: 'Awaiting Approval', count: tabCounts.pending },
+              { id: 'cancelled', label: 'Cancelled', count: tabCounts.cancelled },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTabFilter(tab.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
+                  activeTabFilter === tab.id
+                    ? 'bg-slate-900 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                <span>{tab.label}</span>
+                <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
+                  activeTabFilter === tab.id ? 'bg-white/20 text-white' : 'bg-white text-slate-700 border border-slate-200'
+                }`}>
+                  {tab.count}
+                </span>
+              </button>
+            ))}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs font-bold w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-          {[
-            { id: 'all', label: 'All Orders' },
-            { id: 'actionable', label: 'Ready for Escrow' },
-            { id: 'transit', label: 'In Transit' },
-            { id: 'pending', label: 'Awaiting Approval' },
-            { id: 'cancelled', label: 'Cancelled' },
-          ].map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveFilter(tab.id)}
-              className={`px-3 py-1.5 rounded-xl transition-all whitespace-nowrap cursor-pointer ${
-                activeFilter === tab.id
-                  ? 'bg-slate-900 text-white shadow-sm'
-                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-              }`}
+        {/* Row 2: Secondary Compact Filters Row (Status, Payment, Date Range, Hospital, Priority, Clear) */}
+        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center gap-2.5 text-xs">
+          {/* Order Status Select */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Status:</span>
+            <select
+              value={orderStatusFilter}
+              onChange={(e) => setOrderStatusFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
             >
-              {tab.label}
+              <option value="all">All Statuses</option>
+              <option value="requested">Requested</option>
+              <option value="accepted">Accepted</option>
+              <option value="paid">Paid</option>
+              <option value="preparing">Preparing</option>
+              <option value="dispatched">Dispatched</option>
+              <option value="in transit">In Transit</option>
+              <option value="delivered">Delivered</option>
+              <option value="completed">Completed</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="rejected">Rejected</option>
+              <option value="insufficient_stock">Insufficient Stock</option>
+            </select>
+          </div>
+
+          {/* Payment Status Select */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Payment:</span>
+            <select
+              value={paymentStatusFilter}
+              onChange={(e) => setPaymentStatusFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Payments</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Payment Pending</option>
+              <option value="failed">Payment Failed</option>
+              <option value="refunded">Refunded</option>
+            </select>
+          </div>
+
+          {/* Providing Hospital Select */}
+          {uniqueProvidingHospitals.length > 0 && (
+            <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 max-w-[200px]">
+              <span className="text-[10px] font-mono uppercase font-bold text-slate-400 shrink-0">Seller:</span>
+              <select
+                value={providingHospitalFilter}
+                onChange={(e) => setProvidingHospitalFilter(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer truncate"
+              >
+                <option value="all">All Sellers</option>
+                {uniqueProvidingHospitals.map((hosp) => (
+                  <option key={hosp} value={hosp}>{hosp}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Priority Select */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Priority:</span>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Priorities</option>
+              <option value="emergency">Emergency / STAT</option>
+              <option value="standard">Standard</option>
+            </select>
+          </div>
+
+          {/* Date Range Inputs */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <Calendar className="w-3 h-3 text-slate-400" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-transparent text-[11px] font-mono text-slate-700 focus:outline-none"
+              title="From date"
+            />
+            <span className="text-slate-300">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-transparent text-[11px] font-mono text-slate-700 focus:outline-none"
+              title="To date"
+            />
+          </div>
+
+          {/* Clear Filters Button */}
+          {(searchTerm || activeTabFilter !== 'all' || orderStatusFilter !== 'all' || paymentStatusFilter !== 'all' || providingHospitalFilter !== 'all' || priorityFilter !== 'all' || startDate || endDate) && (
+            <button
+              onClick={handleClearFilters}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Clear Filters</span>
             </button>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* Visual Pipeline Requisition Cards */}
+      {/* Compact Order List / Table Layout (Section 4, 51, 52) */}
       {isLoading && outgoingRequests.length === 0 ? (
         <LoadingSpinner text="Querying active requisition pipeline..." />
       ) : filtered.length > 0 ? (
-        <div className="space-y-4">
-          {filtered.map((req) => {
-            const currentStageIdx = getStageIndex(req.status);
-            const isRejected = req.status === 'rejected';
-            const isCancelled = req.status === 'cancelled' || req.status === 'cancelled by buyer';
-            const cancelPolicy = getCancellationPolicy(req);
-            const cancelBadge = getCancellationBadgeProps(cancelPolicy);
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+          
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4">Medicine Name</th>
+                  <th className="py-3 px-4">Order / TXN ID</th>
+                  <th className="py-3 px-4">Providing Hospital</th>
+                  <th className="py-3 px-4 text-center">Qty</th>
+                  <th className="py-3 px-4 text-right">Settlement</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4">Payment</th>
+                  <th className="py-3 px-4">Date / SLA</th>
+                  <th className="py-3 px-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-sans">
+                {filtered.map((req) => {
+                  const s = (req.status || '').toLowerCase().trim();
+                  const ps = (req.paymentStatus || '').toLowerCase().trim();
+                  const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(ps);
+                  const isFailed = ps === 'failed';
+                  const isCancelled = s === 'cancelled' || s === 'cancelled by buyer';
+                  const isRejected = s === 'rejected';
+                  const cancelPolicy = getCancellationPolicy(req);
+                  const cancelBadge = getCancellationBadgeProps(cancelPolicy);
+                  const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
 
-            return (
-              <div
-                key={req.id}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-card hover:shadow-card-hover transition-all p-5 space-y-4"
-              >
-                {/* Top Row: Medicine Info & Action Buttons */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-base font-extrabold text-slate-900">
-                        {req.medicineName}
-                      </h3>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 font-mono">
-                      <span>TXN: <strong className="text-slate-800">{req.transactionId || 'TXN-000000'}</strong></span>
-                      <span>•</span>
-                      <span>Providing Hospital: <strong className="text-primary-700">{req.toHospitalName}</strong></span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col items-end gap-1.5">
-                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                      <StatusBadge status={req.status} />
-                      {cancelBadge && !isCancelled && (
-                        <span 
-                          className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border shadow-xs ${cancelBadge.bgClass}`}
-                          title={cancelPolicy.reason}
-                        >
-                          <span className={`w-1.5 h-1.5 rounded-full ${cancelBadge.dotColor}`} />
-                          <span>{cancelBadge.label}</span>
+                  return (
+                    <tr
+                      key={req.id}
+                      onClick={() => setSelectedOrderForDetails(req)}
+                      className="hover:bg-teal-50/30 transition-colors cursor-pointer group"
+                    >
+                      {/* Medicine */}
+                      <td className="py-3.5 px-4 font-bold text-slate-900 group-hover:text-teal-900 transition-colors">
+                        <div className="flex items-center gap-1.5">
+                          <span>{req.medicineName}</span>
+                          {req.urgency === 'Emergency' && (
+                            <span className="px-1.5 py-0.2 rounded text-[8px] font-mono font-black uppercase bg-red-100 text-red-700 border border-red-200">
+                              STAT
+                            </span>
+                          )}
+                          {(req.hasDiscrepancy || req.discrepancy) && (
+                            <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" title="Discrepancy logged" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          {req.genericName || req.power || 'Active Batch'}
                         </span>
-                      )}
-                    </div>
+                      </td>
 
-                    {(() => {
-                      const sla = getRequestRemainingTime(req.requestDate, req.expiryDate);
-                      if (req.status === 'expired' || (req.status === 'pending' && sla.isExpired)) {
-                        return (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                            48h SLA EXPIRED
+                      {/* Order / TXN ID */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-700">
+                        {req.transactionId || req.id}
+                      </td>
+
+                      {/* Providing Hospital */}
+                      <td className="py-3.5 px-4 text-slate-700 font-medium max-w-[180px] truncate" title={req.toHospitalName}>
+                        {req.toHospitalName}
+                      </td>
+
+                      {/* Quantity */}
+                      <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
+                        {req.quantity}
+                      </td>
+
+                      {/* Total Settlement */}
+                      <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900">
+                        ₹{(req.totalAmount || 0).toLocaleString()}
+                      </td>
+
+                      {/* Current Status */}
+                      <td className="py-3.5 px-4 text-center">
+                        <StatusBadge status={req.status} />
+                      </td>
+
+                      {/* Payment Status */}
+                      <td className="py-3.5 px-4 text-xs font-mono">
+                        {isPaid ? (
+                          <span className="inline-flex items-center gap-1 text-emerald-700 font-bold">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                            <span>Paid</span>
                           </span>
-                        );
-                      }
-                      if (req.status === 'pending') {
-                        return (
-                          <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-200 flex items-center gap-1">
-                            <Clock className="w-2.5 h-2.5 text-amber-600" />
-                            {sla.formattedRemaining} left
+                        ) : isFailed ? (
+                          <span className="inline-flex items-center gap-1 text-rose-600 font-bold">
+                            <XCircle className="w-3.5 h-3.5" />
+                            <span>Failed</span>
                           </span>
-                        );
-                      }
-                      return null;
-                    })()}
-                  </div>
-                </div>
+                        ) : s === 'accepted' ? (
+                          <span className="inline-flex items-center gap-1 text-amber-700 font-semibold">
+                            <Clock className="w-3 h-3 text-amber-600" />
+                            <span>Pending</span>
+                          </span>
+                        ) : isRejected ? (
+                          <span className="text-slate-400">Declined</span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </td>
 
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-left space-y-0.5">
-                    <span className="text-[10px] uppercase font-mono text-slate-400 block">Total Settlement</span>
-                    <span className="text-lg font-mono font-extrabold text-slate-900 leading-tight block">
-                      ₹{(req.totalAmount || 0).toLocaleString()}
-                    </span>
+                      {/* Order Date / SLA */}
+                      <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px]">
+                        <div>{formatDate(req.requestDate)}</div>
+                        {s === 'pending' && (
+                          <span className={`text-[9px] font-bold ${sla.isExpired ? 'text-rose-700' : 'text-amber-700'}`}>
+                            {sla.isExpired ? 'SLA Expired' : `${sla.formattedRemaining} left`}
+                          </span>
+                        )}
+                      </td>
 
-                    {/* Payment Status inside Existing Settlement Section */}
-                    {(() => {
-                      const isPaid = req.paymentStatus === 'paid' || req.paymentStatus === 'success' || ['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'delivered', 'completed'].includes((req.status || '').toLowerCase());
-                      const isFailed = req.paymentStatus === 'failed';
-                      const isRefunded = req.paymentStatus === 'refunded' || req.cancellation?.refundStatus;
+                      {/* Action */}
+                      <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center justify-end gap-1.5">
+                          {/* Pay Now Button directly accessible if accepted */}
+                          {s === 'accepted' && !isPaid && !isFailed && (
+                            <button
+                              onClick={() => !isSuspended && setActivePaymentReq(req)}
+                              disabled={isSuspended}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                              title="Pay Now"
+                            >
+                              Pay Now
+                            </button>
+                          )}
 
-                      if (isRefunded) {
-                        return (
-                          <div className="pt-0.5 text-[11px] font-mono">
-                            <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
-                            <span className="text-purple-700 font-bold">Refunded</span>
-                          </div>
-                        );
-                      }
+                          {s === 'accepted' && isFailed && (
+                            <button
+                              onClick={() => !isSuspended && setActivePaymentReq(req)}
+                              disabled={isSuspended}
+                              className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] shadow-xs cursor-pointer"
+                              title="Retry Payment"
+                            >
+                              Retry
+                            </button>
+                          )}
 
-                      if (isPaid) {
-                        return (
-                          <div className="pt-0.5 text-[11px] font-mono">
-                            <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
-                            <div className="flex items-center gap-1 text-emerald-700 font-bold">
-                              <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
-                              <span>Paid</span>
-                            </div>
-                            {req.paidDate && (
-                              <div className="text-[10px] text-slate-400 mt-0.5">
-                                Paid on: <span className="text-slate-600">{new Date(req.paidDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}</span>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      }
+                          {/* Existing View Details Button (Section 4) */}
+                          <button
+                            onClick={() => setSelectedOrderForDetails(req)}
+                            className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+                            title="View Order Details"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
 
-                      if (req.status === 'accepted') {
-                        if (isFailed) {
-                          return (
-                            <div className="pt-0.5 text-[11px] font-mono">
-                              <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
-                              <div className="flex items-center gap-1 text-rose-600 font-bold">
-                                <XCircle className="w-3.5 h-3.5 text-rose-500" />
-                                <span>Payment Failed</span>
-                              </div>
-                            </div>
-                          );
-                        }
-                        return (
-                          <div className="pt-0.5 text-[11px] font-mono">
-                            <span className="text-[10px] text-slate-400 block uppercase">Payment Status:</span>
-                            <div className="flex items-center gap-1 text-amber-700 font-semibold">
-                              <Clock className="w-3 h-3 text-amber-600" />
-                              <span>Payment Pending</span>
-                            </div>
-                          </div>
-                        );
-                      }
+          {/* Mobile / Tablet Compact Card Layout (Section 52) */}
+          <div className="block md:hidden divide-y divide-slate-100">
+            {filtered.map((req) => {
+              const s = (req.status || '').toLowerCase().trim();
+              const ps = (req.paymentStatus || '').toLowerCase().trim();
+              const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(ps);
+              const isFailed = ps === 'failed';
 
-                      return null;
-                    })()}
-                  </div>
-
-                  <div className="flex items-center gap-2.5 flex-wrap justify-end">
-                    {/* ONLY AFTER Accepted: Pay Now or Retry Payment */}
-                    {req.status === 'accepted' && req.paymentStatus !== 'failed' && (
-                      <button
-                        onClick={() => !isSuspended && setActivePaymentReq(req)}
-                        disabled={isSuspended}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md shadow-emerald-600/20 transition-all hover:scale-105 cursor-pointer"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                        <span>Pay Now</span>
-                      </button>
-                    )}
-
-                    {req.status === 'accepted' && req.paymentStatus === 'failed' && (
-                      <button
-                        onClick={() => !isSuspended && setActivePaymentReq(req)}
-                        disabled={isSuspended}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition-all hover:scale-105 cursor-pointer"
-                      >
-                        <CreditCard className="w-3.5 h-3.5" />
-                        <span>Retry Payment</span>
-                      </button>
-                    )}
-
-                    {['paid', 'preparing', 'dispatched', 'shipped', 'in transit'].includes(req.status?.toLowerCase()) && (
-                      <Link
-                        to={`/hospital/track?txn=${req.transactionId}`}
-                        className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary-600 hover:bg-primary-700 text-white font-bold text-xs shadow-md shadow-primary-600/20 transition-all cursor-pointer"
-                      >
-                        <Truck className="w-3.5 h-3.5" />
-                        <span>Track Live Telemetry</span>
-                      </Link>
-                    )}
-
-                    {/* Cancel Request Action Button */}
-                    {cancelPolicy.canCancel && (
-                      <button
-                        type="button"
-                        onClick={() => setCancelModalReq(req)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 font-bold text-xs transition-all shadow-xs hover:shadow cursor-pointer"
-                        title="Cancel this requisition and receive refund based on policy window"
-                      >
-                        <XCircle className="w-3.5 h-3.5 text-rose-600" />
-                        <span>Cancel Request</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Workflow Timeline */}
-                <div className="pt-2 border-t border-slate-100">
-                  <WorkflowTimeline 
-                    type="request" 
-                    currentStatus={req.status} 
-                    timestamp={req.requestDate}
-                    isCancelled={isCancelled}
-                    cancellationDetails={req.cancellation}
-                  />
-                </div>
-
-                {/* Cancelled Details Strip */}
-                {isCancelled && (
-                  <div className="p-4 bg-rose-50/70 border border-rose-200 rounded-2xl text-xs text-rose-950 space-y-2">
-                    <div className="flex items-center justify-between flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono font-black text-[10px] px-2 py-0.5 rounded bg-rose-200 text-rose-900 uppercase tracking-wider">
-                          Cancelled by Buyer
-                        </span>
-                        <span className="font-bold text-slate-900">
-                          Reason: {req.cancellation?.reason || 'Buyer requirement changed'}
-                        </span>
+              return (
+                <div
+                  key={req.id}
+                  onClick={() => setSelectedOrderForDetails(req)}
+                  className="p-4 hover:bg-slate-50 transition-colors cursor-pointer space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="font-extrabold text-sm text-slate-900">{req.medicineName}</div>
+                      <div className="text-xs font-mono text-slate-500 mt-0.5">
+                        TXN: <strong className="text-slate-700">{req.transactionId || req.id}</strong>
                       </div>
-                      <span className="font-mono text-[11px] text-slate-500">
-                        {req.cancellation?.cancelledAt ? new Date(req.cancellation.cancelledAt).toLocaleString() : ''}
+                    </div>
+                    <StatusBadge status={req.status} />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 font-mono">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Seller</span>
+                      <span className="font-bold text-slate-800 truncate block">{req.toHospitalName}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Qty</span>
+                      <span className="font-bold text-slate-800">{req.quantity} units</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Settlement</span>
+                      <span className="font-black text-slate-900">₹{(req.totalAmount || 0).toLocaleString()}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Payment</span>
+                      <span className={`font-bold ${isPaid ? 'text-emerald-700' : isFailed ? 'text-rose-600' : 'text-amber-700'}`}>
+                        {isPaid ? 'Paid' : isFailed ? 'Failed' : s === 'accepted' ? 'Pending' : '—'}
                       </span>
                     </div>
-
-                    {req.cancellation?.note && (
-                      <p className="text-[11px] text-slate-600 italic bg-white/70 p-2.5 rounded-xl border border-rose-100">
-                        "{req.cancellation.note}"
-                      </p>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-3 text-[11px] font-mono pt-1 text-slate-700 border-t border-rose-200/60">
-                      <span>Window: <strong className="text-slate-800">{req.cancellation?.stageLabel || 'Within 24h'}</strong></span>
-                      <span>•</span>
-                      <span>Cancellation Fee: <strong className="text-amber-800">₹{(req.cancellation?.penaltyAmount || 0).toLocaleString()} ({req.cancellation?.penaltyPercent || 0}%)</strong></span>
-                      <span>•</span>
-                      <span>Estimated Refund: <strong className="text-emerald-700 font-bold">₹{(req.cancellation?.refundAmount || 0).toLocaleString()} ({req.cancellation?.refundPercent || 100}%)</strong></span>
-                      <span>•</span>
-                      <span className="text-slate-500 italic">{req.cancellation?.refundStatus || 'Demo Escrow Processed'}</span>
-                    </div>
                   </div>
-                )}
 
-                {/* Reject / Expired explanation if applicable */}
-                {isRejected && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-800 flex items-center justify-between">
-                    <div>
-                      {req.rejectReason?.toLowerCase().includes('first-acceptance') ? (
-                        <p className="font-semibold text-amber-900">
-                          ⚡ <strong>Auto-Resolved:</strong> {req.rejectReason}
-                        </p>
-                      ) : (
-                        <span>Requisition declined: {req.rejectReason || 'Stock reserved for critical inpatient use.'}</span>
+                  <div className="flex items-center justify-between pt-1 text-xs text-slate-500" onClick={(e) => e.stopPropagation()}>
+                    <span className="font-mono text-[11px]">{formatDate(req.requestDate)}</span>
+                    
+                    <div className="flex items-center gap-2">
+                      {s === 'accepted' && !isPaid && !isFailed && (
+                        <button
+                          onClick={() => !isSuspended && setActivePaymentReq(req)}
+                          className="px-3 py-1 bg-emerald-600 text-white rounded-lg font-bold text-xs"
+                        >
+                          Pay Now
+                        </button>
                       )}
+                      <button
+                        onClick={() => setSelectedOrderForDetails(req)}
+                        className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg font-bold text-xs flex items-center gap-1"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Details</span>
+                      </button>
                     </div>
-                    <button
-                      onClick={() => setRejectReasonModal(req)}
-                      className="text-xs font-bold underline ml-2 flex-shrink-0"
-                    >
-                      Audit Details
-                    </button>
                   </div>
-                )}
-                {req.status === 'expired' && (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 flex items-center justify-between">
-                    <span>Requisition expired after the 48-hour peer fulfillment window. No funds deducted.</span>
-                    <span className="text-[10px] font-mono font-bold text-amber-800">SLA EXPIRED</span>
-                  </div>
-                )}
-
-                {/* Meta details strip */}
-                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-500 font-mono">
-                  <span>Requisition Date: <strong className="text-slate-700">{new Date(req.requestDate).toLocaleDateString()}</strong></span>
-                  <span>Quantity: <strong className="text-slate-900 font-bold">{req.quantity} units</strong></span>
-                  <span>Logistics SLA: <strong className="text-emerald-700 font-bold">Cold Chain 2°C - 8°C Verified</strong></span>
                 </div>
+              );
+            })}
+          </div>
 
-              </div>
-            );
-          })}
         </div>
       ) : (
         <EmptyState
@@ -514,7 +729,28 @@ export const MyRequests = () => {
         />
       )}
 
-      {/* Razorpay Escrow Modal */}
+      {/* Reusable Complete Order Details Modal (Section 16, 17, 18, 21, 43) */}
+      {selectedOrderForDetails && (
+        <OrderDetailsModal
+          isOpen={!!selectedOrderForDetails}
+          onClose={() => setSelectedOrderForDetails(null)}
+          order={selectedOrderForDetails}
+          role="hospital"
+          isSuspended={isSuspended}
+          onPayNow={(order) => {
+            setActivePaymentReq(order);
+          }}
+          onRetryPayment={(order) => {
+            setActivePaymentReq(order);
+          }}
+          onCancelRequest={(order) => {
+            setCancelModalReq(order);
+          }}
+          onConfirmDelivery={handleConfirmDelivery}
+        />
+      )}
+
+      {/* Razorpay Escrow Modal (Preserved) */}
       {activePaymentReq && (
         <RazorpayMockModal
           isOpen={!!activePaymentReq}
@@ -525,7 +761,7 @@ export const MyRequests = () => {
         />
       )}
 
-      {/* Cancel Request Confirmation Modal */}
+      {/* Cancel Request Confirmation Modal (Preserved) */}
       {cancelModalReq && (
         <CancelRequestModal
           isOpen={!!cancelModalReq}
@@ -535,7 +771,7 @@ export const MyRequests = () => {
         />
       )}
 
-      {/* Rejection Reason Modal */}
+      {/* Rejection Reason Modal (Preserved) */}
       {rejectReasonModal && (
         <Modal
           isOpen={!!rejectReasonModal}

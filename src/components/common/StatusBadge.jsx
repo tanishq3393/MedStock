@@ -46,9 +46,10 @@ export const StatusBadge = ({ status, className = '', showIcon = true }) => {
     );
   }
 
-  // AMBER/ORANGE: disposal requested / pending disposal / near expiry / expiring soon / low stock / attention / payment pending
-  if (['disposal requested', 'disposal_requested', 'pending_disposal', 'pending disposal', 'expiring soon', 'expiring_soon', 'near expiry', 'near-expiry', 'low stock', 'low-stock', 'low_stock', 'pending', 'payment pending', 'payment_pending', 'reported', 'quarantine', 'in transit to bio-centre', 'documents_missing', 'documents missing'].includes(normalized)) {
+  // AMBER/ORANGE: disposal requested / pending disposal / near expiry / expiring soon / low stock / attention / payment pending / requested
+  if (['requested', 'disposal requested', 'disposal_requested', 'pending_disposal', 'pending disposal', 'expiring soon', 'expiring_soon', 'near expiry', 'near-expiry', 'low stock', 'low-stock', 'low_stock', 'pending', 'payment pending', 'payment_pending', 'reported', 'quarantine', 'in transit to bio-centre', 'documents_missing', 'documents missing'].includes(normalized)) {
     let displayLabel = status;
+    if (normalized === 'requested') displayLabel = 'Requested';
     if (normalized === 'near-expiry' || normalized === 'near expiry') displayLabel = 'Expiring Soon';
     if (normalized === 'low-stock' || normalized === 'low_stock') displayLabel = 'Low Stock';
     if (normalized === 'pending_disposal') displayLabel = 'Disposal Requested';
@@ -62,13 +63,16 @@ export const StatusBadge = ({ status, className = '', showIcon = true }) => {
     );
   }
 
-  // RED: expired / critical / out of stock / rejected / failed / payment failed / cancelled / suspended
-  if (['expired', 'critical', 'critical expiry', 'out of stock', 'out_of_stock', 'rejected', 'failed', 'payment failed', 'payment_failed', 'cancelled', 'suspended'].includes(normalized)) {
+  // RED: expired / critical / out of stock / rejected / failed / payment failed / cancelled / suspended / discrepancy / insufficient stock
+  if (['expired', 'critical', 'critical expiry', 'out of stock', 'out_of_stock', 'rejected', 'failed', 'payment failed', 'payment_failed', 'cancelled', 'cancelled by buyer', 'suspended', 'discrepancy', 'insufficient stock', 'insufficient_stock'].includes(normalized)) {
     let displayLabel = status;
     if (normalized === 'critical') displayLabel = 'Critical Expiry';
     if (normalized === 'out_of_stock' || normalized === 'out of stock') displayLabel = 'Out of Stock';
     if (normalized === 'expired') displayLabel = 'Expired';
     if (normalized === 'payment failed' || normalized === 'payment_failed') displayLabel = 'Payment Failed';
+    if (normalized === 'cancelled by buyer') displayLabel = 'Cancelled';
+    if (normalized === 'discrepancy') displayLabel = 'Discrepancy';
+    if (normalized === 'insufficient stock' || normalized === 'insufficient_stock') displayLabel = 'Insufficient Stock';
 
     return (
       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 border border-rose-200/80 ${className}`}>

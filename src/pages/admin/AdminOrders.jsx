@@ -25,27 +25,16 @@ import {
   Ban,
   ThermometerSnowflake,
   ShieldCheck,
-  ArrowRight
+  ArrowRight,
+  RotateCcw
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import StatusBadge from '../../components/common/StatusBadge';
 import Modal from '../../components/common/Modal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
-import WorkflowTimeline from '../../components/common/WorkflowTimeline';
+import OrderDetailsModal from '../../components/common/OrderDetailsModal';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import toast from 'react-hot-toast';
-
-// 8-stage lifecycle definition
-const LIFECYCLE_STAGES = [
-  { key: 'requested', label: 'Requested' },
-  { key: 'accepted', label: 'Accepted' },
-  { key: 'paid', label: 'Paid' },
-  { key: 'preparing', label: 'Preparing' },
-  { key: 'dispatched', label: 'Dispatched' },
-  { key: 'in transit', label: 'In Transit' },
-  { key: 'delivered', label: 'Delivered' },
-  { key: 'completed', label: 'Completed' },
-];
 
 const FILTER_TABS = [
   { id: 'all', label: 'All Orders' },
@@ -67,12 +56,22 @@ const FILTER_TABS = [
 export const AdminOrders = () => {
   const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [activeFilter, setActiveFilter] = useState('all');
+
+  // Search & Filters (Section 8, 9)
   const [searchTerm, setSearchTerm] = useState('');
+  const [activeFilterTab, setActiveFilterTab] = useState('all');
+  const [orderStatusFilter, setOrderStatusFilter] = useState('all');
+  const [paymentStatusFilter, setPaymentStatusFilter] = useState('all');
+  const [requestingHospitalFilter, setRequestingHospitalFilter] = useState('all');
+  const [providingHospitalFilter, setProvidingHospitalFilter] = useState('all');
+  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [batchSearchTerm, setBatchSearchTerm] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [sortField, setSortField] = useState('orderDate');
   const [sortOrder, setSortOrder] = useState('desc');
 
-  // Details Modal
+  // Details Modal (Section 16, 17, 18, 43)
   const [selectedOrder, setSelectedOrder] = useState(null);
 
   // Status Change Confirmation Modal
@@ -110,8 +109,8 @@ export const AdminOrders = () => {
     let discrepancies = 0;
 
     orders.forEach((o) => {
-      const s = (o.status || '').toLowerCase();
-      const ps = (o.paymentStatus || '').toLowerCase();
+      const s = (o.status || '').toLowerCase().trim();
+      const ps = (o.paymentStatus || '').toLowerCase().trim();
       if (ps === 'pending' && s === 'accepted') pendingPayment += 1;
       if (['preparing', 'dispatched', 'in transit'].includes(s)) inFulfillment += 1;
       if (s === 'delivered' || s === 'completed') completed += 1;
@@ -151,44 +150,112 @@ export const AdminOrders = () => {
     return counts;
   }, [orders]);
 
+  // Unique requesting & providing hospitals
+  const { requestingHospitals, providingHospitals } = useMemo(() => {
+    const reqSet = new Set();
+    const provSet = new Set();
+
+    orders.forEach((o) => {
+      if (o.hospital?.name) reqSet.add(o.hospital.name);
+      if (o.fulfillingHospital?.name) provSet.add(o.fulfillingHospital.name);
+    });
+
+    return {
+      requestingHospitals: Array.from(reqSet).sort(),
+      providingHospitals: Array.from(provSet).sort(),
+    };
+  }, [orders]);
+
   // Filtered and sorted orders
   const filteredOrders = useMemo(() => {
     const term = searchTerm.toLowerCase().trim();
+    const batchTerm = batchSearchTerm.toLowerCase().trim();
 
     return orders
       .filter((o) => {
-        // Tab filtering
         const s = (o.status || '').toLowerCase().trim();
         const ps = (o.paymentStatus || '').toLowerCase().trim();
+
+        // 1. Tab filter
         let matchesTab = true;
-
-        if (activeFilter === 'requested') matchesTab = (s === 'pending' || s === 'requested');
-        else if (activeFilter === 'accepted') matchesTab = (s === 'accepted');
-        else if (activeFilter === 'paid') matchesTab = (s === 'paid');
-        else if (activeFilter === 'preparing') matchesTab = (s === 'preparing' || s === 'processing');
-        else if (activeFilter === 'dispatched') matchesTab = (s === 'dispatched' || s === 'shipped');
-        else if (activeFilter === 'in transit') matchesTab = (s === 'in transit' || s === 'in_transit');
-        else if (activeFilter === 'delivered') matchesTab = (s === 'delivered');
-        else if (activeFilter === 'completed') matchesTab = (s === 'completed');
-        else if (activeFilter === 'cancelled') matchesTab = (s === 'cancelled');
-        else if (activeFilter === 'rejected') matchesTab = (s === 'rejected');
-        else if (activeFilter === 'payment pending') matchesTab = (ps === 'pending' && s === 'accepted');
-        else if (activeFilter === 'payment failed') matchesTab = (ps === 'failed');
-        else if (activeFilter === 'discrepancy') matchesTab = Boolean(o.hasDiscrepancy || o.discrepancy);
-
-        // Search matching: Order ID, Medicine, Requesting Hospital, Providing Hospital, Batch
+        if (activeFilterTab === 'requested') matchesTab = (s === 'pending' || s === 'requested');
+        else if (activeFilterTab === 'accepted') matchesTab = (s === 'accepted');
+        else if (activeFilterTab === 'paid') matchesTab = (s === 'paid');
+        else if (activeFilterTab === 'preparing') matchesTab = (s === 'preparing' || s === 'processing');
+        else if (activeFilterTab === 'dispatched') matchesTab = (s === 'dispatched' || s === 'shipped');
+        else if (activeFilterTab === 'in transit') matchesTab = (s === 'in transit' || s === 'in_transit');
+        else if (activeFilterTab === 'delivered') matchesTab = (s === 'delivered');
+        else if (activeFilterTab === 'completed') matchesTab = (s === 'completed');
+        else if (activeFilterTab === 'cancelled') matchesTab = (s === 'cancelled');
+        else if (activeFilterTab === 'rejected') matchesTab = (s === 'rejected');
+        else if (activeFilterTab === 'payment pending') matchesTab = (ps === 'pending' && s === 'accepted');
+        else if (activeFilterTab === 'payment failed') matchesTab = (ps === 'failed');
+        else if (activeFilterTab === 'discrepancy') matchesTab = Boolean(o.hasDiscrepancy || o.discrepancy);
         if (!matchesTab) return false;
-        if (!term) return true;
 
-        const orderIdMatch = (o.orderId || '').toLowerCase().includes(term) || (o.transactionId || '').toLowerCase().includes(term);
-        const medMatch = (o.medicineName || '').toLowerCase().includes(term) ||
-          o.items?.some((it) => (it.name || '').toLowerCase().includes(term) || (it.genericName || '').toLowerCase().includes(term));
-        const reqHospMatch = (o.hospital?.name || '').toLowerCase().includes(term) || (o.requestingHospital?.name || '').toLowerCase().includes(term);
-        const provHospMatch = (o.fulfillingHospital?.name || '').toLowerCase().includes(term) || (o.providingHospital?.name || '').toLowerCase().includes(term);
-        const batchMatch = (o.batchNo || '').toLowerCase().includes(term) ||
-          o.items?.some((it) => (it.batchNo || '').toLowerCase().includes(term));
+        // 2. Order status filter dropdown
+        if (orderStatusFilter !== 'all') {
+          if (orderStatusFilter === 'requested' && !(s === 'pending' || s === 'requested')) return false;
+          else if (orderStatusFilter === 'in transit' && !(s === 'in transit' || s === 'in_transit')) return false;
+          else if (orderStatusFilter === 'dispatched' && !(s === 'dispatched' || s === 'shipped')) return false;
+          else if (orderStatusFilter === 'preparing' && !(s === 'preparing' || s === 'processing')) return false;
+          else if (orderStatusFilter === 'insufficient_stock' && !(s === 'insufficient_stock' || s === 'insufficient stock')) return false;
+          else if (!['requested', 'in transit', 'dispatched', 'preparing', 'insufficient_stock'].includes(orderStatusFilter) && s !== orderStatusFilter) return false;
+        }
 
-        return orderIdMatch || medMatch || reqHospMatch || provHospMatch || batchMatch;
+        // 3. Payment status filter dropdown
+        if (paymentStatusFilter !== 'all') {
+          if (paymentStatusFilter === 'paid' && ps !== 'paid') return false;
+          if (paymentStatusFilter === 'pending' && !(ps === 'pending' && s === 'accepted')) return false;
+          if (paymentStatusFilter === 'failed' && ps !== 'failed') return false;
+          if (paymentStatusFilter === 'refunded' && ps !== 'refunded') return false;
+        }
+
+        // 4. Requesting hospital filter
+        if (requestingHospitalFilter !== 'all' && o.hospital?.name !== requestingHospitalFilter) return false;
+
+        // 5. Providing hospital filter
+        if (providingHospitalFilter !== 'all' && o.fulfillingHospital?.name !== providingHospitalFilter) return false;
+
+        // 6. Priority filter
+        if (priorityFilter !== 'all') {
+          const isStat = o.urgency === 'Emergency' || o.priority === 'Emergency';
+          if (priorityFilter === 'emergency' && !isStat) return false;
+          if (priorityFilter === 'standard' && isStat) return false;
+        }
+
+        // 7. Batch search term
+        if (batchTerm) {
+          const batchMatch = (o.batchNo || '').toLowerCase().includes(batchTerm) ||
+            o.items?.some((it) => (it.batchNo || '').toLowerCase().includes(batchTerm));
+          if (!batchMatch) return false;
+        }
+
+        // 8. Date range filter
+        if (startDate) {
+          const oDate = new Date(o.orderDate);
+          if (oDate < new Date(startDate)) return false;
+        }
+        if (endDate) {
+          const oDate = new Date(o.orderDate);
+          const end = new Date(endDate);
+          end.setHours(23, 59, 59, 999);
+          if (oDate > end) return false;
+        }
+
+        // 9. Main Search matching: Order ID, Medicine, Requesting Hospital, Providing Hospital, Batch
+        if (term) {
+          const orderIdMatch = (o.orderId || '').toLowerCase().includes(term) || (o.transactionId || '').toLowerCase().includes(term);
+          const medMatch = (o.medicineName || '').toLowerCase().includes(term) ||
+            o.items?.some((it) => (it.name || '').toLowerCase().includes(term) || (it.genericName || '').toLowerCase().includes(term));
+          const reqHospMatch = (o.hospital?.name || '').toLowerCase().includes(term);
+          const provHospMatch = (o.fulfillingHospital?.name || '').toLowerCase().includes(term);
+          const bMatch = (o.batchNo || '').toLowerCase().includes(term);
+
+          if (!orderIdMatch && !medMatch && !reqHospMatch && !provHospMatch && !bMatch) return false;
+        }
+
+        return true;
       })
       .sort((a, b) => {
         let valA = a[sortField];
@@ -207,7 +274,36 @@ export const AdminOrders = () => {
         if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [orders, activeFilter, searchTerm, sortField, sortOrder]);
+  }, [
+    orders, 
+    activeFilterTab, 
+    orderStatusFilter, 
+    paymentStatusFilter, 
+    requestingHospitalFilter, 
+    providingHospitalFilter, 
+    priorityFilter, 
+    batchSearchTerm, 
+    startDate, 
+    endDate, 
+    searchTerm, 
+    sortField, 
+    sortOrder
+  ]);
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setActiveFilterTab('all');
+    setOrderStatusFilter('all');
+    setPaymentStatusFilter('all');
+    setRequestingHospitalFilter('all');
+    setProvidingHospitalFilter('all');
+    setPriorityFilter('all');
+    setBatchSearchTerm('');
+    setStartDate('');
+    setEndDate('');
+    setSortField('orderDate');
+    setSortOrder('desc');
+  };
 
   const handleOpenStatusConfirm = (order, newStatus) => {
     setConfirmStatusModal({
@@ -242,23 +338,10 @@ export const AdminOrders = () => {
     }
   };
 
-  // Helper to get active step index for the 8-stage tracker
-  const getStageIndex = (status) => {
-    const s = (status || '').toLowerCase().trim();
-    if (s === 'pending' || s === 'requested' || s === 'reviewing') return 0;
-    if (s === 'accepted' || s === 'approved') return 1;
-    if (s === 'paid') return 2;
-    if (s === 'preparing' || s === 'processing') return 3;
-    if (s === 'dispatched' || s === 'shipped') return 4;
-    if (s === 'in transit' || s === 'in_transit') return 5;
-    if (s === 'delivered') return 6;
-    if (s === 'completed') return 7;
-    return -1;
-  };
-
   return (
     <div className="space-y-6">
-      {/* Refined MediStock Header Banner */}
+      
+      {/* Refined MediStock Header Banner (Section 35) */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-ocean-950 via-ocean-900 to-teal-950 text-white shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(10,110,121,0.25),transparent_70%)] pointer-events-none" />
         
@@ -274,7 +357,7 @@ export const AdminOrders = () => {
             Inter-Hospital Requisitions & Order Fulfillment
           </h1>
           <p className="text-xs text-slate-300 max-w-2xl font-normal leading-relaxed">
-            Supervise peer hospital procurements, verify escrow settlements, monitor cold-chain transit telemetries, and maintain unified ledger compliance.
+            Supervise peer hospital procurements, monitor cold-chain transit telemetries, inspect physical dock intake discrepancies, and maintain unified ledger compliance.
           </p>
         </div>
 
@@ -289,7 +372,7 @@ export const AdminOrders = () => {
         </div>
       </div>
 
-      {/* Polish Metric Cards Bar */}
+      {/* Metric Cards Bar */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3.5">
         <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm hover:shadow transition-all space-y-1">
           <div className="flex items-center justify-between text-slate-400">
@@ -306,7 +389,7 @@ export const AdminOrders = () => {
             <Clock className="w-4 h-4 text-amber-600" />
           </div>
           <div className="text-2xl font-mono font-black text-amber-800">{metrics.pendingPayment}</div>
-          <span className="text-[10px] text-amber-700 font-mono">Accepted & awaiting buyer payment</span>
+          <span className="text-[10px] text-amber-700 font-mono">Accepted & awaiting payment</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-primary-200/80 bg-primary-50/20 shadow-sm hover:shadow transition-all space-y-1">
@@ -315,7 +398,7 @@ export const AdminOrders = () => {
             <Truck className="w-4 h-4 text-primary-600" />
           </div>
           <div className="text-2xl font-mono font-black text-primary-800">{metrics.inFulfillment}</div>
-          <span className="text-[10px] text-primary-700 font-mono">Preparing, dispatched, or in transit</span>
+          <span className="text-[10px] text-primary-700 font-mono">Preparing, dispatched, in transit</span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-emerald-200/80 bg-emerald-50/20 shadow-sm hover:shadow transition-all space-y-1">
@@ -333,13 +416,13 @@ export const AdminOrders = () => {
             <AlertTriangle className="w-4 h-4 text-rose-600" />
           </div>
           <div className="text-2xl font-mono font-black text-rose-800">{metrics.discrepancies}</div>
-          <span className="text-[10px] text-rose-700 font-mono">Cold-chain / audit alerts</span>
+          <span className="text-[10px] text-rose-700 font-mono">Quantity / cold-chain alerts</span>
         </div>
       </div>
 
-      {/* Comprehensive Filter Toolbar & Search Area */}
+      {/* Unified Filter Area (Section 9) */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200/90 shadow-sm space-y-3.5">
-        {/* Search & Sort Row */}
+        {/* Row 1: Search & Sort Controls */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="relative w-full sm:w-96">
             <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -359,7 +442,7 @@ export const AdminOrders = () => {
               <select
                 value={sortField}
                 onChange={(e) => setSortField(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-teal-600"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-700 focus:outline-none focus:border-teal-600 cursor-pointer"
               >
                 <option value="orderDate">Order Date</option>
                 <option value="totalAmount">Settlement Amount</option>
@@ -368,7 +451,7 @@ export const AdminOrders = () => {
               </select>
               <button
                 onClick={() => setSortOrder((prev) => (prev === 'asc' ? 'desc' : 'asc'))}
-                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 font-bold border border-slate-200"
+                className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-600 font-bold border border-slate-200 cursor-pointer"
                 title="Toggle sort direction"
               >
                 {sortOrder === 'asc' ? '↑' : '↓'}
@@ -377,15 +460,15 @@ export const AdminOrders = () => {
           </div>
         </div>
 
-        {/* 14 Filter Buttons (All Orders, Requested, Accepted, Paid, Preparing, Dispatched, In Transit, Delivered, Completed, Cancelled, Rejected, Payment Pending, Payment Failed, Discrepancy) */}
+        {/* Row 2: 14 Status Filter Tabs (with Counts) */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-1 border-t border-slate-100 scrollbar-thin">
           {FILTER_TABS.map((tab) => {
             const count = filterCounts[tab.id] || 0;
-            const isActive = activeFilter === tab.id;
+            const isActive = activeFilterTab === tab.id;
             return (
               <button
                 key={tab.id}
-                onClick={() => setActiveFilter(tab.id)}
+                onClick={() => setActiveFilterTab(tab.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                   isActive
                     ? 'bg-slate-900 text-white shadow-sm'
@@ -404,9 +487,99 @@ export const AdminOrders = () => {
             );
           })}
         </div>
+
+        {/* Row 3: All Advanced Filters Together (Requesting Hospital, Providing Hospital, Priority, Batch, Date, Clear) */}
+        <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center gap-2.5 text-xs">
+          {/* Requesting Hospital (Buyer) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 max-w-[210px]">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400 shrink-0">Buyer:</span>
+            <select
+              value={requestingHospitalFilter}
+              onChange={(e) => setRequestingHospitalFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer truncate"
+            >
+              <option value="all">All Buyer Hospitals</option>
+              {requestingHospitals.map((hosp) => (
+                <option key={hosp} value={hosp}>{hosp}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Providing Hospital (Seller) */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200 max-w-[210px]">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400 shrink-0">Seller:</span>
+            <select
+              value={providingHospitalFilter}
+              onChange={(e) => setProvidingHospitalFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer truncate"
+            >
+              <option value="all">All Seller Hospitals</option>
+              {providingHospitals.map((hosp) => (
+                <option key={hosp} value={hosp}>{hosp}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Priority */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Priority:</span>
+            <select
+              value={priorityFilter}
+              onChange={(e) => setPriorityFilter(e.target.value)}
+              className="bg-transparent text-xs font-semibold text-slate-700 focus:outline-none cursor-pointer"
+            >
+              <option value="all">All Priorities</option>
+              <option value="emergency">Emergency (STAT)</option>
+              <option value="standard">Standard</option>
+            </select>
+          </div>
+
+          {/* Batch Filter Input */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <span className="text-[10px] font-mono uppercase font-bold text-slate-400">Batch:</span>
+            <input
+              type="text"
+              placeholder="e.g. BAT-..."
+              value={batchSearchTerm}
+              onChange={(e) => setBatchSearchTerm(e.target.value)}
+              className="bg-transparent text-xs font-mono text-slate-700 focus:outline-none w-24 placeholder:text-slate-400"
+            />
+          </div>
+
+          {/* Date Range Inputs */}
+          <div className="flex items-center gap-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
+            <Calendar className="w-3 h-3 text-slate-400" />
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="bg-transparent text-[11px] font-mono text-slate-700 focus:outline-none"
+              title="From date"
+            />
+            <span className="text-slate-300">to</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="bg-transparent text-[11px] font-mono text-slate-700 focus:outline-none"
+              title="To date"
+            />
+          </div>
+
+          {/* Clear Filters Button */}
+          {(searchTerm || activeFilterTab !== 'all' || orderStatusFilter !== 'all' || paymentStatusFilter !== 'all' || requestingHospitalFilter !== 'all' || providingHospitalFilter !== 'all' || priorityFilter !== 'all' || batchSearchTerm || startDate || endDate) && (
+            <button
+              onClick={handleClearFilters}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-all cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Clear Filters</span>
+            </button>
+          )}
+        </div>
       </div>
 
-      {/* Orders Ledger Presentation */}
+      {/* Compact Order List / Table (Section 7, 51) */}
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center bg-white rounded-2xl border border-slate-200/90 shadow-sm">
           <LoadingSpinner size="lg" />
@@ -421,471 +594,206 @@ export const AdminOrders = () => {
           <p className="text-xs text-slate-500 max-w-sm mx-auto">
             {searchTerm
               ? `No requisitions matched your query "${searchTerm}".`
-              : `There are currently no orders under the "${activeFilter}" filter.`}
+              : `There are currently no orders under the selected filters.`}
           </p>
-          {searchTerm && (
+          {(searchTerm || activeFilterTab !== 'all') && (
             <button
-              onClick={() => setSearchTerm('')}
+              onClick={handleClearFilters}
               className="px-3 py-1.5 text-xs font-semibold text-teal-700 bg-teal-50 rounded-lg hover:bg-teal-100 transition-colors"
             >
-              Clear Search
+              Clear All Filters
             </button>
           )}
         </div>
       ) : (
-        <div className="space-y-4">
-          {filteredOrders.map((order) => {
-            const stageIdx = getStageIndex(order.status);
-            const isCancelled = order.status === 'cancelled';
-            const isRejected = order.status === 'rejected';
+        <div className="bg-white rounded-2xl border border-slate-200/90 shadow-sm overflow-hidden">
+          
+          {/* Desktop Table View */}
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-200 text-[11px] font-mono font-bold text-slate-500 uppercase tracking-wider">
+                  <th className="py-3 px-4">Order / TXN ID</th>
+                  <th className="py-3 px-4">Medicine & Batch</th>
+                  <th className="py-3 px-4">Requesting Hospital (Buyer)</th>
+                  <th className="py-3 px-4">Providing Hospital (Seller)</th>
+                  <th className="py-3 px-4 text-center">Qty</th>
+                  <th className="py-3 px-4 text-right">Settlement</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4">Payment</th>
+                  <th className="py-3 px-4">Order Date</th>
+                  <th className="py-3 px-4 text-right">Dossier</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-sans">
+                {filteredOrders.map((order) => {
+                  const s = (order.status || '').toLowerCase().trim();
+                  const ps = (order.paymentStatus || '').toLowerCase().trim();
+                  const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(ps);
+                  const isFailed = ps === 'failed';
 
-            return (
-              <div
-                key={order.id}
-                className="bg-white rounded-2xl border border-slate-200/90 shadow-sm hover:shadow-md transition-all p-5 space-y-4"
-              >
-                {/* Header Row */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-slate-900 text-sm">
-                        #{order.orderId}
-                      </span>
-                      {order.urgency === 'Emergency' && (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase bg-red-100 text-red-700 border border-red-200 shrink-0">
-                          STAT
+                  return (
+                    <tr
+                      key={order.id}
+                      onClick={() => setSelectedOrder(order)}
+                      className="hover:bg-teal-50/30 transition-colors cursor-pointer group"
+                    >
+                      {/* Order / TXN ID */}
+                      <td className="py-3.5 px-4 font-mono font-bold text-slate-900 group-hover:text-teal-900">
+                        <div className="flex items-center gap-1.5">
+                          <span>#{order.orderId}</span>
+                          {order.urgency === 'Emergency' && (
+                            <span className="px-1.5 py-0.2 rounded text-[8px] font-mono font-black uppercase bg-red-100 text-red-700 border border-red-200">
+                              STAT
+                            </span>
+                          )}
+                          {(order.hasDiscrepancy || order.discrepancy) && (
+                            <span className="w-2 h-2 rounded-full bg-rose-600 shrink-0" title="Discrepancy alert" />
+                          )}
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          {order.transactionId}
                         </span>
-                      )}
-                      {order.hasDiscrepancy && (
-                        <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-100 text-rose-800 border border-rose-200 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3 text-rose-600" />
-                          DISCREPANCY ALERT
+                      </td>
+
+                      {/* Medicine & Batch */}
+                      <td className="py-3.5 px-4 font-bold text-slate-800 max-w-[200px]">
+                        <div className="truncate" title={order.medicineName}>{order.medicineName}</div>
+                        <span className="text-[10px] text-slate-400 font-mono block">
+                          Batch: <strong className="text-slate-600">{order.batchNo}</strong>
                         </span>
-                      )}
+                      </td>
+
+                      {/* Requesting Hospital */}
+                      <td className="py-3.5 px-4 text-slate-700 max-w-[170px]">
+                        <div className="font-semibold truncate" title={order.hospital?.name}>{order.hospital?.name}</div>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {order.hospital?.city}{order.hospital?.state ? `, ${order.hospital.state}` : ''}
+                        </span>
+                      </td>
+
+                      {/* Providing Hospital */}
+                      <td className="py-3.5 px-4 text-slate-700 max-w-[170px]">
+                        <div className="font-semibold truncate" title={order.fulfillingHospital?.name}>{order.fulfillingHospital?.name}</div>
+                        <span className="text-[10px] text-slate-400 block truncate">
+                          {order.fulfillingHospital?.city}{order.fulfillingHospital?.state ? `, ${order.fulfillingHospital.state}` : ''}
+                        </span>
+                      </td>
+
+                      {/* Quantity */}
+                      <td className="py-3.5 px-4 text-center font-mono font-bold text-slate-800">
+                        {order.quantity}
+                      </td>
+
+                      {/* Settlement Amount */}
+                      <td className="py-3.5 px-4 text-right font-mono font-black text-slate-900">
+                        {formatCurrency(order.settlementAmount || order.totalAmount)}
+                      </td>
+
+                      {/* Current Status */}
+                      <td className="py-3.5 px-4 text-center">
+                        <StatusBadge status={order.status} />
+                      </td>
+
+                      {/* Payment Status */}
+                      <td className="py-3.5 px-4 text-xs font-mono">
+                        <StatusBadge status={order.paymentStatus || (isPaid ? 'paid' : 'pending')} />
+                      </td>
+
+                      {/* Order Date */}
+                      <td className="py-3.5 px-4 text-slate-500 font-mono text-[11px] whitespace-nowrap">
+                        {formatDate(order.orderDate)}
+                      </td>
+
+                      {/* View Dossier Button */}
+                      <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => setSelectedOrder(order)}
+                          className="p-1.5 rounded-lg text-slate-500 hover:text-teal-700 hover:bg-teal-50 transition-colors cursor-pointer"
+                          title="View Order Dossier"
+                        >
+                          <Eye className="w-4 h-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Mobile Card Layout */}
+          <div className="block md:hidden divide-y divide-slate-100">
+            {filteredOrders.map((order) => {
+              return (
+                <div
+                  key={order.id}
+                  onClick={() => setSelectedOrder(order)}
+                  className="p-4 hover:bg-slate-50 transition-colors cursor-pointer space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono font-bold text-sm text-slate-900">#{order.orderId}</span>
+                        {order.urgency === 'Emergency' && (
+                          <span className="px-1.5 py-0.2 rounded text-[8px] font-mono font-black uppercase bg-red-100 text-red-700 border border-red-200">
+                            STAT
+                          </span>
+                        )}
+                      </div>
+                      <div className="font-extrabold text-sm text-slate-800 mt-0.5">{order.medicineName}</div>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600">
-                      <span className="font-bold text-slate-900">{order.medicineName}</span>
-                      <span>•</span>
-                      <span className="font-mono text-slate-500">Batch: <strong className="text-slate-700">{order.batchNo}</strong></span>
-                      <span>•</span>
-                      <span className="font-mono text-slate-500">Qty: <strong className="text-slate-900 font-bold">{order.quantity} units</strong></span>
+                    <StatusBadge status={order.status} />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 text-xs bg-slate-50/70 p-2.5 rounded-xl border border-slate-100 font-mono">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Buyer</span>
+                      <span className="font-bold text-slate-800 truncate block">{order.hospital?.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Seller</span>
+                      <span className="font-bold text-slate-800 truncate block">{order.fulfillingHospital?.name}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Qty / Batch</span>
+                      <span className="font-bold text-slate-800">{order.quantity} units • {order.batchNo}</span>
+                    </div>
+                    <div>
+                      <span className="text-[10px] text-slate-400 block uppercase">Settlement</span>
+                      <span className="font-black text-slate-900">{formatCurrency(order.settlementAmount || order.totalAmount)}</span>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
-                    <StatusBadge status={order.status} />
+                  <div className="flex items-center justify-between pt-1 text-xs text-slate-500" onClick={(e) => e.stopPropagation()}>
+                    <span className="font-mono text-[11px]">{formatDate(order.orderDate)}</span>
                     <button
                       onClick={() => setSelectedOrder(order)}
-                      className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      className="px-3 py-1 bg-teal-50 hover:bg-teal-100 text-teal-800 rounded-lg font-bold text-xs flex items-center gap-1 cursor-pointer"
                     >
                       <Eye className="w-3.5 h-3.5" />
-                      <span>Order Dossier</span>
+                      <span>Dossier</span>
                     </button>
                   </div>
                 </div>
+              );
+            })}
+          </div>
 
-                {/* Key Details Grid: Requesting Hospital, Providing Hospital, Settlement, Logistics SLA */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 bg-slate-50/70 p-3.5 rounded-xl border border-slate-100 text-xs">
-                  <div>
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">Requesting Hospital</span>
-                    <span className="font-bold text-slate-800 block truncate" title={order.hospital?.name}>
-                      {order.hospital?.name}
-                    </span>
-                    <span className="text-[10px] text-slate-400 truncate block">
-                      {order.hospital?.city}{order.hospital?.state ? `, ${order.hospital.state}` : ''}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">Providing Hospital</span>
-                    <span className="font-bold text-slate-800 block truncate" title={order.fulfillingHospital?.name}>
-                      {order.fulfillingHospital?.name}
-                    </span>
-                    <span className="text-[10px] text-slate-400 truncate block">
-                      {order.fulfillingHospital?.city}{order.fulfillingHospital?.state ? `, ${order.fulfillingHospital.state}` : ''}
-                    </span>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">Settlement Amount</span>
-                    <span className="font-mono font-black text-slate-900 text-sm block">
-                      {formatCurrency(order.settlementAmount || order.totalAmount)}
-                    </span>
-                    <div className="flex items-center gap-1 pt-0.5">
-                      <span className="text-[10px] text-slate-400 font-mono">Payment:</span>
-                      <StatusBadge status={order.paymentStatus || 'pending'} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-mono font-bold text-slate-400 uppercase block">Expected Delivery / SLA</span>
-                    <span className="font-bold text-slate-800 block">
-                      {order.expectedDelivery}
-                    </span>
-                    <span className="text-[10px] text-emerald-700 font-mono font-semibold block truncate">
-                      {order.logisticsSla}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Clean Horizontal 8-Stage Tracker */}
-                <div className="pt-1">
-                  <div className="flex items-center justify-between text-[11px] font-mono font-bold text-slate-400 mb-2">
-                    <span className="uppercase tracking-wider">Tracking Milestone Progress:</span>
-                    <span className="text-slate-700">
-                      {isCancelled ? 'Cancelled' : isRejected ? 'Declined' : `Stage ${Math.max(1, stageIdx + 1)} of 8: ${LIFECYCLE_STAGES[stageIdx]?.label || 'Active'}`}
-                    </span>
-                  </div>
-
-                  {/* 8-Stage Horizontal Node Bar */}
-                  <div className="relative py-2">
-                    <div className="flex items-center justify-between relative">
-                      {/* Background Line */}
-                      <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 h-1 bg-slate-200 z-0" />
-                      
-                      {/* Filled Progress Line */}
-                      {!isCancelled && !isRejected && (
-                        <div
-                          className="absolute top-1/2 left-0 -translate-y-1/2 h-1 bg-teal-600 transition-all duration-300 z-0"
-                          style={{
-                            width: `${(Math.max(0, stageIdx) / 7) * 100}%`
-                          }}
-                        />
-                      )}
-
-                      {/* 8 Stage Nodes */}
-                      {LIFECYCLE_STAGES.map((st, idx) => {
-                        const isCompleted = !isCancelled && !isRejected && idx < stageIdx;
-                        const isCurrent = !isCancelled && !isRejected && idx === stageIdx;
-
-                        return (
-                          <div key={st.key} className="relative z-10 flex flex-col items-center">
-                            <div
-                              className={`w-5 h-5 sm:w-6 sm:h-6 rounded-full flex items-center justify-center text-[10px] font-mono font-bold transition-all ${
-                                isCompleted
-                                  ? 'bg-emerald-600 text-white ring-2 ring-emerald-100'
-                                  : isCurrent
-                                  ? 'bg-teal-700 text-white shadow-md ring-3 ring-teal-100 scale-110'
-                                  : 'bg-white border-2 border-slate-300 text-slate-400'
-                              }`}
-                            >
-                              {isCompleted ? (
-                                <Check className="w-3 h-3 text-white stroke-[3]" />
-                              ) : isCurrent ? (
-                                <Clock className="w-3 h-3 text-white animate-pulse" />
-                              ) : (
-                                <span>{idx + 1}</span>
-                              )}
-                            </div>
-                            <span
-                              className={`text-[8px] sm:text-[9px] font-mono mt-1 text-center max-w-[42px] sm:max-w-none break-words leading-tight ${
-                                isCurrent
-                                  ? 'font-black text-teal-900'
-                                  : isCompleted
-                                  ? 'font-bold text-slate-700'
-                                  : 'text-slate-400'
-                              }`}
-                            >
-                              {st.label}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Discrepancy Note Banner if present */}
-                {order.hasDiscrepancy && order.discrepancy && (
-                  <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                    <div>
-                      <span className="font-bold">Quality Inspection Discrepancy:</span>{' '}
-                      <span>{order.discrepancy}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Footer Strip */}
-                <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between text-[11px] text-slate-500 font-mono">
-                  <span>Requisition Date: <strong className="text-slate-700">{formatDate(order.orderDate)}</strong></span>
-                  <span>Logistics SLA: <strong className="text-teal-700">{order.logisticsSla}</strong></span>
-                  <div className="flex items-center gap-2">
-                    <span className="text-slate-400 font-sans text-xs">Transition status:</span>
-                    <select
-                      value=""
-                      onChange={(e) => {
-                        if (e.target.value) {
-                          handleOpenStatusConfirm(order, e.target.value);
-                        }
-                      }}
-                      className="text-[11px] bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold px-2.5 py-1 rounded-lg border border-slate-200 cursor-pointer focus:outline-none"
-                    >
-                      <option value="" disabled>Change Status ▾</option>
-                      <option value="Requested" disabled={order.status === 'pending' || order.status === 'requested'}>Requested</option>
-                      <option value="Accepted" disabled={order.status === 'accepted'}>Accepted</option>
-                      <option value="Paid" disabled={order.status === 'paid'}>Paid</option>
-                      <option value="Preparing" disabled={order.status === 'preparing'}>Preparing</option>
-                      <option value="Dispatched" disabled={order.status === 'dispatched'}>Dispatched</option>
-                      <option value="In Transit" disabled={order.status === 'in transit'}>In Transit</option>
-                      <option value="Delivered" disabled={order.status === 'delivered'}>Delivered</option>
-                      <option value="Completed" disabled={order.status === 'completed'}>Completed</option>
-                      <option value="Cancelled" disabled={order.status === 'cancelled'}>Cancelled</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
         </div>
       )}
 
-      {/* Order Details Modal (Requirements 11, 12, 13) */}
+      {/* Complete Order Details Dossier Modal (Section 16, 17, 18, 21, 33, 43) */}
       {selectedOrder && (
-        <Modal
+        <OrderDetailsModal
           isOpen={!!selectedOrder}
           onClose={() => setSelectedOrder(null)}
-          title={`Order Requisition #${selectedOrder.orderId}`}
-          maxWidth="max-w-4xl"
-        >
-          <div className="space-y-6 text-slate-800">
-            {/* 1. ORDER INFORMATION */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-200">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider">
-                  <FileText className="w-4 h-4 text-teal-600" />
-                  Order Information
-                </div>
-                <StatusBadge status={selectedOrder.status} />
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Order ID / TXN</span>
-                  <span className="font-mono font-black text-slate-900 text-sm">#{selectedOrder.orderId}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Order Date</span>
-                  <span className="font-bold text-slate-800">{formatDate(selectedOrder.orderDate)}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Current Status</span>
-                  <span className="font-bold text-teal-800 capitalize">{selectedOrder.status}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Priority</span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase inline-block mt-0.5 ${
-                    selectedOrder.urgency === 'Emergency' ? 'bg-red-100 text-red-700' : 'bg-slate-100 text-slate-700'
-                  }`}>
-                    {selectedOrder.priority}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 2. MEDICINE DETAILS */}
-            <div className="p-4 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100">
-                <Package className="w-4 h-4 text-teal-600" />
-                Medicine Formulation & Batch Dossier
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-                <div className="col-span-2">
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Medicine Name</span>
-                  <span className="font-extrabold text-slate-900 text-sm">{selectedOrder.medicineName}</span>
-                  <span className="text-[10px] text-slate-400 font-mono block">
-                    {selectedOrder.items?.[0]?.genericName || 'Active Formulation'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Quantity</span>
-                  <span className="font-mono font-bold text-slate-900 text-sm">{selectedOrder.quantity} units</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Batch Number</span>
-                  <span className="font-mono font-bold text-teal-800">{selectedOrder.batchNo}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Expiry Date</span>
-                  <span className="font-mono text-slate-700">{formatDate(selectedOrder.expiryDate)}</span>
-                </div>
-                <div className="col-span-2 sm:col-span-1">
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Manufacturing Date</span>
-                  <span className="font-mono text-slate-600">{formatDate(selectedOrder.mfgDate)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 3. HOSPITALS (REQUESTING & PROVIDING) */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 rounded-2xl border border-slate-200 space-y-2 bg-slate-50/50">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-200/60">
-                  <Building2 className="w-4 h-4 text-teal-600" />
-                  Requesting Hospital (Buyer)
-                </div>
-                <div className="text-xs space-y-1">
-                  <div className="font-bold text-slate-900 text-sm">{selectedOrder.hospital?.name}</div>
-                  <div className="text-slate-500">Reg: <strong className="text-slate-700">{selectedOrder.hospital?.registrationNo || 'MH-GOV-8821'}</strong></div>
-                  <div className="text-slate-500">Location: {selectedOrder.hospital?.city}{selectedOrder.hospital?.state ? `, ${selectedOrder.hospital.state}` : ''}</div>
-                  <div className="text-slate-500">Contact: {selectedOrder.hospital?.phone || selectedOrder.hospital?.contact || '+91 98201 54321'}</div>
-                  <div className="text-slate-500">Email: {selectedOrder.hospital?.email || 'procurement@hospital.org'}</div>
-                </div>
-              </div>
-
-              <div className="p-4 rounded-2xl border border-slate-200 space-y-2 bg-slate-50/50">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-200/60">
-                  <Building2 className="w-4 h-4 text-teal-600" />
-                  Providing Hospital (Seller)
-                </div>
-                <div className="text-xs space-y-1">
-                  <div className="font-bold text-slate-900 text-sm">{selectedOrder.fulfillingHospital?.name}</div>
-                  <div className="text-slate-500">Reg: <strong className="text-slate-700">{selectedOrder.fulfillingHospital?.registrationNo || 'HR-MED-4412'}</strong></div>
-                  <div className="text-slate-500">Location: {selectedOrder.fulfillingHospital?.city}{selectedOrder.fulfillingHospital?.state ? `, ${selectedOrder.fulfillingHospital.state}` : ''}</div>
-                  <div className="text-slate-500">Contact: {selectedOrder.fulfillingHospital?.phone || selectedOrder.fulfillingHospital?.contact || '+91 98112 33445'}</div>
-                  <div className="text-slate-500">Email: {selectedOrder.fulfillingHospital?.email || 'seller@hospital.org'}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* 4. PAYMENT & ESCROW */}
-            <div className="p-4 rounded-2xl border border-slate-200 space-y-3">
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider">
-                  <CreditCard className="w-4 h-4 text-teal-600" />
-                  Escrow & Settlement
-                </div>
-                <StatusBadge status={selectedOrder.paymentStatus || 'pending'} />
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Settlement Amount</span>
-                  <span className="font-mono font-black text-slate-900 text-base">
-                    {formatCurrency(selectedOrder.settlementAmount || selectedOrder.totalAmount)}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Payment Status</span>
-                  <span className="font-bold capitalize text-slate-800">{selectedOrder.paymentStatus || 'pending'}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Payment Date / Time</span>
-                  <span className="font-mono text-slate-700">
-                    {selectedOrder.paidDate ? new Date(selectedOrder.paidDate).toLocaleString() : 'Payment Pending'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Payment Reference</span>
-                  <span className="font-mono text-slate-600 truncate block">
-                    {selectedOrder.paymentReference || 'N/A'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* 5. LOGISTICS & SLA */}
-            <div className="p-4 rounded-2xl border border-slate-200 space-y-3 bg-slate-50/50">
-              <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-200/60">
-                <Truck className="w-4 h-4 text-teal-600" />
-                Logistics Telemetry & SLA Compliance
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Dispatch Information</span>
-                  <span className="font-bold text-slate-800">
-                    {selectedOrder.trackingInfo?.courierName || 'MediCold Logistics Express'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono block">
-                    {selectedOrder.trackingInfo?.vehicleNo || 'Temp-Controlled Carrier'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">In Transit Telemetry</span>
-                  <span className="font-mono font-bold text-slate-800">
-                    {selectedOrder.trackingInfo?.temperature || '3.8°C Certified'}
-                  </span>
-                  <span className="text-[10px] text-slate-400 block">
-                    Location: {selectedOrder.trackingInfo?.currentLocation || 'Corridor Transit'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Expected Delivery</span>
-                  <span className="font-bold text-slate-800">{selectedOrder.expectedDelivery}</span>
-                </div>
-                <div>
-                  <span className="text-[10px] uppercase font-mono text-slate-400 block">Logistics SLA</span>
-                  <span className="font-mono font-bold text-emerald-700">{selectedOrder.logisticsSla}</span>
-                </div>
-              </div>
-
-              {selectedOrder.hasDiscrepancy && (
-                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 mt-2">
-                  <span className="font-bold">Logged Discrepancy Note:</span> {selectedOrder.discrepancy}
-                </div>
-              )}
-            </div>
-
-            {/* 8-STAGE HORIZONTAL TRACKER */}
-            <div className="space-y-3 pt-2">
-              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <Clock className="w-4 h-4 text-teal-600" />
-                8-Stage Fulfillment Lifecycle
-              </h4>
-              <WorkflowTimeline 
-                type="request" 
-                currentStatus={selectedOrder.status} 
-                timestamp={selectedOrder.orderDate}
-              />
-            </div>
-
-            {/* DETAILED AUDIT TIMELINE */}
-            <div className="space-y-3 pt-2">
-              <h4 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-teal-600" />
-                Audit Trail & Milestone Chronology
-              </h4>
-              <div className="space-y-3 pl-3 border-l-2 border-teal-500/30 ml-2">
-                {selectedOrder.statusHistory?.map((step, sIdx) => (
-                  <div key={sIdx} className="relative pl-4">
-                    <div className="absolute -left-[23px] top-1 w-3 h-3 rounded-full bg-teal-600 ring-4 ring-teal-100" />
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <span className="font-bold text-xs text-slate-900">{step.status}</span>
-                      <span className="text-[11px] text-slate-400 font-mono">{step.timestamp}</span>
-                    </div>
-                    <p className="text-xs text-slate-600 mt-0.5 leading-relaxed">{step.note}</p>
-                    {step.actor && (
-                      <span className="text-[10px] text-teal-700 font-mono font-semibold block mt-0.5">
-                        Recorded by: {step.actor}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Modal Actions */}
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between gap-3 flex-wrap">
-              <button
-                type="button"
-                onClick={() => setSelectedOrder(null)}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
-              >
-                Close Dossier
-              </button>
-
-              <div className="flex items-center gap-2 flex-wrap">
-                {['Preparing', 'Dispatched', 'In Transit', 'Delivered', 'Completed'].map((st) => (
-                  <button
-                    key={st}
-                    disabled={selectedOrder.status === st.toLowerCase()}
-                    onClick={() => handleOpenStatusConfirm(selectedOrder, st)}
-                    className="px-3 py-1.5 rounded-xl text-xs font-bold bg-teal-50 hover:bg-teal-100 text-teal-800 border border-teal-200 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    Advance to {st}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </Modal>
+          order={selectedOrder}
+          role="admin"
+          onAdminAdvanceStatus={(order, targetStatus) => {
+            handleOpenStatusConfirm(order, targetStatus);
+          }}
+        />
       )}
 
       {/* Confirmation Dialog for Status Change */}
@@ -900,9 +808,9 @@ export const AdminOrders = () => {
             <div className="flex items-start gap-3 p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs">
               <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div>
-                <span className="font-bold">Administrative Protocol:</span> Are you sure you want to transition Order{' '}
+                <span className="font-bold">Administrative Protocol:</span> Transition Order{' '}
                 <span className="font-mono font-bold">#{confirmStatusModal.order?.orderId}</span> to{' '}
-                <span className="font-bold uppercase tracking-wider">{confirmStatusModal.targetStatus}</span>?
+                <span className="font-bold uppercase tracking-wider text-amber-950">{confirmStatusModal.targetStatus}</span>?
               </div>
             </div>
 
@@ -911,7 +819,7 @@ export const AdminOrders = () => {
               <textarea
                 value={confirmStatusModal.note}
                 onChange={(e) => setConfirmStatusModal((prev) => ({ ...prev, note: e.target.value }))}
-                placeholder="e.g. Cold-chain seal inspected, airway bill assigned, or buyer verification approved..."
+                placeholder="e.g. Cold-chain seal inspected, airway bill assigned, or physical intake verified..."
                 rows="3"
                 className="w-full p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600"
               />
@@ -937,6 +845,7 @@ export const AdminOrders = () => {
           </div>
         </Modal>
       )}
+
     </div>
   );
 };
