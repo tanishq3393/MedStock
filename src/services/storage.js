@@ -119,7 +119,7 @@ export const initializeStorage = () => {
   }
 
   // 1b. Master Medicines Catalogue: initialize or migrate with INITIAL_MASTER_MEDICINES
-  const MASTER_DATASET_VERSION = 'medex_v1_master_catalogue';
+  const MASTER_DATASET_VERSION = 'medex_v2_master_catalogue';
   const storedMasterVersion = localStorage.getItem('sms_master_medicines_version');
   const storedMasterMeds = localStorage.getItem(KEYS.MASTER_MEDICINES);
 
@@ -138,7 +138,7 @@ export const initializeStorage = () => {
     localStorage.setItem('sms_master_medicines_version', MASTER_DATASET_VERSION);
   }
 
-  // 2. Medicines: initialize or merge missing & ensure mfgDate
+  // 2. Medicines: initialize or merge missing & ensure complete medical inventory fields
   const storedMedicines = localStorage.getItem(KEYS.MEDICINES);
   if (!storedMedicines) {
     localStorage.setItem(KEYS.MEDICINES, JSON.stringify(INITIAL_MEDICINES));
@@ -147,15 +147,15 @@ export const initializeStorage = () => {
       let parsed = JSON.parse(storedMedicines);
       let modified = false;
 
-      // Merge newly added mock medicines
+      // Merge newly added mock medicines (such as Dolo 650 multi-batch records)
       const existingMedIds = new Set(parsed.map((m) => m.id));
       const missingMeds = INITIAL_MEDICINES.filter((m) => !existingMedIds.has(m.id));
       if (missingMeds.length > 0) {
-        parsed = [...parsed, ...missingMeds];
+        parsed = [...missingMeds, ...parsed];
         modified = true;
       }
 
-      // Backfill missing fields (images, invoice, packSize) and ensure mfgDate
+      // Backfill missing fields (dosage, dosageForm, packing, unit, shelfLocation, mrp, concessionRate, costRate, packaging, total/reserved/available)
       const updated = parsed.map((m) => {
         let med = { ...m };
         const match = INITIAL_MEDICINES.find((init) => init.id === m.id);
@@ -184,13 +184,85 @@ export const initializeStorage = () => {
             med.minStockLevel = match.minStockLevel;
             modified = true;
           }
+          if (!med.shelfLocation && match.shelfLocation) {
+            med.shelfLocation = match.shelfLocation;
+            modified = true;
+          }
         }
         if (!med.form) {
-          med.form = 'Tablet';
+          med.form = med.dosageForm || 'Tablet';
+          modified = true;
+        }
+        if (!med.dosageForm) {
+          med.dosageForm = med.form || 'Tablet';
+          modified = true;
+        }
+        if (!med.dosage) {
+          med.dosage = med.power || med.strength || match?.dosage || 'Standard formulation';
+          modified = true;
+        }
+        if (!med.packing) {
+          med.packing = med.packSize || match?.packing || '15 Tablets / Strip';
+          modified = true;
+        }
+        if (!med.packSize) {
+          med.packSize = med.packing || match?.packSize || '15 Tablets / Strip';
+          modified = true;
+        }
+        if (!med.unitsPerPack) {
+          med.unitsPerPack = match?.unitsPerPack || 15;
+          modified = true;
+        }
+        if (med.numberOfPacks === undefined) {
+          med.numberOfPacks = match?.numberOfPacks || Math.ceil((med.totalQuantity || med.quantity || 0) / (med.unitsPerPack || 15));
+          modified = true;
+        }
+        if (med.totalUnits === undefined) {
+          med.totalUnits = match?.totalUnits || Number(med.totalQuantity !== undefined ? med.totalQuantity : (med.quantity || 0));
+          modified = true;
+        }
+        if (!med.unit) {
+          med.unit = match?.unit || 'Tablet';
+          modified = true;
+        }
+        if (!med.shelfLocation) {
+          med.shelfLocation = match?.shelfLocation || 'Rack A - Shelf 3';
           modified = true;
         }
         if (med.minStockLevel === undefined) {
           med.minStockLevel = 20;
+          modified = true;
+        }
+        if (med.reorderLevel === undefined) {
+          med.reorderLevel = med.minStockLevel || 20;
+          modified = true;
+        }
+        if (med.totalQuantity === undefined) {
+          med.totalQuantity = Number(med.quantity ?? match?.totalQuantity ?? 0);
+          modified = true;
+        }
+        if (med.reservedQuantity === undefined) {
+          med.reservedQuantity = Number(match?.reservedQuantity ?? 0);
+          modified = true;
+        }
+        if (med.availableQuantity === undefined) {
+          med.availableQuantity = Math.max(0, (med.totalQuantity || med.quantity || 0) - (med.reservedQuantity || 0));
+          modified = true;
+        }
+        if (med.mrp === undefined) {
+          med.mrp = Number(med.unitOriginalPrice ?? match?.mrp ?? 100);
+          modified = true;
+        }
+        if (med.concessionRate === undefined) {
+          med.concessionRate = Number(med.unitFinalPrice ?? match?.concessionRate ?? Math.round((med.mrp || 100) * (1 - (med.concessionPercent || 10) / 100)));
+          modified = true;
+        }
+        if (med.costRate === undefined) {
+          med.costRate = Number(match?.costRate ?? Math.round((med.mrp || 100) * 0.85));
+          modified = true;
+        }
+        if (med.acquisitionCost === undefined) {
+          med.acquisitionCost = Number(match?.acquisitionCost ?? med.costRate ?? Math.round((med.mrp || 100) * 0.85));
           modified = true;
         }
         if (!med.mfgDate) {
@@ -205,6 +277,16 @@ export const initializeStorage = () => {
         }
         return med;
       });
+
+      // Synchronize benchmark Dolo 650 records if present
+      const doloBench = INITIAL_MEDICINES.find((m) => m.id === 'inv-dolo-hosp1-abc123');
+      if (doloBench) {
+        const doloIdx = updated.findIndex((m) => m.id === 'inv-dolo-hosp1-abc123');
+        if (doloIdx !== -1) {
+          updated[doloIdx] = { ...updated[doloIdx], ...doloBench };
+          modified = true;
+        }
+      }
 
       if (modified) {
         localStorage.setItem(KEYS.MEDICINES, JSON.stringify(updated));
@@ -267,6 +349,21 @@ export const initializeStorage = () => {
           modified = true;
         }
       }
+
+      // Ensure benchmark completed purchase history orders ORD-1024 and ORD-1031 exist
+      ['ORD-1024', 'ORD-1031'].forEach((ordId) => {
+        const demo = INITIAL_REQUESTS.find((r) => r.id === ordId || r.orderId === ordId);
+        if (demo) {
+          const existingIdx = parsedReqs.findIndex((r) => r.id === ordId || r.orderId === ordId);
+          if (existingIdx === -1) {
+            parsedReqs.unshift(demo);
+            modified = true;
+          } else {
+            parsedReqs[existingIdx] = { ...parsedReqs[existingIdx], ...demo };
+            modified = true;
+          }
+        }
+      });
 
       // Universal Order & Payment State Synchronization (Sections 3, 5, 6, 20)
       const updatedReqs = parsedReqs.map((req) => {

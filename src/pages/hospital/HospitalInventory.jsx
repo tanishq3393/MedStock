@@ -40,7 +40,7 @@ import Modal from '../../components/common/Modal';
 import StatusBadge from '../../components/common/StatusBadge';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import toast from 'react-hot-toast';
-import { isHospitalSuspended, getLiveHospitalRecord, isHospitalOperational } from '../../services/storage';
+import { isHospitalSuspended, getLiveHospitalRecord, isHospitalOperational, getStoredItem, KEYS } from '../../services/storage';
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
 
 export const HospitalInventory = () => {
@@ -75,6 +75,15 @@ export const HospitalInventory = () => {
       dispatch(fetchInventory(user.id));
     }
   }, [dispatch, user?.id]);
+
+  useEffect(() => {
+    if (selectedMedicineForDetails) {
+      const fresh = inventory.find((m) => m.id === selectedMedicineForDetails.id);
+      if (fresh) {
+        setSelectedMedicineForDetails((prev) => ({ ...prev, ...fresh }));
+      }
+    }
+  }, [inventory]);
 
   // Helper for medicine form classification
   const getMedicineForm = (med) => {
@@ -228,6 +237,20 @@ export const HospitalInventory = () => {
         return 0;
       });
   }, [evaluatedInventory, searchTerm, selectedStatusFilter, selectedFormFilter, sortBy]);
+
+  const medicineStockHistory = useMemo(() => {
+    if (!selectedMedicineForDetails) return [];
+    const history = getStoredItem(KEYS.STOCK_HISTORY, []);
+    const medId = selectedMedicineForDetails.id;
+    const batchNo = (selectedMedicineForDetails.batchNo || '').toLowerCase();
+    const medName = (selectedMedicineForDetails.brandName || selectedMedicineForDetails.medicineName || '').toLowerCase();
+
+    return history.filter((h) => 
+      (batchNo && (h.batchNo || '').toLowerCase() === batchNo) ||
+      h.medicineId === medId ||
+      (h.medicineName && h.medicineName.toLowerCase() === medName && (!batchNo || (h.batchNo || '').toLowerCase() === batchNo))
+    );
+  }, [selectedMedicineForDetails]);
 
   const handleOpenAdd = () => {
     if (isOperationalLocked) {
@@ -863,14 +886,14 @@ export const HospitalInventory = () => {
             {/* Header */}
             <div className="p-5 border-b border-slate-200 flex items-start justify-between bg-slate-50 sticky top-0 z-10">
               <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                  Hospital Inventory Record
+                <span className="text-[10px] font-bold uppercase tracking-wider text-primary-700 font-mono">
+                  Inventory Details
                 </span>
                 <h2 className="text-xl font-black text-slate-900 leading-tight">
-                  {selectedMedicineForDetails.brandName}
+                  {selectedMedicineForDetails.brandName || selectedMedicineForDetails.medicineName} {selectedMedicineForDetails.power || selectedMedicineForDetails.strength || ''}
                 </h2>
                 <p className="text-xs text-slate-500 font-medium mt-0.5">
-                  {selectedMedicineForDetails.form} • {selectedMedicineForDetails.power}
+                  Holding Facility: {selectedMedicineForDetails.hospitalName || user?.name} • Batch {selectedMedicineForDetails.batchNo || selectedMedicineForDetails.batchNumber}
                 </p>
               </div>
 
@@ -903,83 +926,252 @@ export const HospitalInventory = () => {
                 </div>
               </div>
 
-              {/* SECTION 1: MEDICINE SPECIFICATION */}
+              {/* 1. MEDICINE INFORMATION */}
               <div className="space-y-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  1. Medicine Specification
+                  1. Medicine Information
                 </h3>
                 <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Brand Name</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.brandName}</strong>
+                    <span className="text-[10px] text-slate-400 block font-medium">Brand / Trade Name</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.brandName || selectedMedicineForDetails.medicineName}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Generic / Composition Name</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.genericName || 'Standard Formulation'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Medicine Code</span>
+                    <strong className="font-mono text-cyan-800">{selectedMedicineForDetails.medicineCode || selectedMedicineForDetails.masterMedicineId || selectedMedicineForDetails.medicineId || 'MED-CAT'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Therapeutic Category</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.category || 'Pharmaceuticals'}</strong>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Dosage Form</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.form}</strong>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.form || selectedMedicineForDetails.dosageForm || 'Tablet'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Dosage / Strength</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.dosage || selectedMedicineForDetails.power || selectedMedicineForDetails.strength || 'Standard formulation'}</strong>
                   </div>
                   <div className="col-span-2">
-                    <span className="text-[10px] text-slate-400 block font-medium">Generic Composition</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.genericName || 'CDSCO Pharmaceutical Compound'}</strong>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-[10px] text-slate-400 block font-medium">Manufacturer</span>
-                    <strong className="text-slate-800">{selectedMedicineForDetails.manufacturer || 'Approved Pharma House'}</strong>
+                    <span className="text-[10px] text-slate-400 block font-medium">Manufacturer / Pharma</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.manufacturer || 'Approved Pharmaceutical Lab'}</strong>
                   </div>
                 </div>
               </div>
 
-              {/* SECTION 2: BATCH & DATES */}
+              {/* 2. HOSPITAL INFORMATION */}
               <div className="space-y-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  2. Batch & Shelf Life
+                  2. Hospital Information
                 </h3>
                 <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Batch Number</span>
-                    <strong className="font-mono text-slate-800">{selectedMedicineForDetails.batchNo || 'N/A'}</strong>
+                    <span className="text-[10px] text-slate-400 block font-medium">Hospital Name</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.hospitalName || user?.name || 'Apollo Hospital'}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Storage Requirement</span>
-                    <strong className="text-slate-800 flex items-center gap-1">
-                      <Thermometer className="w-3.5 h-3.5 text-cyan-600" />
-                      {selectedMedicineForDetails.storageType || 'Room Temperature'}
-                    </strong>
+                    <span className="text-[10px] text-slate-400 block font-medium">Hospital ID</span>
+                    <strong className="font-mono text-primary-700">{selectedMedicineForDetails.hospitalId || user?.id || 'hosp-1'}</strong>
                   </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Manufacturing Date</span>
-                    <strong className="font-mono text-slate-700">{selectedMedicineForDetails.mfgDate || 'N/A'}</strong>
-                  </div>
-                  <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Expiry Date</span>
-                    <strong className="font-mono text-slate-900">{selectedMedicineForDetails.expiryDate}</strong>
+                  <div className="col-span-2">
+                    <span className="text-[10px] text-slate-400 block font-medium">Location</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.location || `${user?.city || 'Mumbai'}, ${user?.state || 'Maharashtra'}`}</strong>
                   </div>
                 </div>
               </div>
 
-              {/* SECTION 3: STOCK LEVELS */}
+              {/* 3. BATCH & STOCK */}
               <div className="space-y-2.5">
                 <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
-                  3. Stock & Buffer Thresholds
+                  3. Batch & Stock
                 </h3>
-                <div className="grid grid-cols-3 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100 text-center">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Stock Units</span>
-                    <div className="text-base font-black text-slate-900 font-mono">
-                      {selectedMedicineForDetails.quantity}
-                    </div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Batch Number</span>
+                    <strong className="font-mono text-slate-800">{selectedMedicineForDetails.batchNo || selectedMedicineForDetails.batchNumber || 'N/A'}</strong>
                   </div>
                   <div>
-                    <span className="text-[10px] text-slate-400 block font-medium">Min Buffer</span>
-                    <div className="text-base font-black text-slate-600 font-mono">
-                      {selectedMedicineForDetails.minStock || 20}
-                    </div>
+                    <span className="text-[10px] text-slate-400 block font-medium">MFG Date</span>
+                    <strong className="font-mono text-slate-700">{selectedMedicineForDetails.mfgDate || 'N/A'}</strong>
                   </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">EXP Date</span>
+                    <strong className="font-mono text-slate-900">{selectedMedicineForDetails.expiryDate}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Expiry Status</span>
+                    <strong className={`text-[11px] uppercase font-bold ${
+                      selectedMedicineForDetails.expiryMeta?.isExpired 
+                        ? 'text-rose-600' 
+                        : selectedMedicineForDetails.expiryMeta?.isNearExpiry 
+                          ? 'text-amber-600' 
+                          : 'text-emerald-600'
+                    }`}>
+                      {selectedMedicineForDetails.expiryMeta?.isExpired 
+                        ? 'Expired' 
+                        : selectedMedicineForDetails.expiryMeta?.isNearExpiry 
+                          ? 'Expiring Soon' 
+                          : 'Valid — Active Stock'}
+                    </strong>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Pack Size</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.packSize || selectedMedicineForDetails.packing || '15 Tablets / Strip'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Unit Type</span>
+                    <strong className="text-slate-800">{selectedMedicineForDetails.unit || 'Tablet'}</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Number of Packs</span>
+                    <strong className="font-mono text-slate-900">{selectedMedicineForDetails.numberOfPacks || Math.ceil(Number(selectedMedicineForDetails.quantity || 0) / (selectedMedicineForDetails.unitsPerPack || 15))} Packs</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Total Units</span>
+                    <strong className="font-mono text-slate-900">{selectedMedicineForDetails.totalUnits || selectedMedicineForDetails.quantity || 0} Units</strong>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Current Quantity</span>
+                    <strong className="font-mono text-base text-slate-900">{selectedMedicineForDetails.totalQuantity || selectedMedicineForDetails.quantity || 0} Units</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-amber-600 block font-medium">Reserved Quantity</span>
+                    <strong className="font-mono text-base text-amber-700">{selectedMedicineForDetails.reservedQuantity || 0} Units</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-emerald-600 block font-medium">Available Quantity</span>
+                    <strong className="font-mono text-base text-emerald-700">{selectedMedicineForDetails.availableQuantity ?? Math.max(0, (selectedMedicineForDetails.quantity || 0) - (selectedMedicineForDetails.reservedQuantity || 0))} Units</strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Minimum Stock Level</span>
+                    <strong className="font-mono text-base text-slate-800">{selectedMedicineForDetails.reorderLevel || selectedMedicineForDetails.minStock || selectedMedicineForDetails.minStockLevel || 20} Units</strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4. PRICING */}
+              <div className="space-y-2.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
+                  4. Pricing Structure
+                </h3>
+                <div className="grid grid-cols-3 gap-2 p-3 rounded-2xl bg-white border border-slate-200 text-center">
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Unit MRP</span>
-                    <div className="text-base font-black text-primary-700 font-mono">
-                      ₹{selectedMedicineForDetails.unitOriginalPrice}
+                    <div className="text-sm font-black text-slate-800 font-mono">
+                      ₹{Number(selectedMedicineForDetails.mrp || selectedMedicineForDetails.unitOriginalPrice || 0).toFixed(2)}
                     </div>
                   </div>
+                  <div>
+                    <span className="text-[10px] text-primary-600 block font-semibold">Concession Rate</span>
+                    <div className="text-sm font-black text-primary-700 font-mono">
+                      ₹{Number(selectedMedicineForDetails.concessionRate || selectedMedicineForDetails.unitFinalPrice || Math.round((selectedMedicineForDetails.unitOriginalPrice || 0) * (1 - (selectedMedicineForDetails.concessionPercent || 15) / 100))).toFixed(2)}
+                    </div>
+                    <span className="text-[9px] text-primary-500">MediStock Rate</span>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Acquisition / Cost Rate</span>
+                    <div className="text-sm font-black text-slate-600 font-mono">
+                      ₹{Number(selectedMedicineForDetails.costRate || selectedMedicineForDetails.acquisitionCost || Math.round((selectedMedicineForDetails.unitOriginalPrice || 0) * 0.85)).toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Total Lot Value (MRP)</span>
+                    <strong className="text-slate-900 font-mono text-sm block">
+                      ₹{(Number(selectedMedicineForDetails.mrp || selectedMedicineForDetails.unitOriginalPrice || 0) * Number(selectedMedicineForDetails.quantity || 0)).toLocaleString('en-IN')}
+                    </strong>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-[10px] text-emerald-600 block font-medium">Total Lot Value (Concession)</span>
+                    <strong className="text-emerald-700 font-mono text-sm block">
+                      ₹{(Number(selectedMedicineForDetails.concessionRate || selectedMedicineForDetails.unitFinalPrice || 0) * Number(selectedMedicineForDetails.quantity || 0)).toLocaleString('en-IN')}
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
+              {/* 5. STORAGE */}
+              <div className="space-y-2.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono">
+                  5. Storage
+                </h3>
+                <div className="grid grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Storage Condition</span>
+                    <strong className="text-slate-800 flex items-center gap-1 mt-0.5">
+                      <Thermometer className="w-3.5 h-3.5 text-cyan-600" />
+                      {selectedMedicineForDetails.storageCondition || selectedMedicineForDetails.storageType || 'Room Temperature (15°C - 25°C)'}
+                    </strong>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 block font-medium">Shelf / Storage Location</span>
+                    <strong className="text-slate-800 bg-white px-2 py-0.5 rounded border border-slate-200 block truncate mt-0.5">
+                      {selectedMedicineForDetails.shelfLocation || 'Rack A - Shelf 3'}
+                    </strong>
+                    <span className="text-[9px] text-slate-400 block mt-0.5">Hospital Staff Maintained</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* 6. STOCK HISTORY */}
+              <div className="space-y-2.5">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 font-mono flex items-center justify-between">
+                  <span>6. Stock Movement History</span>
+                  <span className="text-[10px] text-slate-500 font-normal">
+                    {medicineStockHistory.length > 0 ? `${medicineStockHistory.length} events` : 'Intake record'}
+                  </span>
+                </h3>
+                <div className="space-y-2 max-h-44 overflow-y-auto pr-1">
+                  {medicineStockHistory.length > 0 ? (
+                    medicineStockHistory.map((log) => {
+                      const isPositive = Number(log.quantityDelta || 0) >= 0;
+                      return (
+                        <div key={log.id} className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                              <span className={`font-mono px-1.5 py-0.5 rounded text-[10px] ${isPositive ? 'bg-emerald-100 text-emerald-800 border border-emerald-200' : 'bg-rose-100 text-rose-800 border border-rose-200'}`}>
+                                {isPositive ? `+${log.quantityDelta}` : log.quantityDelta}
+                              </span>
+                              <span>{log.action || log.movementType || 'Stock Movement'}</span>
+                            </div>
+                            <div className="text-[10px] text-slate-500">
+                              {log.date || log.timestamp?.split('T')[0]} • {log.reason || log.source || 'Authorized Transaction'}
+                            </div>
+                          </div>
+                          {log.resultingStock !== undefined && (
+                            <div className="text-right font-mono text-[11px] text-slate-600 shrink-0 ml-2">
+                              Bal: <strong>{log.resultingStock}</strong>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  ) : (
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-100 flex items-center justify-between text-xs">
+                      <div className="space-y-0.5">
+                        <div className="flex items-center gap-1.5 font-bold text-slate-800">
+                          <span className="font-mono px-1.5 py-0.5 rounded text-[10px] bg-emerald-100 text-emerald-800 border border-emerald-200">
+                            +{selectedMedicineForDetails.totalQuantity || selectedMedicineForDetails.quantity || 0}
+                          </span>
+                          <span>Purchase / Batch Intake</span>
+                        </div>
+                        <div className="text-[10px] text-slate-500">
+                          {selectedMedicineForDetails.dateAdded || selectedMedicineForDetails.purchaseDate || '2026-06-01'} • Initial Hospital Stock Receipt
+                        </div>
+                      </div>
+                      <div className="text-right font-mono text-[11px] text-slate-600 shrink-0 ml-2">
+                        Bal: <strong>{selectedMedicineForDetails.totalQuantity || selectedMedicineForDetails.quantity || 0}</strong>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 

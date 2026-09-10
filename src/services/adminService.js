@@ -707,10 +707,15 @@ export const adminService = {
         masterMedicineId: med.masterMedicineId || med.medicineId,
         genericName: med.genericName || 'Active Pharmaceutical Ingredient',
         category: med.category || 'Essential Medicines',
+        dosage: med.dosage || med.strength || med.power || '',
         dosageForm: med.dosageForm || med.form || 'Tablet',
         form: med.form || med.dosageForm || 'Tablet',
         strength: med.strength || med.power || '',
         power: med.power || med.strength || '',
+        packing: med.packing || med.packSize || '15 Tablets',
+        packSize: med.packSize || med.packing || '15 Tablets',
+        unit: med.unit || 'Tablet',
+        shelfLocation: med.shelfLocation || 'Rack A - Shelf 3',
         manufacturer: med.manufacturer || 'Authorized Manufacturer',
         hospital: hosp.name,
         hospitalName: hosp.name,
@@ -720,12 +725,23 @@ export const adminService = {
         availableStock: available,
         availableQuantity: available,
         totalStock: qty,
+        totalQuantity: qty,
         quantity: qty,
         reservedStock: reserved,
         reservedQuantity: reserved,
         expiredStock: exp.isExpired ? qty : 0,
         minimumStock: med.minStockLevel || 20,
         minStockLevel: med.minStockLevel || 20,
+        reorderLevel: med.reorderLevel || med.minStockLevel || 20,
+        mrp: Number(med.mrp || med.unitOriginalPrice || 50),
+        unitOriginalPrice: Number(med.mrp || med.unitOriginalPrice || 50),
+        concessionRate: Number(med.concessionRate || med.unitFinalPrice || Math.round((med.unitOriginalPrice || 50) * (1 - (med.concessionPercent || 10) / 100))),
+        unitFinalPrice: Number(med.concessionRate || med.unitFinalPrice || Math.round((med.unitOriginalPrice || 50) * (1 - (med.concessionPercent || 10) / 100))),
+        costRate: Number(med.costRate || med.acquisitionCost || Math.round((med.unitOriginalPrice || 50) * 0.85)),
+        acquisitionCost: Number(med.acquisitionCost || med.costRate || Math.round((med.unitOriginalPrice || 50) * 0.85)),
+        supplier: med.supplier || 'Authorized Pharmaceutical Distributor',
+        purchaseDate: med.purchaseDate || med.dateAdded || '2024-09-01',
+        source: med.source || 'Standard Procurement',
         mfgDate: med.mfgDate || '2024-01-01',
         expiryDate: med.expiryDate,
         daysUntilExpiry: exp.daysUntilExpiry,
@@ -736,9 +752,12 @@ export const adminService = {
         lastUpdated: med.lastUpdated || med.dateAdded || '2024-09-01',
         batchNumber: med.batchNo || 'BATCH-2024',
         batchNo: med.batchNo || 'BATCH-2024',
-        unitOriginalPrice: med.unitOriginalPrice || 50,
         notes: med.notes || '',
-        storageType: med.storageType || 'Room Temperature (15°C - 25°C)',
+        storageType: med.storageCondition || med.storageType || 'Room Temperature (15°C - 25°C)',
+        storageCondition: med.storageCondition || med.storageType || 'Room Temperature (15°C - 25°C)',
+        numberOfPacks: med.numberOfPacks !== undefined ? med.numberOfPacks : Math.max(1, Math.ceil(qty / (med.unitsPerPack || 15))),
+        unitsPerPack: med.unitsPerPack || 15,
+        totalUnits: med.totalUnits || qty,
       };
     });
 
@@ -821,8 +840,23 @@ export const adminService = {
     category,
     dosageForm,
     form,
+    dosage,
     strength,
     power,
+    packing,
+    packSize,
+    numberOfPacks,
+    unitsPerPack,
+    totalUnits,
+    unit,
+    shelfLocation,
+    storageCondition,
+    storageType,
+    mrp,
+    concessionRate,
+    costRate,
+    acquisitionCost,
+    reorderLevel,
     manufacturer,
     batchNo,
     quantity,
@@ -862,14 +896,46 @@ export const adminService = {
     let isNewRecord = false;
     let prevQuantity = 0;
 
+    const rateMRP = Number(mrp) || Number(unitOriginalPrice) || 100;
+    const rateConcession = Number(concessionRate) || Math.round(rateMRP * 0.95);
+    const rateCost = Number(costRate || acquisitionCost) || Math.round(rateMRP * 0.85);
+
+    const uPerPack = Number(unitsPerPack) > 0 ? Number(unitsPerPack) : 15;
+    const numPacks = Number(numberOfPacks) > 0 ? Number(numberOfPacks) : Math.max(1, Math.ceil(addQty / uPerPack));
+    const resolvedPackSize = packSize || packing || `${uPerPack} Units / Strip`;
+    const resolvedStorage = storageCondition || storageType || 'Room Temperature (15°C - 25°C)';
+
     if (existingIndex !== -1) {
       // Merge into existing batch (do NOT create duplicate row)
-      prevQuantity = Number(medicines[existingIndex].quantity || 0);
-      medicines[existingIndex].quantity = prevQuantity + addQty;
+      prevQuantity = Number(medicines[existingIndex].quantity || medicines[existingIndex].totalQuantity || 0);
+      const newTotal = prevQuantity + addQty;
+      medicines[existingIndex].quantity = newTotal;
+      medicines[existingIndex].totalQuantity = newTotal;
+      medicines[existingIndex].totalUnits = newTotal;
+      const prevPacks = Number(medicines[existingIndex].numberOfPacks || Math.ceil(prevQuantity / uPerPack));
+      medicines[existingIndex].numberOfPacks = prevPacks + numPacks;
+      medicines[existingIndex].unitsPerPack = uPerPack;
+      medicines[existingIndex].packSize = resolvedPackSize;
+      medicines[existingIndex].packing = resolvedPackSize;
+      medicines[existingIndex].storageCondition = resolvedStorage;
+      medicines[existingIndex].storageType = resolvedStorage;
+      const reserved = Number(medicines[existingIndex].reservedQuantity || 0);
+      medicines[existingIndex].availableQuantity = Math.max(0, newTotal - reserved);
       medicines[existingIndex].lastUpdated = new Date().toISOString().split('T')[0];
       if (mfgDate) medicines[existingIndex].mfgDate = mfgDate;
       if (expiryDate) medicines[existingIndex].expiryDate = expiryDate;
-      if (minStockLevel) medicines[existingIndex].minStockLevel = Number(minStockLevel);
+      if (minStockLevel || reorderLevel) {
+        medicines[existingIndex].minStockLevel = Number(minStockLevel || reorderLevel);
+        medicines[existingIndex].reorderLevel = Number(reorderLevel || minStockLevel);
+      }
+      if (shelfLocation) medicines[existingIndex].shelfLocation = shelfLocation;
+      if (unit) medicines[existingIndex].unit = unit;
+      medicines[existingIndex].mrp = rateMRP;
+      medicines[existingIndex].unitOriginalPrice = rateMRP;
+      medicines[existingIndex].concessionRate = rateConcession;
+      medicines[existingIndex].unitFinalPrice = rateConcession;
+      medicines[existingIndex].costRate = rateCost;
+      medicines[existingIndex].acquisitionCost = rateCost;
       resultItem = medicines[existingIndex];
     } else {
       // Create separate batch record
@@ -882,18 +948,41 @@ export const adminService = {
         medicineName: medicineName.trim(),
         genericName: genericName?.trim() || 'Active Formulation',
         category: category || 'Essential Medicines',
+        dosage: dosage || strength || power || 'Standard',
+        dosageForm: dosageForm || form || 'Tablet',
         form: dosageForm || form || 'Tablet',
         power: strength || power || 'Standard',
+        strength: strength || power || 'Standard',
+        packing: resolvedPackSize,
+        packSize: resolvedPackSize,
+        numberOfPacks: numPacks,
+        unitsPerPack: uPerPack,
+        totalUnits: addQty,
+        unit: unit || 'Tablet',
         manufacturer: manufacturer || 'Authorized Manufacturer',
         batchNo: batchNo.trim(),
+        batchNumber: batchNo.trim(),
         quantity: addQty,
-        minStockLevel: Number(minStockLevel) || 20,
+        totalQuantity: addQty,
+        reservedQuantity: 0,
+        availableQuantity: addQty,
+        reorderLevel: Number(reorderLevel || minStockLevel) || 20,
+        minStockLevel: Number(minStockLevel || reorderLevel) || 20,
+        shelfLocation: shelfLocation || 'Rack A - Shelf 3',
+        storageCondition: resolvedStorage,
+        storageType: resolvedStorage,
         mfgDate: mfgDate || new Date().toISOString().split('T')[0],
         expiryDate: expiryDate,
-        unitOriginalPrice: Number(unitOriginalPrice) || 50,
+        mrp: rateMRP,
+        unitOriginalPrice: rateMRP,
+        concessionRate: rateConcession,
+        unitFinalPrice: rateConcession,
+        costRate: rateCost,
+        acquisitionCost: rateCost,
         hospitalId,
         hospitalName: hosp.name,
         location: `${hosp.city || 'District'}, ${hosp.state || 'India'}`,
+        source: 'Admin Stock Addition',
         dateAdded: new Date().toISOString().split('T')[0],
         lastUpdated: new Date().toISOString().split('T')[0],
         notes: notes || 'Admin override stock addition',
@@ -913,12 +1002,15 @@ export const adminService = {
       batchNo: resultItem.batchNo,
       hospitalId,
       hospitalName: hosp.name,
-      action: 'Stock Added',
-      actionType: 'Intake',
+      action: 'Admin Stock Addition',
+      actionType: 'Admin Stock Addition',
+      movementType: 'Admin Stock Addition',
       quantityDelta: addQty,
       previousStock: prevQuantity,
       resultingStock: resultItem.quantity,
       performedBy: 'Admin',
+      shelfLocation: resultItem.shelfLocation,
+      source: 'Admin Stock Addition',
       reason: notes || 'Admin override authorized batch addition',
       timestamp: new Date().toISOString(),
       date: new Date().toISOString().split('T')[0],

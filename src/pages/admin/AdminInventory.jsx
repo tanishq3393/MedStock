@@ -62,11 +62,22 @@ export const AdminInventory = () => {
     dosageForm: 'Tablet',
     strength: '',
     manufacturer: '',
+    packing: '15 Tablets / Strip',
+    packSize: '15 Tablets / Strip',
+    numberOfPacks: 10,
+    unitsPerPack: 15,
+    unit: 'Tablet',
+    shelfLocation: 'Rack A - Shelf 3',
+    storageCondition: 'Room Temperature (15°C - 25°C)',
     batchNo: '',
-    quantity: 100,
+    quantity: 150,
+    totalUnits: 150,
     mfgDate: '',
     expiryDate: '',
     minStockLevel: 25,
+    mrp: 100,
+    concessionRate: 95,
+    costRate: 90,
     notes: 'Admin override authorized batch addition',
     isFromDetails: false,
   });
@@ -138,11 +149,22 @@ export const AdminInventory = () => {
       dosageForm: 'Tablet',
       strength: '500 mg',
       manufacturer: '',
+      packing: '15 Tablets / Strip',
+      packSize: '15 Tablets / Strip',
+      numberOfPacks: 10,
+      unitsPerPack: 15,
+      unit: 'Tablet',
+      shelfLocation: 'Rack A - Shelf 3',
+      storageCondition: 'Room Temperature (15°C - 25°C)',
       batchNo: 'BATCH-' + Math.floor(1000 + Math.random() * 9000),
-      quantity: 50,
+      quantity: 150,
+      totalUnits: 150,
       mfgDate: today,
       expiryDate: defaultExp,
       minStockLevel: 25,
+      mrp: 100,
+      concessionRate: 95,
+      costRate: 90,
       notes: 'Admin override - system assistance stock intake',
       isFromDetails: false,
     });
@@ -153,6 +175,9 @@ export const AdminInventory = () => {
   const handleOpenAddStockFromDetails = () => {
     if (!selectedItem) return;
     const today = new Date().toISOString().split('T')[0];
+    const uPerPack = selectedItem.unitsPerPack || 15;
+    const nPacks = selectedItem.numberOfPacks || 10;
+    const totUnits = nPacks * uPerPack;
     setAddForm({
       hospitalId: selectedItem.hospitalId,
       masterMedicineId: selectedItem.masterMedicineId || selectedItem.medicineId || '',
@@ -162,11 +187,22 @@ export const AdminInventory = () => {
       dosageForm: selectedItem.dosageForm || selectedItem.form || 'Tablet',
       strength: selectedItem.strength || selectedItem.power || '',
       manufacturer: selectedItem.manufacturer || '',
+      packing: selectedItem.packing || selectedItem.packSize || `${uPerPack} Tablets / Strip`,
+      packSize: selectedItem.packSize || selectedItem.packing || `${uPerPack} Tablets / Strip`,
+      numberOfPacks: nPacks,
+      unitsPerPack: uPerPack,
+      unit: selectedItem.unit || 'Tablet',
+      shelfLocation: selectedItem.shelfLocation || 'Rack A - Shelf 3',
+      storageCondition: selectedItem.storageCondition || selectedItem.storageType || 'Room Temperature (15°C - 25°C)',
       batchNo: selectedItem.batchNumber || selectedItem.batchNo || '',
-      quantity: 50,
+      quantity: totUnits,
+      totalUnits: totUnits,
       mfgDate: selectedItem.mfgDate || today,
       expiryDate: selectedItem.expiryDate || '',
       minStockLevel: selectedItem.minStockLevel || selectedItem.minimumStock || 20,
+      mrp: selectedItem.mrp || selectedItem.unitOriginalPrice || 100,
+      concessionRate: selectedItem.concessionRate || selectedItem.unitFinalPrice || 95,
+      costRate: selectedItem.costRate || selectedItem.acquisitionCost || 90,
       notes: 'Admin override additional batch intake',
       isFromDetails: true,
     });
@@ -179,6 +215,8 @@ export const AdminInventory = () => {
       (m.medicineName || m.brandName || '').toLowerCase() === medName.toLowerCase()
     );
     if (found) {
+      const uPerPack = found.unitsPerPack || 15;
+      const nPacks = 10;
       setAddForm((prev) => ({
         ...prev,
         masterMedicineId: found.id,
@@ -186,8 +224,19 @@ export const AdminInventory = () => {
         genericName: found.genericName || prev.genericName,
         category: found.category || prev.category,
         dosageForm: found.dosageForm || found.form || prev.dosageForm,
-        strength: found.strength || found.power || prev.strength,
+        strength: found.dosage || found.strength || found.power || prev.strength,
         manufacturer: found.manufacturer || prev.manufacturer,
+        packing: found.packing || found.packSize || `${uPerPack} Tablets / Strip`,
+        packSize: found.packSize || found.packing || `${uPerPack} Tablets / Strip`,
+        numberOfPacks: nPacks,
+        unitsPerPack: uPerPack,
+        quantity: nPacks * uPerPack,
+        totalUnits: nPacks * uPerPack,
+        unit: found.unit || prev.unit || 'Tablet',
+        storageCondition: found.storageCondition || found.storageType || prev.storageCondition,
+        mrp: found.mrp || prev.mrp || 100,
+        concessionRate: found.concessionRate || prev.concessionRate || 95,
+        costRate: found.costRate || prev.costRate || 90,
       }));
     } else {
       setAddForm((prev) => ({ ...prev, medicineName: medName }));
@@ -228,8 +277,12 @@ export const AdminInventory = () => {
         setSelectedItem((prev) => prev ? {
           ...prev,
           quantity: prev.batchNumber === result.batchNo ? result.quantity : prev.quantity,
-          availableStock: prev.batchNumber === result.batchNo ? result.quantity : prev.availableStock,
-          totalStock: prev.batchNumber === result.batchNo ? result.quantity : prev.totalStock,
+          availableStock: prev.batchNumber === result.batchNo ? result.availableQuantity : prev.availableStock,
+          totalStock: prev.batchNumber === result.batchNo ? result.totalQuantity : prev.totalStock,
+          totalQuantity: prev.batchNumber === result.batchNo ? result.totalQuantity : prev.totalQuantity,
+          availableQuantity: prev.batchNumber === result.batchNo ? result.availableQuantity : prev.availableQuantity,
+          totalUnits: prev.batchNumber === result.batchNo ? result.totalUnits : prev.totalUnits,
+          numberOfPacks: prev.batchNumber === result.batchNo ? result.numberOfPacks : prev.numberOfPacks,
         } : null);
       }
       loadInventory();
@@ -307,8 +360,8 @@ export const AdminInventory = () => {
     setIsHistoryLoading(true);
     try {
       const logs = await adminService.getStockHistory(
-        selectedItem.id,
-        selectedItem.batchNumber,
+        selectedItem.medicineId || selectedItem.id,
+        selectedItem.batchNumber || selectedItem.batchNo,
         selectedItem.hospitalId
       );
       setHistoryLogs(logs);
@@ -761,7 +814,7 @@ export const AdminInventory = () => {
                 <Pill className="w-3.5 h-3.5" />
                 <span>Medicine Formulation Information</span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Brand / Trade Name</span>
                   <span className="font-bold text-slate-900 text-sm">{selectedItem.medicineName}</span>
@@ -779,8 +832,20 @@ export const AdminInventory = () => {
                   <span className="font-medium text-slate-800">{selectedItem.dosageForm || selectedItem.form || 'Tablet'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Strength / Power</span>
-                  <span className="font-medium text-slate-800">{selectedItem.strength || selectedItem.power || 'Standard formulation'}</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Dosage / Strength</span>
+                  <span className="font-medium text-slate-800">{selectedItem.dosage || selectedItem.strength || selectedItem.power || 'Standard formulation'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Packing / Pack Size</span>
+                  <span className="font-medium text-slate-800">{selectedItem.packing || selectedItem.packSize || '15 Tablets'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Dispensing Unit</span>
+                  <span className="font-medium text-slate-800">{selectedItem.unit || 'Tablet'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Storage Condition</span>
+                  <span className="font-medium text-slate-800">{selectedItem.storageCondition || selectedItem.storageType || 'Room Temperature (15°C - 25°C)'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Manufacturer</span>
@@ -789,13 +854,13 @@ export const AdminInventory = () => {
               </div>
             </div>
 
-            {/* 2. HOSPITAL DETAILS */}
+            {/* 2. HOSPITAL & LOCATION DETAILS */}
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
               <div className="flex items-center gap-2 text-primary-700 font-bold uppercase tracking-wider text-[10px]">
                 <Building2 className="w-3.5 h-3.5" />
-                <span>Holding Healthcare Facility</span>
+                <span>Holding Healthcare Facility & Storage Location</span>
               </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Facility Name</span>
                   <span className="font-bold text-slate-900">{selectedItem.hospitalName}</span>
@@ -805,18 +870,24 @@ export const AdminInventory = () => {
                   <span className="font-mono font-semibold text-primary-700">{selectedItem.hospitalId}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Location / Jurisdiction</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Jurisdiction</span>
                   <span className="font-medium text-slate-800">{selectedItem.hospitalCity || 'Metro'}, {selectedItem.hospitalState || 'India'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Shelf / Storage Location</span>
+                  <span className="font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 inline-block mt-0.5">
+                    {selectedItem.shelfLocation || 'Rack A - Shelf 3'}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* 3. STOCK DETAILS (Section 17 & 18 & 20) */}
+            {/* 3. STOCK METRICS & BATCH PRICING */}
             <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 space-y-3">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2 text-primary-700 font-bold uppercase tracking-wider text-[10px]">
                   <Boxes className="w-3.5 h-3.5" />
-                  <span>Batch Stock Metrics & Expiry</span>
+                  <span>Batch Stock Metrics, Reorder Level & Pricing</span>
                 </div>
                 <StatusBadge status={selectedItem.status} />
               </div>
@@ -829,29 +900,102 @@ export const AdminInventory = () => {
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Current Quantity</span>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Stock</span>
                   <span className="font-mono font-bold text-base text-slate-900">
-                    {Number(selectedItem.quantity || selectedItem.totalStock || 0).toLocaleString('en-IN')} Units
+                    {Number(selectedItem.totalQuantity || selectedItem.quantity || selectedItem.totalStock || 0).toLocaleString('en-IN')} Units
                   </span>
-                  {selectedItem.reservedStock > 0 && (
-                    <span className="text-[10px] text-amber-600 block">({selectedItem.reservedStock} reserved)</span>
-                  )}
+                  <span className="text-[10px] text-slate-500 block">Total physical count</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Min Stock Threshold</span>
-                  <span className="font-mono font-bold text-slate-800">
-                    {selectedItem.minStockLevel || selectedItem.minimumStock || 20} Units
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Reserved Stock</span>
+                  <span className="font-mono font-bold text-base text-amber-700">
+                    {Number(selectedItem.reservedQuantity || selectedItem.reservedStock || 0).toLocaleString('en-IN')} Units
                   </span>
-                  <span className="text-[10px] text-slate-400 block">Safety buffer</span>
+                  <span className="text-[10px] text-amber-600 block">Pending order locks</span>
                 </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Available Stock</span>
+                  <span className="font-mono font-bold text-base text-emerald-700">
+                    {Number(selectedItem.availableQuantity || selectedItem.availableStock || 0).toLocaleString('en-IN')} Units
+                  </span>
+                  <span className="text-[10px] text-emerald-600 block">Unreserved for orders</span>
+                </div>
+              </div>
+
+              {/* Pricing & Reorder Level Breakdown */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200/60">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Reorder Level</span>
+                  <span className="font-mono font-bold text-slate-800">
+                    {selectedItem.reorderLevel || selectedItem.minStockLevel || selectedItem.minimumStock || 20} Units
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">Alert threshold</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">MRP</span>
+                  <span className="font-mono font-bold text-slate-900">
+                    ₹{Number(selectedItem.mrp || selectedItem.unitOriginalPrice || 0).toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">Maximum Retail Price</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Concession Rate</span>
+                  <span className="font-mono font-bold text-primary-700">
+                    ₹{Number(selectedItem.concessionRate || selectedItem.unitFinalPrice || 0).toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-primary-600 block">MediStock Rate</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Acquisition Cost</span>
+                  <span className="font-mono font-bold text-slate-700">
+                    ₹{Number(selectedItem.costRate || selectedItem.acquisitionCost || 0).toFixed(2)}
+                  </span>
+                  <span className="text-[10px] text-slate-400 block">Purchase rate</span>
+                </div>
+              </div>
+
+              {/* Packaging Breakdown & Lot Value */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-200/60">
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Packaging Structure</span>
+                  <span className="font-bold text-slate-900 block mt-0.5">
+                    {selectedItem.numberOfPacks || Math.ceil(Number(selectedItem.totalQuantity || selectedItem.quantity || 0) / (selectedItem.unitsPerPack || 15))} Packs ({selectedItem.unitsPerPack || 15} units/pack)
+                  </span>
+                  <span className="text-[10px] text-slate-500 block">{selectedItem.packSize || selectedItem.packing || '15 Tablets / Strip'}</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Stock Units</span>
+                  <span className="font-mono font-bold text-slate-900 block mt-0.5">
+                    {Number(selectedItem.totalQuantity || selectedItem.quantity || 0).toLocaleString('en-IN')} Units
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Lot Value (MRP)</span>
+                  <span className="font-mono font-bold text-primary-700 block mt-0.5">
+                    ₹{(Number(selectedItem.mrp || selectedItem.unitOriginalPrice || 0) * Number(selectedItem.totalQuantity || selectedItem.quantity || 0)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Total Value (Concession)</span>
+                  <span className="font-mono font-bold text-emerald-700 block mt-0.5">
+                    ₹{(Number(selectedItem.concessionRate || selectedItem.unitFinalPrice || 0) * Number(selectedItem.totalQuantity || selectedItem.quantity || 0)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-semibold">Expiry Date</span>
                   <span className="font-mono font-bold text-slate-900 block mt-0.5">
                     {selectedItem.expiryDate}
                   </span>
-                  {selectedItem.mfgDate && (
-                    <span className="text-[10px] text-slate-400 block font-mono">Mfg: {selectedItem.mfgDate}</span>
-                  )}
+                </div>
+                <div>
+                  <span className="text-slate-400 block text-[10px] uppercase font-semibold">Manufacturing Date</span>
+                  <span className="font-mono font-bold text-slate-700 block mt-0.5">
+                    {selectedItem.mfgDate || 'N/A'}
+                  </span>
                 </div>
               </div>
 
@@ -1024,15 +1168,85 @@ export const AdminInventory = () => {
 
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
-                  Quantity to Add <span className="text-rose-500">*</span>
+                  Quantity to Add (Total Units) <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="number"
                   min="1"
                   required
                   value={addForm.quantity}
-                  onChange={(e) => setAddForm((prev) => ({ ...prev, quantity: e.target.value }))}
+                  onChange={(e) => {
+                    const qty = Math.max(1, Number(e.target.value));
+                    const units = Number(addForm.unitsPerPack) || 15;
+                    const packs = Math.max(1, Math.ceil(qty / units));
+                    setAddForm((prev) => ({ ...prev, quantity: qty, totalUnits: qty, numberOfPacks: packs }));
+                  }}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-sm focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+                <span className="text-[10px] text-slate-500 mt-0.5 block">
+                  {addForm.numberOfPacks || 1} packs × {addForm.unitsPerPack || 15} units = {addForm.quantity} total units
+                </span>
+              </div>
+            </div>
+
+            {/* Packaging & Pack Size Structure */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Packing / Pack Size
+                </label>
+                <input
+                  type="text"
+                  value={addForm.packing}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, packing: e.target.value, packSize: e.target.value }))}
+                  placeholder="e.g. 15 Tablets / Strip"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary-500 focus:outline-none text-xs"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Number of Packs
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={addForm.numberOfPacks}
+                  onChange={(e) => {
+                    const packs = Math.max(1, Number(e.target.value));
+                    const units = Number(addForm.unitsPerPack) || 15;
+                    const tot = packs * units;
+                    setAddForm((prev) => ({
+                      ...prev,
+                      numberOfPacks: packs,
+                      quantity: tot,
+                      totalUnits: tot,
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Units per Pack
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={addForm.unitsPerPack}
+                  onChange={(e) => {
+                    const units = Math.max(1, Number(e.target.value));
+                    const packs = Number(addForm.numberOfPacks) || 1;
+                    const tot = packs * units;
+                    setAddForm((prev) => ({
+                      ...prev,
+                      unitsPerPack: units,
+                      quantity: tot,
+                      totalUnits: tot,
+                    }));
+                  }}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
                 />
               </div>
             </div>
@@ -1061,6 +1275,79 @@ export const AdminInventory = () => {
                   value={addForm.expiryDate}
                   onChange={(e) => setAddForm((prev) => ({ ...prev, expiryDate: e.target.value }))}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary-500 focus:outline-none text-xs"
+                />
+              </div>
+            </div>
+
+            {/* Shelf Location & Storage Condition */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Shelf / Storage Location
+                </label>
+                <input
+                  type="text"
+                  value={addForm.shelfLocation}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, shelfLocation: e.target.value }))}
+                  placeholder="e.g. Rack A - Shelf 3"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary-500 focus:outline-none text-xs font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Storage Condition
+                </label>
+                <select
+                  value={addForm.storageCondition}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, storageCondition: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 focus:ring-2 focus:ring-primary-500 focus:outline-none text-xs bg-white font-medium"
+                >
+                  <option value="Room Temperature (15°C - 25°C)">Room Temperature (15°C - 25°C)</option>
+                  <option value="Cold Storage (2°C - 8°C)">Cold Storage (2°C - 8°C)</option>
+                  <option value="Deep Freeze (-20°C)">Deep Freeze (-20°C)</option>
+                  <option value="Protect from Light (<25°C)">Protect from Light (&lt;25°C)</option>
+                  <option value="Dry & Cool (<25°C)">Dry & Cool (&lt;25°C)</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Pricing Parameters */}
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  MRP (₹ / unit)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={addForm.mrp}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, mrp: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Concession Rate (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={addForm.concessionRate}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, concessionRate: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none text-emerald-700"
+                />
+              </div>
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">
+                  Acquisition Cost (₹)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  value={addForm.costRate}
+                  onChange={(e) => setAddForm((prev) => ({ ...prev, costRate: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 font-mono font-bold text-xs focus:ring-2 focus:ring-primary-500 focus:outline-none text-slate-700"
                 />
               </div>
             </div>

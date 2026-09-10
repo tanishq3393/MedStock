@@ -101,10 +101,16 @@ export const MyRequests = () => {
 
   // Tab counts
   const tabCounts = useMemo(() => {
-    const counts = { all: 0, actionable: 0, transit: 0, pending: 0, cancelled: 0 };
+    const counts = { all: 0, purchases: 0, actionable: 0, transit: 0, pending: 0, cancelled: 0 };
     outgoingRequests.forEach((r) => {
       counts.all += 1;
       const s = (r.status || '').toLowerCase().trim();
+      const ps = (r.paymentStatus || '').toLowerCase().trim();
+      const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(ps);
+      const isReceived = ['delivered', 'completed'].includes(s) || !!r.deliveredAt || !!r.receivedDate;
+
+      // Purchase History: only orders where payment was completed AND order was received/delivered
+      if (isPaid && isReceived) counts.purchases += 1;
       if (s === 'accepted') counts.actionable += 1;
       if (['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'in_transit'].includes(s)) counts.transit += 1;
       if (s === 'pending' || s === 'requested' || s === 'reviewing') counts.pending += 1;
@@ -122,12 +128,23 @@ export const MyRequests = () => {
         const s = (r.status || '').toLowerCase().trim();
         const ps = (r.paymentStatus || '').toLowerCase().trim();
         const isPaid = ['paid', 'success', 'successful', 'completed', 'settled'].includes(ps);
+        const isReceived = ['delivered', 'completed'].includes(s) || !!r.deliveredAt || !!r.receivedDate;
 
         // 1. Tab filter
-        if (activeTabFilter === 'actionable' && s !== 'accepted') return false;
-        if (activeTabFilter === 'transit' && !['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'in_transit'].includes(s)) return false;
-        if (activeTabFilter === 'pending' && !['pending', 'requested', 'reviewing'].includes(s)) return false;
-        if (activeTabFilter === 'cancelled' && s !== 'cancelled' && s !== 'cancelled by buyer') return false;
+        if (activeTabFilter === 'purchases') {
+          // Strictly ONLY medicines that satisfy BOTH conditions:
+          // 1. Payment was successfully completed
+          // 2. The order was successfully received/delivered by the hospital
+          if (!isPaid || !isReceived) return false;
+        } else if (activeTabFilter === 'actionable') {
+          if (s !== 'accepted') return false;
+        } else if (activeTabFilter === 'transit') {
+          if (!['paid', 'preparing', 'dispatched', 'shipped', 'in transit', 'in_transit'].includes(s)) return false;
+        } else if (activeTabFilter === 'pending') {
+          if (!['pending', 'requested', 'reviewing'].includes(s)) return false;
+        } else if (activeTabFilter === 'cancelled') {
+          if (s !== 'cancelled' && s !== 'cancelled by buyer') return false;
+        }
 
         // 2. Order Status dropdown
         if (orderStatusFilter !== 'all') {
@@ -356,6 +373,7 @@ export const MyRequests = () => {
           <div className="flex items-center gap-1.5 text-xs font-bold w-full lg:w-auto overflow-x-auto pb-1 lg:pb-0 scrollbar-thin">
             {[
               { id: 'all', label: 'All Orders', count: tabCounts.all },
+              { id: 'purchases', label: 'Purchase History', count: tabCounts.purchases },
               { id: 'actionable', label: 'Ready for Escrow', count: tabCounts.actionable },
               { id: 'transit', label: 'In Transit', count: tabCounts.transit },
               { id: 'pending', label: 'Awaiting Approval', count: tabCounts.pending },

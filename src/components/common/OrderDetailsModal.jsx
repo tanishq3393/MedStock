@@ -324,31 +324,91 @@ export const OrderDetailsModal = ({
 
         {/* 5. MEDICINE / STOCK / BATCH INFORMATION (Section 27, 28) */}
         <div className="p-4 rounded-2xl border border-slate-200 bg-white space-y-3">
-          <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider pb-2 border-b border-slate-100">
-            <Package className="w-4 h-4 text-teal-600" />
-            Pharmaceutical Formulation & Batch Inventory Details
+          <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+            <div className="flex items-center gap-2 text-xs font-mono font-bold text-slate-700 uppercase tracking-wider">
+              <Package className="w-4 h-4 text-teal-600" />
+              Pharmaceutical Formulation & Batch Inventory Details
+            </div>
+            <span className="text-[11px] font-mono text-slate-500 hidden sm:inline">
+              Providing Hospital: <strong className="text-slate-800">{order.fulfillingHospital?.name || order.toHospitalName || 'Providing Facility'}</strong>
+            </span>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 text-xs">
-            <div className="col-span-2">
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div>
               <span className="text-[10px] uppercase font-mono text-slate-400 block">Medicine Name</span>
               <span className="font-extrabold text-slate-900 text-sm">{order.medicineName}</span>
               <span className="text-[10px] text-slate-500 font-mono block">
-                {order.genericName || order.items?.[0]?.genericName || order.power || 'Active Pharmaceutical Formulation'}
+                {order.genericName || order.items?.[0]?.genericName || 'Active Pharmaceutical Formulation'}
               </span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-mono text-slate-400 block">Quantity</span>
-              <span className="font-mono font-bold text-slate-900 text-sm">{order.quantity} units</span>
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Dosage Form & Strength</span>
+              <span className="font-bold text-slate-800">{order.dosageForm || order.form || 'Tablet'}</span>
+              <span className="text-[10px] text-slate-500 font-mono block">{order.dosage || order.power || 'Standard'}</span>
             </div>
+            <div>
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Manufacturer</span>
+              <span className="font-bold text-slate-800">{order.manufacturer || 'Approved Pharma Corp'}</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Packing / Pack Size</span>
+              <span className="font-bold text-slate-800">{order.packing || order.packSize || '15 Tablets / Strip'}</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs pt-2 border-t border-slate-100">
             <div>
               <span className="text-[10px] uppercase font-mono text-slate-400 block">Batch Number</span>
               <span className="font-mono font-bold text-teal-800">{order.batchNo || 'BAT-9841'}</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Quantity Purchased</span>
+              <span className="font-mono font-bold text-slate-900 text-sm">{order.quantity} {order.unit || 'units'}</span>
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Concession Rate (MediStock)</span>
+              <span className="font-mono font-bold text-emerald-700 text-sm">
+                ₹{order.concessionRate || order.pricingBreakdown?.unitFinalPrice || order.unitPrice || order.unitSellingPrice || 95}
+              </span>
+              {order.mrp ? (
+                <span className="text-[10px] text-slate-400 block font-mono">MRP: ₹{order.mrp}</span>
+              ) : null}
             </div>
             <div>
               <span className="text-[10px] uppercase font-mono text-slate-400 block">Expiry Date</span>
               <span className="font-mono text-slate-800 font-semibold">{formatDate(order.expiryDate || order.medicineExpiryDate || '2025-12-31')}</span>
             </div>
           </div>
+
+          {/* Fulfillment Chronology for Received / Completed / Dispatched orders (Requirement 8 & 11) */}
+          {(order.dispatchedAt || order.deliveredAt || order.completedAt || ['dispatched', 'in transit', 'delivered', 'completed'].includes(s)) && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2 border-t border-slate-100 text-[11px] bg-slate-50/70 p-2.5 rounded-xl">
+              <div>
+                <span className="text-[10px] uppercase font-mono text-slate-400 block">Order Date</span>
+                <span className="font-mono text-slate-700 font-semibold">{formatDate(order.orderDate || order.createdAt || order.requestDate)}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-mono text-slate-400 block">Payment Status</span>
+                <span className={`font-mono font-bold ${isPaid ? 'text-emerald-700' : 'text-amber-700'}`}>
+                  {order.paymentStatus ? (order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1)) : (isPaid ? 'Successful' : 'Pending')}
+                </span>
+                {order.paymentId && <span className="text-[9px] text-slate-400 font-mono block">Ref: {order.paymentId}</span>}
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-mono text-slate-400 block">Dispatched Date</span>
+                <span className="font-mono text-slate-700 font-semibold">
+                  {order.dispatchedAt ? formatDate(order.dispatchedAt) : (order.dispatchDate ? formatDate(order.dispatchDate) : 'In Dispatch Process')}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-mono text-slate-400 block">Delivery / Received</span>
+                <span className="font-mono text-teal-800 font-bold">
+                  {order.deliveredAt ? formatDate(order.deliveredAt) : (order.deliveryDate ? formatDate(order.deliveryDate) : (order.receivedDate ? formatDate(order.receivedDate) : (order.completedAt ? formatDate(order.completedAt) : 'In Transit')))}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* 6. LOGISTICS & SLA TELEMETRY (Section 29) */}

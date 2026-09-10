@@ -85,14 +85,15 @@ export const calculateOrderPricing = ({
   const concessionInfo = calculateShelfLifeConcession(expiryDate, concessionPercent);
   const discountPct = concessionInfo.concessionPercent;
 
-  // Selling Unit Price (Never negative)
+  // Concession Rate (Offered MediStock Rate, Never negative)
   const unitDiscount = (originalUnit * discountPct) / 100;
-  const unitSellingPrice = Math.max(0, Math.round((originalUnit - unitDiscount) * 100) / 100);
+  const concessionRate = Math.max(0, Math.round((originalUnit - unitDiscount) * 100) / 100);
+  const unitSellingPrice = concessionRate; // Preserved for backwards compatibility
 
   // Subtotal for medicine units
   const originalSubtotal = Math.round(originalUnit * qty * 100) / 100;
   const totalSavings = Math.round(unitDiscount * qty * 100) / 100;
-  const medicineSubtotal = Math.max(0, Math.round(unitSellingPrice * qty * 100) / 100);
+  const medicineSubtotal = Math.max(0, Math.round(concessionRate * qty * 100) / 100);
 
   // Cold chain logistics fee calculation:
   // Base fee ₹200 + ₹12/km, plus ₹150 cryogenic insulated monitoring buffer if cold chain
@@ -108,8 +109,11 @@ export const calculateOrderPricing = ({
   const totalPayable = taxableTotal + gstAmount;
 
   return {
+    mrp: originalUnit,
     unitOriginalPrice: originalUnit,
     concessionPercent: discountPct,
+    concessionRate,
+    unitFinalPrice: concessionRate,
     unitSellingPrice,
     unitDiscount,
     quantity: qty,

@@ -162,7 +162,54 @@ export const hospitalService = {
       }
     }
 
-    return isolatedMedicines;
+    // Map and return isolated inventory with comprehensive, consistent medical stock data
+    return isolatedMedicines.map((m) => {
+      const tot = Number(m.totalQuantity ?? m.quantity ?? 0);
+      const res = Number(m.reservedQuantity ?? 0);
+      const avail = Math.max(0, Number(m.availableQuantity ?? (tot - res)));
+      const reorder = Number(m.reorderLevel ?? m.minStockLevel ?? m.minimumStock ?? 20);
+      const mrpVal = Number(m.mrp ?? m.unitOriginalPrice ?? 100);
+      const conRate = Number(m.concessionRate ?? m.unitFinalPrice ?? Math.round(mrpVal * (1 - (m.concessionPercent || 15) / 100)));
+      const costRateVal = Number(m.costRate ?? m.acquisitionCost ?? Math.round(mrpVal * 0.85));
+
+      const uPerPack = Number(m.unitsPerPack) > 0 ? Number(m.unitsPerPack) : 15;
+      const numPacks = m.numberOfPacks !== undefined && Number(m.numberOfPacks) > 0 
+        ? Number(m.numberOfPacks) 
+        : Math.max(1, Math.ceil(tot / uPerPack));
+      const totalU = Number(m.totalUnits) > 0 ? Number(m.totalUnits) : tot;
+      const storageCond = m.storageCondition || m.storageType || 'Room Temperature (15°C - 25°C)';
+      const pSize = m.packSize || m.packing || `${uPerPack} Units / Strip`;
+      const medCode = m.medicineCode || m.masterMedicineId || m.medicineId || ('MED-' + (m.id ? m.id.slice(-4) : 'CAT'));
+
+      return {
+        ...m,
+        totalQuantity: tot,
+        quantity: tot,
+        reservedQuantity: res,
+        availableQuantity: avail,
+        reorderLevel: reorder,
+        minStock: reorder,
+        minStockLevel: reorder,
+        shelfLocation: m.shelfLocation || 'Rack A - Shelf 3',
+        packing: pSize,
+        packSize: pSize,
+        numberOfPacks: numPacks,
+        unitsPerPack: uPerPack,
+        totalUnits: totalU,
+        storageCondition: storageCond,
+        storageType: storageCond,
+        medicineCode: medCode,
+        unit: m.unit || 'Tablet',
+        dosage: m.dosage || m.power || m.strength || 'Standard formulation',
+        dosageForm: m.dosageForm || m.form || 'Tablet',
+        mrp: mrpVal,
+        unitOriginalPrice: mrpVal,
+        concessionRate: conRate,
+        unitFinalPrice: conRate,
+        costRate: costRateVal,
+        acquisitionCost: costRateVal,
+      };
+    });
   },
 
   async addMedicine(medicineData) {
@@ -170,7 +217,7 @@ export const hospitalService = {
     assertHospitalActive(medicineData.hospitalId);
 
     const qty = Number(medicineData.quantity);
-    const unitPrice = Number(medicineData.unitOriginalPrice);
+    const unitPrice = Number(medicineData.unitOriginalPrice || medicineData.mrp || 100);
 
     if (!Number.isFinite(qty) || qty <= 0) throw new Error('Inventory quantity must be greater than zero');
     if (!Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('Unit price cannot be negative');
@@ -211,18 +258,12 @@ export const hospitalService = {
       }
     }
 
-    // =========================================================================
     // DUPLICATE STOCK RULE: Check Same Hospital + Same Medicine + Same Batch
-    // =========================================================================
     const existingIndex = medicines.findIndex((m) => {
-      // 1. Same Hospital
       if (m.hospitalId !== medicineData.hospitalId) return false;
-
-      // 2. Same Batch Number
       const existingBatch = (m.batchNo || m.batchNumber || '').trim().toLowerCase();
       if (!existingBatch || existingBatch !== batchToMatch) return false;
 
-      // 3. Same Medicine (by medicineId if present on both, or by normalized medicine name)
       if (targetMedicineId && m.medicineId && m.medicineId === targetMedicineId) {
         return true;
       }
@@ -230,13 +271,47 @@ export const hospitalService = {
       return existingMedName === medNameToMatch && existingMedName.length > 0;
     });
 
+    const mrpRate = Number(medicineData.mrp || unitPrice || 100);
+    const concRate = Number(medicineData.concessionRate || Math.round(mrpRate * (1 - (medicineData.concessionPercent || 0) / 100)));
+    const acqCost = Number(medicineData.costRate || medicineData.acquisitionCost || Math.round(mrpRate * 0.85));
+    const reorder = Number(medicineData.reorderLevel || medicineData.minStockLevel || medicineData.minimumStockLevel || 20);
+
     if (existingIndex !== -1) {
-      // DUPLICATE MATCH: Add new quantity to existing quantity instead of creating a new row!
+      // DUPLICATE MATCH: Add new quantity to existing quantity instead of creating a new row
       const existing = medicines[existingIndex];
-      const previousQty = Number(existing.quantity || 0);
-      existing.quantity = previousQty + qty;
+      const previousQty = Number(existing.quantity || existing.totalQuantity || 0);
+      const newTotal = previousQty + qty;
+      existing.quantity = newTotal;
+      existing.totalQuantity = newTotal;
+      const reserved = Number(existing.reservedQuantity || 0);
+      existing.availableQuantity = Math.max(0, newTotal - reserved);
       existing.updatedAt = new Date().toISOString();
-      if (unitPrice > 0) existing.unitOriginalPrice = unitPrice;
+      if (unitPrice > 0) {
+        existing.unitOriginalPrice = mrpRate;
+        existing.mrp = mrpRate;
+      }
+      if (medicineData.concessionRate) existing.concessionRate = concRate;
+      if (medicineData.costRate) {
+        existing.costRate = acqCost;
+        existing.acquisitionCost = acqCost;
+      }
+      const uPerPack = Number(medicineData.unitsPerPack) > 0 ? Number(medicineData.unitsPerPack) : (existing.unitsPerPack || 15);
+      const addPacks = Number(medicineData.numberOfPacks) > 0 ? Number(medicineData.numberOfPacks) : Math.max(1, Math.ceil(qty / uPerPack));
+      const prevPacks = Number(existing.numberOfPacks) || Math.ceil(previousQty / uPerPack);
+      existing.numberOfPacks = prevPacks + addPacks;
+      existing.unitsPerPack = uPerPack;
+      existing.totalUnits = newTotal;
+      existing.packSize = medicineData.packSize || existing.packSize || existing.packing || `${uPerPack} Units / Strip`;
+      existing.packing = existing.packSize;
+      existing.storageCondition = medicineData.storageCondition || existing.storageCondition || existing.storageType || 'Room Temperature (15°C - 25°C)';
+      existing.storageType = existing.storageCondition;
+      if (medicineData.medicineCode) existing.medicineCode = medicineData.medicineCode;
+      if (medicineData.shelfLocation) existing.shelfLocation = medicineData.shelfLocation;
+      if (medicineData.unit) existing.unit = medicineData.unit;
+      if (medicineData.reorderLevel) {
+        existing.reorderLevel = reorder;
+        existing.minStockLevel = reorder;
+      }
       if (medicineData.concessionPercent !== undefined) {
         existing.concessionPercent = Math.max(0, Math.min(90, Number(medicineData.concessionPercent)));
       }
@@ -250,6 +325,33 @@ export const hospitalService = {
       }
 
       setStoredItem(KEYS.MEDICINES, medicines);
+
+      // Record in Stock History
+      const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+      stockHist.unshift({
+        id: 'sh-hosp-' + Date.now(),
+        medicineId: existing.id,
+        medicineName: existing.brandName || existing.medicineName,
+        batchNo: existing.batchNo,
+        hospitalId: existing.hospitalId,
+        hospitalName: existing.hospitalName,
+        action: 'Purchase',
+        actionType: 'Purchase',
+        movementType: 'Purchase',
+        quantityDelta: qty,
+        previousStock: previousQty,
+        resultingStock: newTotal,
+        performedBy: existing.hospitalName + ' Staff',
+        shelfLocation: existing.shelfLocation,
+        supplier: medicineData.supplier || 'Hospital Direct Procurement',
+        acquisitionCost: acqCost,
+        mrp: mrpRate,
+        concessionRate: concRate,
+        reason: medicineData.notes || 'Hospital batch intake procurement',
+        timestamp: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0],
+      });
+      setStoredItem(KEYS.STOCK_HISTORY, stockHist);
 
       auditService.logEvent({
         action: 'INVENTORY_MERGED',
@@ -271,9 +373,13 @@ export const hospitalService = {
       return existing;
     }
 
-    // =========================================================================
+    const uPerPack = Number(medicineData.unitsPerPack) > 0 ? Number(medicineData.unitsPerPack) : 15;
+    const numPacks = Number(medicineData.numberOfPacks) > 0 ? Number(medicineData.numberOfPacks) : Math.max(1, Math.ceil(qty / uPerPack));
+    const resolvedPackSize = medicineData.packSize || medicineData.packing || `${uPerPack} Units / Strip`;
+    const resolvedStorage = medicineData.storageCondition || medicineData.storageType || 'Room Temperature (15°C - 25°C)';
+    const medCode = medicineData.medicineCode || targetMedicineId || ('MED-' + Math.floor(1000 + Math.random() * 9000));
+
     // NEW INVENTORY RECORD: Create separate row for new batch / new hospital
-    // =========================================================================
     const newMed = {
       id: 'med-' + Date.now(),
       medicineId: targetMedicineId || null,
@@ -281,15 +387,41 @@ export const hospitalService = {
       brandName: medicineData.brandName || medicineData.medicineName || 'Medicine',
       medicineName: medicineData.brandName || medicineData.medicineName || 'Medicine',
       genericName: medicineData.genericName || '',
+      dosage: medicineData.dosage || medicineData.power || '',
       power: medicineData.power || medicineData.dosage || '',
+      strength: medicineData.power || medicineData.dosage || '',
+      dosageForm: medicineData.dosageForm || medicineData.form || 'Tablet',
       form: medicineData.form || medicineData.dosageForm || 'Tablet',
+      packing: resolvedPackSize,
+      packSize: resolvedPackSize,
+      numberOfPacks: numPacks,
+      unitsPerPack: uPerPack,
+      totalUnits: qty,
+      storageCondition: resolvedStorage,
+      storageType: resolvedStorage,
+      medicineCode: medCode,
+      unit: medicineData.unit || 'Tablet',
       batchNo: medicineData.batchNo || 'BAT-' + Math.floor(10000 + Math.random() * 90000),
+      batchNumber: medicineData.batchNo || 'BAT-' + Math.floor(10000 + Math.random() * 90000),
       mfgDate: medicineData.mfgDate || new Date().toISOString().split('T')[0],
       expiryDate: medicineData.expiryDate,
       hospitalName: hosp.name,
       quantity: qty,
-      unitOriginalPrice: unitPrice,
-      minStockLevel: Number(medicineData.minStockLevel || medicineData.minimumStockLevel || 20),
+      totalQuantity: qty,
+      reservedQuantity: 0,
+      availableQuantity: qty,
+      reorderLevel: reorder,
+      minStockLevel: reorder,
+      shelfLocation: medicineData.shelfLocation || 'Rack A - Shelf 3',
+      mrp: mrpRate,
+      unitOriginalPrice: mrpRate,
+      concessionRate: concRate,
+      unitFinalPrice: concRate,
+      costRate: acqCost,
+      acquisitionCost: acqCost,
+      supplier: medicineData.supplier || 'Hospital Direct Procurement',
+      purchaseDate: medicineData.purchaseDate || new Date().toISOString().split('T')[0],
+      source: 'Purchase',
       concessionPercent: Math.max(0, Math.min(90, Number(medicineData.concessionPercent || 0))),
       dateAdded: new Date().toISOString().split('T')[0],
       createdAt: new Date().toISOString(),
@@ -300,6 +432,33 @@ export const hospitalService = {
 
     medicines.unshift(newMed);
     setStoredItem(KEYS.MEDICINES, medicines);
+
+    // Record in Stock History
+    const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+    stockHist.unshift({
+      id: 'sh-hosp-' + Date.now(),
+      medicineId: newMed.id,
+      medicineName: newMed.brandName,
+      batchNo: newMed.batchNo,
+      hospitalId: newMed.hospitalId,
+      hospitalName: newMed.hospitalName,
+      action: 'Purchase',
+      actionType: 'Purchase',
+      movementType: 'Purchase',
+      quantityDelta: qty,
+      previousStock: 0,
+      resultingStock: qty,
+      performedBy: newMed.hospitalName + ' Staff',
+      shelfLocation: newMed.shelfLocation,
+      supplier: newMed.supplier,
+      acquisitionCost: acqCost,
+      mrp: mrpRate,
+      concessionRate: concRate,
+      reason: medicineData.notes || 'Hospital initial batch procurement',
+      timestamp: new Date().toISOString(),
+      date: new Date().toISOString().split('T')[0],
+    });
+    setStoredItem(KEYS.STOCK_HISTORY, stockHist);
 
     // Audit trail logging
     auditService.logEvent({
@@ -333,8 +492,8 @@ export const hospitalService = {
       throw new Error('Cannot update or reactivate a permanently disposed medicine batch');
     }
 
-    const updatedQty = updatedData.quantity !== undefined ? Number(updatedData.quantity) : medicines[index].quantity;
-    const updatedPrice = updatedData.unitOriginalPrice !== undefined ? Number(updatedData.unitOriginalPrice) : medicines[index].unitOriginalPrice;
+    const updatedQty = updatedData.quantity !== undefined ? Number(updatedData.quantity) : Number(medicines[index].quantity || medicines[index].totalQuantity || 0);
+    const updatedPrice = updatedData.unitOriginalPrice !== undefined ? Number(updatedData.unitOriginalPrice) : Number(medicines[index].unitOriginalPrice || medicines[index].mrp || 0);
 
     if (!Number.isFinite(updatedQty) || updatedQty < 0) throw new Error('Quantity cannot be negative');
     if (!Number.isFinite(updatedPrice) || updatedPrice < 0) throw new Error('Price cannot be negative');
@@ -348,16 +507,66 @@ export const hospitalService = {
       }
     }
 
+    const prevTotal = Number(medicines[index].quantity || medicines[index].totalQuantity || 0);
+    const reserved = Number(medicines[index].reservedQuantity || 0);
+    const newTotal = updatedQty;
+    const newAvailable = Math.max(0, newTotal - reserved);
+    const reorderVal = updatedData.reorderLevel !== undefined ? Number(updatedData.reorderLevel) : (medicines[index].reorderLevel || medicines[index].minStockLevel || 20);
+
     medicines[index] = {
       ...medicines[index],
       ...updatedData,
-      quantity: updatedQty,
+      quantity: newTotal,
+      totalQuantity: newTotal,
+      availableQuantity: newAvailable,
+      totalUnits: newTotal,
+      numberOfPacks: updatedData.numberOfPacks !== undefined ? Number(updatedData.numberOfPacks) : (medicines[index].numberOfPacks || Math.ceil(newTotal / (updatedData.unitsPerPack || medicines[index].unitsPerPack || 15))),
+      unitsPerPack: updatedData.unitsPerPack !== undefined ? Number(updatedData.unitsPerPack) : (medicines[index].unitsPerPack || 15),
+      packSize: updatedData.packSize || updatedData.packing || medicines[index].packSize || medicines[index].packing || '15 Tablets / Strip',
+      packing: updatedData.packSize || updatedData.packing || medicines[index].packSize || medicines[index].packing || '15 Tablets / Strip',
+      storageCondition: updatedData.storageCondition || updatedData.storageType || medicines[index].storageCondition || medicines[index].storageType || 'Room Temperature (15°C - 25°C)',
+      storageType: updatedData.storageCondition || updatedData.storageType || medicines[index].storageCondition || medicines[index].storageType || 'Room Temperature (15°C - 25°C)',
+      medicineCode: updatedData.medicineCode || medicines[index].medicineCode || ('MED-' + (id.slice(-4))),
       unitOriginalPrice: updatedPrice,
-      minStockLevel: updatedData.minStockLevel !== undefined ? Number(updatedData.minStockLevel) : (medicines[index].minStockLevel || 20),
+      mrp: Number(updatedData.mrp || updatedPrice),
+      concessionRate: Number(updatedData.concessionRate || medicines[index].concessionRate || Math.round(updatedPrice * (1 - (updatedData.concessionPercent ?? medicines[index].concessionPercent ?? 0) / 100))),
+      unitFinalPrice: Number(updatedData.concessionRate || medicines[index].concessionRate || Math.round(updatedPrice * (1 - (updatedData.concessionPercent ?? medicines[index].concessionPercent ?? 0) / 100))),
+      costRate: Number(updatedData.costRate || medicines[index].costRate || Math.round(updatedPrice * 0.85)),
+      acquisitionCost: Number(updatedData.acquisitionCost || updatedData.costRate || medicines[index].acquisitionCost || Math.round(updatedPrice * 0.85)),
+      shelfLocation: updatedData.shelfLocation || medicines[index].shelfLocation || 'Rack A - Shelf 3',
+      unit: updatedData.unit || medicines[index].unit || 'Tablet',
+      reorderLevel: reorderVal,
+      minStockLevel: reorderVal,
       concessionPercent: Math.max(0, Math.min(90, Number(updatedData.concessionPercent ?? medicines[index].concessionPercent ?? 0))),
     };
 
     setStoredItem(KEYS.MEDICINES, medicines);
+
+    // If stock quantity was adjusted, record a Stock Adjustment in history
+    if (newTotal !== prevTotal) {
+      const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+      stockHist.unshift({
+        id: 'sh-adj-' + Date.now(),
+        medicineId: medicines[index].id,
+        medicineName: medicines[index].brandName || medicines[index].medicineName,
+        batchNo: medicines[index].batchNo,
+        hospitalId: medicines[index].hospitalId,
+        hospitalName: medicines[index].hospitalName,
+        action: 'Stock Adjustment',
+        actionType: 'Stock Adjustment',
+        movementType: 'Stock Adjustment',
+        quantityDelta: newTotal - prevTotal,
+        previousStock: prevTotal,
+        resultingStock: newTotal,
+        availableStock: newAvailable,
+        performedBy: medicines[index].hospitalName + ' Staff',
+        shelfLocation: medicines[index].shelfLocation,
+        reason: updatedData.notes || 'Hospital staff inventory audit reconciliation',
+        timestamp: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0],
+      });
+      setStoredItem(KEYS.STOCK_HISTORY, stockHist);
+    }
 
     auditService.logEvent({
       action: 'INVENTORY_UPDATED',
@@ -803,20 +1012,55 @@ export const hospitalService = {
     const rejectedCompetingRequests = [];
 
     if (action === 'accept') {
-      // 1. Stock Check & Reservation in Seller's Inventory
+      // 1. Stock Check & Reservation in Seller's Inventory (Total = Reserved + Available)
       const medIndex = medicines.findIndex((m) => m.id === targetReq.medicineId && m.hospitalId === targetReq.toHospitalId);
       if (medIndex === -1) {
         throw new Error('Associated medicine record not found in your inventory');
       }
 
-      const availableQty = Number(medicines[medIndex].quantity);
+      const totQty = Number(medicines[medIndex].totalQuantity || medicines[medIndex].quantity || 0);
+      const curRes = Number(medicines[medIndex].reservedQuantity || 0);
+      const availableQty = Math.max(0, totQty - curRes);
+
       if (availableQty < targetReq.quantity) {
         throw new Error(`Insufficient inventory stock: You only have ${availableQty} units available, but ${targetReq.quantity} were requested.`);
       }
 
-      // Safe stock deduction (Prevent negative inventory)
-      medicines[medIndex].quantity = Math.max(0, availableQty - targetReq.quantity);
+      // Safe stock reservation (Prevent negative inventory)
+      const newRes = curRes + Number(targetReq.quantity);
+      medicines[medIndex].totalQuantity = totQty;
+      medicines[medIndex].quantity = totQty;
+      medicines[medIndex].reservedQuantity = newRes;
+      medicines[medIndex].availableQuantity = Math.max(0, totQty - newRes);
       setStoredItem(KEYS.MEDICINES, medicines);
+
+      // Log Stock History movement: Order Reservation
+      const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+      stockHist.unshift({
+        id: 'sh-res-' + Date.now(),
+        medicineId: medicines[medIndex].id,
+        medicineName: medicines[medIndex].brandName || medicines[medIndex].medicineName,
+        batchNo: medicines[medIndex].batchNo,
+        hospitalId: medicines[medIndex].hospitalId,
+        hospitalName: medicines[medIndex].hospitalName,
+        action: 'Order Reservation',
+        actionType: 'Order Reservation',
+        movementType: 'Order Reservation',
+        orderId: targetReq.id,
+        partnerHospitalId: targetReq.fromHospitalId,
+        partnerHospitalName: targetReq.fromHospitalName,
+        quantityDelta: 0,
+        reservedDelta: Number(targetReq.quantity),
+        previousStock: totQty,
+        resultingStock: totQty,
+        availableStock: medicines[medIndex].availableQuantity,
+        concessionRate: targetReq.unitFinalPrice || targetReq.concessionRate,
+        performedBy: medicines[medIndex].hospitalName + ' Staff',
+        reason: `Reserved ${targetReq.quantity} units for Requisition #${targetReq.transactionId || targetReq.id}`,
+        timestamp: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0],
+      });
+      setStoredItem(KEYS.STOCK_HISTORY, stockHist);
 
       // 2. Mark this request as accepted
       targetReq.status = 'accepted';
@@ -933,8 +1177,44 @@ export const hospitalService = {
         (m) => m.id === targetReq.medicineId && m.hospitalId === targetReq.toHospitalId
       );
       if (medIndex !== -1) {
-        medicines[medIndex].quantity = Number(medicines[medIndex].quantity || 0) + Number(targetReq.quantity || 0);
+        const curRes = Number(medicines[medIndex].reservedQuantity || 0);
+        const tot = Number(medicines[medIndex].totalQuantity || medicines[medIndex].quantity || 0);
+        const relQty = Number(targetReq.quantity || 0);
+        const newRes = Math.max(0, curRes - relQty);
+        medicines[medIndex].reservedQuantity = newRes;
+        medicines[medIndex].totalQuantity = tot;
+        medicines[medIndex].quantity = tot;
+        medicines[medIndex].availableQuantity = Math.max(0, tot - newRes);
+        medicines[medIndex].lastUpdated = new Date().toISOString().split('T')[0];
         setStoredItem(KEYS.MEDICINES, medicines);
+
+        // Record stock movement: Order Release
+        const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+        stockHist.unshift({
+          id: 'sh-rel-' + Date.now(),
+          medicineId: medicines[medIndex].id,
+          medicineName: medicines[medIndex].brandName || medicines[medIndex].medicineName,
+          batchNo: medicines[medIndex].batchNo,
+          hospitalId: medicines[medIndex].hospitalId,
+          hospitalName: medicines[medIndex].hospitalName,
+          action: 'Order Release',
+          actionType: 'Order Release',
+          movementType: 'Order Release',
+          orderId: targetReq.id,
+          partnerHospitalId: targetReq.fromHospitalId,
+          partnerHospitalName: targetReq.fromHospitalName,
+          quantityDelta: 0,
+          releasedQuantity: relQty,
+          previousStock: tot,
+          resultingStock: tot,
+          availableStock: medicines[medIndex].availableQuantity,
+          concessionRate: targetReq.unitFinalPrice || targetReq.concessionRate,
+          performedBy: 'System / Order Cancellation',
+          reason: `Released reservation of ${relQty} units due to requisition cancellation`,
+          timestamp: new Date().toISOString(),
+          date: new Date().toISOString().split('T')[0],
+        });
+        setStoredItem(KEYS.STOCK_HISTORY, stockHist);
       }
     }
 
@@ -1189,8 +1469,57 @@ export const hospitalService = {
       completed: true,
     });
 
-    // Requirement 16 Inventory Connection:
-    // When delivered or completed, credit receiving hospital's inventory
+    // Requirement 15 & 16 Inventory Connection:
+    // When dispatched, deduct from source hospital inventory and log Order Dispatch
+    if (nextStatus === 'dispatched' && !req.stockDispatchedLogged) {
+      const medicines = getStoredItem(KEYS.MEDICINES, []);
+      const sourceIndex = medicines.findIndex((m) => m.id === req.medicineId && m.hospitalId === req.toHospitalId);
+      if (sourceIndex !== -1) {
+        const prevTotal = Number(medicines[sourceIndex].totalQuantity || medicines[sourceIndex].quantity || 0);
+        const prevRes = Number(medicines[sourceIndex].reservedQuantity || 0);
+        const dispatchQty = Number(req.quantity);
+        const newTotal = Math.max(0, prevTotal - dispatchQty);
+        const newRes = Math.max(0, prevRes - dispatchQty);
+        medicines[sourceIndex].totalQuantity = newTotal;
+        medicines[sourceIndex].quantity = newTotal;
+        medicines[sourceIndex].reservedQuantity = newRes;
+        medicines[sourceIndex].availableQuantity = Math.max(0, newTotal - newRes);
+        medicines[sourceIndex].lastUpdated = new Date().toISOString().split('T')[0];
+        setStoredItem(KEYS.MEDICINES, medicines);
+
+        // Record stock movement: Order Dispatch
+        const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+        stockHist.unshift({
+          id: 'sh-disp-' + Date.now(),
+          medicineId: medicines[sourceIndex].id,
+          medicineName: medicines[sourceIndex].brandName || medicines[sourceIndex].medicineName,
+          batchNo: medicines[sourceIndex].batchNo,
+          hospitalId: medicines[sourceIndex].hospitalId,
+          hospitalName: medicines[sourceIndex].hospitalName,
+          action: 'Order Dispatch',
+          actionType: 'Order Dispatch',
+          movementType: 'Order Dispatch',
+          orderId: req.id,
+          partnerHospitalId: req.fromHospitalId,
+          partnerHospitalName: req.fromHospitalName,
+          quantityDelta: -dispatchQty,
+          previousStock: prevTotal,
+          resultingStock: newTotal,
+          availableStock: medicines[sourceIndex].availableQuantity,
+          concessionRate: req.unitFinalPrice || req.concessionRate,
+          performedBy: req.toHospitalName + ' Staff',
+          reason: `Dispatched ${dispatchQty} units for Requisition #${req.transactionId || req.id}`,
+          timestamp: new Date().toISOString(),
+          date: new Date().toISOString().split('T')[0],
+        });
+        setStoredItem(KEYS.STOCK_HISTORY, stockHist);
+      }
+      req.stockDispatchedLogged = true;
+      req.dispatchedAt = new Date().toISOString();
+      req.dispatchDate = req.dispatchedAt;
+    }
+
+    // When delivered or completed, credit receiving hospital's inventory and log Order Received
     if ((nextStatus === 'delivered' || nextStatus === 'completed') && !req.stockReceivedByBuyer) {
       const medicines = getStoredItem(KEYS.MEDICINES, []);
       const buyerHospId = req.fromHospitalId;
@@ -1204,35 +1533,91 @@ export const hospitalService = {
         return matchBatch && matchName;
       });
 
+      let buyerMedId;
       if (targetMedIndex !== -1) {
-        medicines[targetMedIndex].quantity = Number(medicines[targetMedIndex].quantity || 0) + Number(req.quantity);
+        const prevTot = Number(medicines[targetMedIndex].totalQuantity || medicines[targetMedIndex].quantity || 0);
+        const newTot = prevTot + Number(req.quantity);
+        medicines[targetMedIndex].totalQuantity = newTot;
+        medicines[targetMedIndex].quantity = newTot;
+        const res = Number(medicines[targetMedIndex].reservedQuantity || 0);
+        medicines[targetMedIndex].availableQuantity = Math.max(0, newTot - res);
         medicines[targetMedIndex].lastUpdated = new Date().toISOString().split('T')[0];
+        buyerMedId = medicines[targetMedIndex].id;
       } else {
+        buyerMedId = 'med-' + Date.now() + '-rcv';
         medicines.unshift({
-          id: 'med-' + Date.now() + '-rcv',
+          id: buyerMedId,
           medicineId: req.medicineId || ('med-rcv-' + Date.now()),
           brandName: req.medicineName,
           medicineName: req.medicineName,
           genericName: req.genericName || 'Active Formulation',
           category: 'Essential Medicines',
-          form: req.form || 'Tablet',
-          power: req.power || '',
+          form: req.form || req.dosageForm || 'Tablet',
+          dosageForm: req.dosageForm || req.form || 'Tablet',
+          dosage: req.dosage || req.power || 'Standard',
+          power: req.power || req.dosage || '',
+          strength: req.power || req.dosage || '',
+          packing: req.packing || '15 Tablets',
+          unit: req.unit || 'Tablet',
           manufacturer: req.manufacturer || 'Approved Manufacturer',
           batchNo: req.batchNo || 'BAT-RCV-' + Date.now().toString().slice(-4),
+          batchNumber: req.batchNo || 'BAT-RCV-' + Date.now().toString().slice(-4),
           quantity: Number(req.quantity),
+          totalQuantity: Number(req.quantity),
+          reservedQuantity: 0,
+          availableQuantity: Number(req.quantity),
           minStockLevel: 20,
+          reorderLevel: 20,
+          shelfLocation: 'Rack A - Shelf 3',
           mfgDate: req.mfgDate || '2024-01-01',
           expiryDate: req.medicineExpiryDate || req.expiryDate || '2025-12-31',
-          unitOriginalPrice: Number(req.unitOriginalPrice || req.unitFinalPrice || 50),
+          mrp: Number(req.unitOriginalPrice || req.mrp || 100),
+          unitOriginalPrice: Number(req.unitOriginalPrice || req.mrp || 100),
+          concessionRate: Number(req.unitFinalPrice || req.concessionRate || 95),
+          unitFinalPrice: Number(req.unitFinalPrice || req.concessionRate || 95),
+          costRate: Number(req.costRate || req.unitFinalPrice || 90),
+          acquisitionCost: Number(req.costRate || req.unitFinalPrice || 90),
           hospitalId: buyerHospId,
           hospitalName: req.fromHospitalName,
+          source: 'Hospital Transfer In',
+          supplier: req.toHospitalName,
+          purchaseDate: new Date().toISOString().split('T')[0],
           dateAdded: new Date().toISOString().split('T')[0],
           lastUpdated: new Date().toISOString().split('T')[0],
           notes: `Procured through inter-hospital requisition #${req.transactionId || req.id}`,
         });
       }
       setStoredItem(KEYS.MEDICINES, medicines);
+
+      // Record stock movement: Order Received
+      const stockHist = getStoredItem(KEYS.STOCK_HISTORY, []);
+      stockHist.unshift({
+        id: 'sh-rcv-' + Date.now(),
+        medicineId: buyerMedId,
+        medicineName: req.medicineName,
+        batchNo: req.batchNo || 'BAT-RCV',
+        hospitalId: buyerHospId,
+        hospitalName: req.fromHospitalName,
+        partnerHospitalId: req.toHospitalId,
+        partnerHospitalName: req.toHospitalName,
+        action: 'Order Received',
+        actionType: 'Order Received',
+        movementType: 'Order Received',
+        orderId: req.id,
+        quantityDelta: Number(req.quantity),
+        previousStock: 0,
+        resultingStock: Number(req.quantity),
+        concessionRate: req.unitFinalPrice || req.concessionRate,
+        performedBy: req.fromHospitalName + ' Staff',
+        reason: `Received order consignment #${req.transactionId || req.id} from ${req.toHospitalName}`,
+        timestamp: new Date().toISOString(),
+        date: new Date().toISOString().split('T')[0],
+      });
+      setStoredItem(KEYS.STOCK_HISTORY, stockHist);
+
       req.stockReceivedByBuyer = true;
+      req.deliveredAt = new Date().toISOString();
+      req.receivedDate = req.deliveredAt;
     }
 
     setStoredItem(KEYS.REQUESTS, requests);

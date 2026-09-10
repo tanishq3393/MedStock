@@ -18,12 +18,15 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     form: 'Tablet',
     category: 'Critical Care / Antibiotic',
     storageType: 'Room Temperature (15°C - 25°C)',
+    shelfLocation: 'Rack A - Shelf 3',
+    packing: '15 Tablets',
     mfgDate: '',
     expiryDate: '',
     batchNo: '',
     manufacturer: '',
     quantity: 100,
     unitOriginalPrice: 500,
+    costRate: 425,
     minStockLevel: 20,
     concessionPercent: 20,
     notes: '',
@@ -49,14 +52,21 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         form: initialData.form || initialData.dosageForm || 'Tablet',
         category: initialData.category || 'Critical Care / Antibiotic',
         storageType: initialData.storageType || 'Room Temperature (15°C - 25°C)',
+        shelfLocation: initialData.shelfLocation || 'Rack A - Shelf 3',
+        packing: initialData.packing || initialData.packSize || '15 Tablets / Strip',
+        packSize: initialData.packSize || initialData.packing || '15 Tablets / Strip',
+        numberOfPacks: initialData.numberOfPacks || (initialData.quantity ? Math.ceil(initialData.quantity / (initialData.unitsPerPack || 15)) : 20),
+        unitsPerPack: initialData.unitsPerPack || 15,
+        totalUnits: initialData.totalUnits || initialData.quantity || 300,
         mfgDate: initialData.mfgDate || '',
         expiryDate: initialData.expiryDate || '',
         batchNo: initialData.batchNo || '',
         manufacturer: initialData.manufacturer || '',
-        quantity: initialData.quantity || 100,
-        unitOriginalPrice: initialData.unitOriginalPrice || 500,
-        minStockLevel: initialData.minStockLevel || 20,
-        concessionPercent: initialData.concessionPercent ?? 20,
+        quantity: initialData.quantity || 300,
+        unitOriginalPrice: initialData.unitOriginalPrice || initialData.mrp || 100,
+        costRate: initialData.costRate || initialData.acquisitionCost || Math.round((initialData.unitOriginalPrice || 100) * 0.90),
+        minStockLevel: initialData.minStockLevel || 100,
+        concessionPercent: initialData.concessionPercent ?? 5,
         notes: initialData.notes || '',
       });
     } else {
@@ -71,14 +81,21 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         form: 'Tablet',
         category: 'Critical Care / Antibiotic',
         storageType: 'Room Temperature (15°C - 25°C)',
+        shelfLocation: 'Rack A - Shelf 3',
+        packing: '15 Tablets / Strip',
+        packSize: '15 Tablets / Strip',
+        numberOfPacks: 20,
+        unitsPerPack: 15,
+        totalUnits: 300,
         mfgDate: today,
         expiryDate: futureDate,
         batchNo: 'BAT-' + Math.floor(10000 + Math.random() * 90000),
         manufacturer: '',
-        quantity: 50,
-        unitOriginalPrice: 350,
-        minStockLevel: 20,
-        concessionPercent: 15,
+        quantity: 300,
+        unitOriginalPrice: 100,
+        costRate: 90,
+        minStockLevel: 100,
+        concessionPercent: 5,
         notes: '',
       });
       setAutoSuggestedConcession(null);
@@ -116,6 +133,8 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
         category: match.category || prev.category,
         manufacturer: match.manufacturer || prev.manufacturer,
         storageType: match.storageType || prev.storageType,
+        packing: match.packing || prev.packing,
+        costRate: match.costRate || prev.costRate,
         medicineId: match.id,
       }));
     } else {
@@ -308,6 +327,84 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
           </div>
         </div>
 
+        {/* Packing / Pack Size & Shelf / Storage Location */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Packing / Pack Size
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. 15 Tablets / Strip, 100 ml / Bottle"
+              value={formData.packing}
+              onChange={(e) => setFormData({ ...formData, packing: e.target.value, packSize: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Shelf / Storage Location <span className="text-slate-400 font-normal">(Hospital Physical Location)</span>
+            </label>
+            <input
+              type="text"
+              placeholder="e.g. Rack A - Shelf 3, Pharmacy Room 1 - Rack B"
+              value={formData.shelfLocation}
+              onChange={(e) => setFormData({ ...formData, shelfLocation: e.target.value })}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-medium"
+            />
+          </div>
+        </div>
+
+        {/* Packaging Breakdown: Number of Packs & Units per Pack */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Number of Packs / Strips
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={formData.numberOfPacks}
+              onChange={(e) => {
+                const packs = Math.max(1, Number(e.target.value));
+                const units = Number(formData.unitsPerPack) || 15;
+                const tot = packs * units;
+                setFormData((prev) => ({
+                  ...prev,
+                  numberOfPacks: packs,
+                  quantity: tot,
+                  totalUnits: tot,
+                }));
+              }}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono font-bold"
+              placeholder="e.g. 20"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-700 mb-1">
+              Units per Pack / Strip
+            </label>
+            <input
+              type="number"
+              min="1"
+              value={formData.unitsPerPack}
+              onChange={(e) => {
+                const units = Math.max(1, Number(e.target.value));
+                const packs = Number(formData.numberOfPacks) || 1;
+                const tot = packs * units;
+                setFormData((prev) => ({
+                  ...prev,
+                  unitsPerPack: units,
+                  quantity: tot,
+                  totalUnits: tot,
+                }));
+              }}
+              className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-primary-500 focus:outline-none font-mono font-bold"
+              placeholder="e.g. 15"
+            />
+          </div>
+        </div>
+
         {/* Field 9 & 10: Manufacturing Date & Expiry Date */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -367,7 +464,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Calculator className="w-4 h-4 text-primary-600" />
-              <span className="text-xs font-bold text-primary-900">Stock Quantity & Unit Price Parameters</span>
+              <span className="text-xs font-bold text-primary-900">Stock Quantity & Pricing Parameters</span>
             </div>
             {autoSuggestedConcession !== null && !expiryEvaluation?.isExpired && (
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded-full">
@@ -377,7 +474,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
                 Stock Quantity (Units) <span className="text-rose-500">*</span>
@@ -387,14 +484,27 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
                 min="1"
                 required
                 value={formData.quantity}
-                onChange={(e) => setFormData({ ...formData, quantity: Math.max(1, Number(e.target.value)) })}
+                onChange={(e) => {
+                  const qty = Math.max(1, Number(e.target.value));
+                  const units = Number(formData.unitsPerPack) || 15;
+                  const packs = Math.max(1, Math.ceil(qty / units));
+                  setFormData((prev) => ({
+                    ...prev,
+                    quantity: qty,
+                    totalUnits: qty,
+                    numberOfPacks: packs,
+                  }));
+                }}
                 className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-mono font-bold"
               />
+              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                {formData.numberOfPacks || 1} packs × {formData.unitsPerPack || 15} units
+              </span>
             </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Unit Price (₹ / unit) <span className="text-rose-500">*</span>
+                Unit MRP (₹ / unit) <span className="text-rose-500">*</span>
               </label>
               <input
                 type="number"
@@ -408,7 +518,21 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                Minimum Stock Level (Buffer)
+                Acquisition Cost (₹ / unit)
+              </label>
+              <input
+                type="number"
+                min="0"
+                value={formData.costRate}
+                onChange={(e) => setFormData({ ...formData, costRate: Math.max(0, Number(e.target.value)) })}
+                className="w-full px-3 py-2 text-xs rounded-xl border border-slate-300 bg-white font-mono font-bold"
+                placeholder="e.g. 90"
+              />
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Reorder Level (Buffer)
               </label>
               <input
                 type="number"
@@ -423,11 +547,23 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
           {/* Pricing Summary Row */}
           <div className="flex flex-wrap items-center justify-between pt-2 border-t border-primary-200/60 text-xs">
-            <div>
-              <span className="text-slate-500">Unit MRP: </span>
-              <span className="font-bold text-slate-900 font-mono">₹{formData.unitOriginalPrice}</span>
-              {formData.concessionPercent > 0 && !expiryEvaluation?.isExpired && (
-                <span className="text-emerald-700 font-bold ml-2">({formData.concessionPercent}% discount: ₹{finalUnitPrice}/unit)</span>
+            <div className="flex items-center gap-3">
+              <div>
+                <span className="text-slate-500">MRP: </span>
+                <span className="font-bold text-slate-900 font-mono">₹{formData.unitOriginalPrice}</span>
+              </div>
+              <div className="border-l border-slate-300 pl-3">
+                <span className="text-slate-500">Concession Rate: </span>
+                <span className="font-bold text-emerald-700 font-mono">₹{finalUnitPrice}</span>
+                {formData.concessionPercent > 0 && !expiryEvaluation?.isExpired && (
+                  <span className="text-emerald-600 text-[11px] ml-1">({formData.concessionPercent}% off)</span>
+                )}
+              </div>
+              {Number(formData.costRate) > 0 && (
+                <div className="border-l border-slate-300 pl-3">
+                  <span className="text-slate-500">Acquisition: </span>
+                  <span className="font-bold text-slate-700 font-mono">₹{formData.costRate}</span>
+                </div>
               )}
             </div>
             <div>
