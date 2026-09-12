@@ -166,34 +166,44 @@ export const AdminDashboard = () => {
     <div className="space-y-6">
       
       {/* Top Welcome / Supervisory Authority Banner */}
-      <div className="bg-gradient-to-r from-ocean-950 via-ocean-900 to-teal-950 rounded-2xl p-6 text-white shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 relative overflow-hidden">
-        <div className="absolute right-0 top-0 w-96 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(10,110,121,0.3),transparent_70%)] pointer-events-none" />
+      <div className="relative overflow-hidden rounded-2xl bg-[#06141F] bg-gradient-to-r from-slate-950 via-[#0a1e2c] to-[#042429] p-6 sm:p-7 text-white border border-teal-500/30 shadow-xl shadow-slate-950/25 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
+        {/* Subtle decorative mesh gradients */}
+        <div className="absolute right-0 top-0 w-96 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(13,148,136,0.22),transparent_70%)] pointer-events-none" />
+        <div className="absolute left-1/4 bottom-0 w-72 h-32 bg-[radial-gradient(ellipse_at_bottom,rgba(6,182,212,0.12),transparent_70%)] pointer-events-none" />
         
-        <div className="relative z-10 space-y-1.5">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-teal-500/20 border border-teal-500/30 text-teal-300 text-xs font-bold tracking-wide">
-            <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
-            <ShieldCheck className="w-3.5 h-3.5 text-teal-400" />
-            <span>Central National Healthcare Logistics Command</span>
+        {/* Left Column: Badge, Heading, Description */}
+        <div className="relative z-10 space-y-2.5 max-w-3xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-950/90 border border-teal-400/40 text-teal-300 text-xs font-bold tracking-wide shadow-sm">
+            <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse shrink-0" />
+            <ShieldCheck className="w-3.5 h-3.5 text-teal-400 shrink-0" />
+            <span className="truncate">Central National Healthcare Logistics Command</span>
           </div>
-          <h1 className="text-2xl font-black tracking-tight text-white">Administrative Supervisory Dashboard</h1>
-          <p className="text-xs text-slate-300 max-w-2xl font-normal leading-relaxed">
+
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white drop-shadow-sm leading-tight">
+            Administrative Supervisory Dashboard
+          </h1>
+
+          <p className="text-xs sm:text-sm text-slate-200/90 font-normal leading-relaxed max-w-2xl">
             Centralized monitoring of accredited hospital networks, critical pharmaceutical inventory velocity, orders fulfillment, and statutory quality compliance.
           </p>
         </div>
 
-        <div className="relative z-10 flex items-center gap-2.5">
+        {/* Right Column: Action Buttons */}
+        <div className="relative z-10 flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto shrink-0">
           <Link
             to="/admin/hospitals?status=pending"
-            className="px-4 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/20 transition-all flex items-center gap-1.5"
+            aria-label="Review pending hospital verifications"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 active:bg-teal-600 text-slate-950 text-xs font-bold shadow-md shadow-teal-950/40 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all cursor-pointer"
           >
             <span>Review Verifications</span>
-            <ArrowRight className="w-3.5 h-3.5" />
+            <ArrowRight className="w-3.5 h-3.5 shrink-0" />
           </Link>
           <Link
             to="/admin/alerts"
-            className="px-4 py-2.5 rounded-xl bg-secondary-800/80 hover:bg-secondary-800 text-slate-200 border border-secondary-700 text-xs font-bold transition-all flex items-center gap-1.5"
+            aria-label="View live platform alerts"
+            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900/95 hover:bg-slate-800 active:bg-slate-900 text-slate-100 hover:text-white border border-slate-700 hover:border-slate-500 text-xs font-bold shadow-sm focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all cursor-pointer"
           >
-            <Activity className="w-3.5 h-3.5 text-amber-400" />
+            <Activity className="w-3.5 h-3.5 text-amber-400 shrink-0" />
             <span>Live Alerts</span>
           </Link>
         </div>

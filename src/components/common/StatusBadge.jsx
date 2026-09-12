@@ -46,9 +46,11 @@ export const StatusBadge = ({ status, className = '', showIcon = true }) => {
     );
   }
 
-  // AMBER/ORANGE: disposal requested / pending disposal / near expiry / expiring soon / low stock / attention / payment pending / requested
-  if (['requested', 'disposal requested', 'disposal_requested', 'pending_disposal', 'pending disposal', 'expiring soon', 'expiring_soon', 'near expiry', 'near-expiry', 'low stock', 'low-stock', 'low_stock', 'pending', 'payment pending', 'payment_pending', 'reported', 'quarantine', 'in transit to bio-centre', 'documents_missing', 'documents missing'].includes(normalized)) {
+  // AMBER/ORANGE: disposal requested / pending disposal / near expiry / expiring soon / low stock / attention / payment pending / requested / pending approval
+  if (['requested', 'disposal requested', 'disposal_requested', 'pending_disposal', 'pending disposal', 'expiring soon', 'expiring_soon', 'near expiry', 'near-expiry', 'low stock', 'low-stock', 'low_stock', 'pending', 'pending_approval', 'pending approval', 'pending admin approval', 'payment pending', 'payment_pending', 'reported', 'quarantine', 'in transit to bio-centre', 'documents_missing', 'documents missing'].includes(normalized)) {
     let displayLabel = status;
+    if (normalized === 'pending' || normalized === 'pending_approval' || normalized === 'pending approval') displayLabel = 'Pending Approval';
+    if (normalized === 'pending admin approval') displayLabel = 'Pending Admin Approval';
     if (normalized === 'requested') displayLabel = 'Requested';
     if (normalized === 'near-expiry' || normalized === 'near expiry') displayLabel = 'Expiring Soon';
     if (normalized === 'low-stock' || normalized === 'low_stock') displayLabel = 'Low Stock';

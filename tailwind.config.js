@@ -37,6 +37,20 @@ export default {
           900: '#091621',
           950: '#050C13',
         },
+        ocean: {
+          DEFAULT: '#0E1E28',
+          50: '#F1F5F8',
+          100: '#DDE7EE',
+          200: '#BACFDC',
+          300: '#92B3C5',
+          400: '#5F8BA3',
+          500: '#386680',
+          600: '#23495F',
+          700: '#173446',
+          800: '#0E2230',
+          900: '#091621',
+          950: '#050C13',
+        },
         // Specialized Healthcare Status Accents
         accent: {
           teal: '#0A6E79',

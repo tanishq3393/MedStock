@@ -28,12 +28,17 @@ export class ErrorBoundary extends Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    // Safe development logging without exposing sensitive data
+    // Ensure actual error and stack trace are prominently visible in console for developers
+    console.error('[MediStock Error Boundary caught render exception]:', error);
+    if (errorInfo?.componentStack) {
+      console.error('[MediStock Component Stack]:', errorInfo.componentStack);
+    }
     if (import.meta.env?.DEV) {
-      console.warn('[MediStock Error Boundary caught render exception]:', {
+      console.warn('[MediStock Error Boundary Debug Info]:', {
         name: error?.name,
         message: error?.message,
-        componentStack: errorInfo?.componentStack?.slice(0, 300),
+        stack: error?.stack,
+        componentStack: errorInfo?.componentStack,
       });
     }
   }
@@ -87,6 +92,23 @@ export class ErrorBoundary extends Component {
                 <span>Incident Reference:</span>
                 <span className="font-bold text-slate-800">{this.state.errorId}</span>
               </div>
+            )}
+
+            {/* Developer Diagnostics (Visible only in Development) */}
+            {import.meta.env?.DEV && this.state.error && (
+              <details className="text-left bg-rose-50/60 border border-rose-200 rounded-xl p-3 text-xs text-rose-900 overflow-hidden">
+                <summary className="font-mono font-bold cursor-pointer text-[11px] text-rose-700 hover:text-rose-900">
+                  Developer Exception Diagnostics
+                </summary>
+                <div className="mt-2 space-y-1 font-mono text-[10px] break-all max-h-36 overflow-auto">
+                  <p className="font-bold">{this.state.error.name}: {this.state.error.message}</p>
+                  {this.state.error.stack && (
+                    <pre className="text-[9px] text-rose-800/80 whitespace-pre-wrap mt-1">
+                      {this.state.error.stack.split('\n').slice(0, 5).join('\n')}
+                    </pre>
+                  )}
+                </div>
+              </details>
             )}
 
             {/* Actions */}

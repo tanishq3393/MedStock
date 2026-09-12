@@ -107,6 +107,7 @@ export const AdminVerification = () => {
 
   const tabHospitals = hospitals.filter((h) => {
     if (activeTab === 'all') return true;
+    if (activeTab === 'pending') return h.status === 'pending' || h.status === 'pending_approval';
     return h.status === activeTab;
   });
 
@@ -116,7 +117,7 @@ export const AdminVerification = () => {
     h.city.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const pendingCount = hospitals.filter((h) => h.status === 'pending').length;
+  const pendingCount = hospitals.filter((h) => h.status === 'pending' || h.status === 'pending_approval').length;
   const underReviewCount = hospitals.filter((h) => h.status === 'under_review').length;
   const docsMissingCount = hospitals.filter((h) => h.status === 'documents_missing').length;
   const verifiedCount = hospitals.filter((h) => h.status === 'verified').length;

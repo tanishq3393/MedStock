@@ -131,6 +131,7 @@ export const App = () => {
             <Route path="reports" element={<HospitalReports />} />
             <Route path="profile" element={<HospitalProfilePage />} />
           </Route>
+          <Route path="/hospital-dashboard" element={<Navigate to="/hospital/dashboard" replace />} />
 
           {/* Admin Portal Routes */}
           <Route

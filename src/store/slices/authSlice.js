@@ -9,6 +9,27 @@ export const loginUser = createAsyncThunk('auth/login', async (credentials, { re
     const data = await authService.login(credentials);
     return data;
   } catch (err) {
+    if (err.code === 'PENDING_ADMIN_APPROVAL') {
+      return rejectWithValue({
+        code: 'PENDING_ADMIN_APPROVAL',
+        hospital: err.hospital,
+        message: 'Your hospital registration is pending admin approval.',
+      });
+    }
+    if (err.code === 'REGISTRATION_REJECTED') {
+      return rejectWithValue({
+        code: 'REGISTRATION_REJECTED',
+        hospital: err.hospital,
+        rejectionReason: err.rejectionReason,
+        message: 'Hospital registration requires attention.',
+      });
+    }
+    if (err.code === 'HOSPITAL_SUSPENDED') {
+      return rejectWithValue({
+        code: 'HOSPITAL_SUSPENDED',
+        message: err.message || 'Hospital operational privileges have been suspended.',
+      });
+    }
     return rejectWithValue(err.message || 'Login failed');
   }
 });
@@ -54,6 +75,7 @@ const authSlice = createSlice({
     isAuthenticated: !!initialSession?.token,
     isLoading: false,
     error: null,
+    registeredHospital: null,
   },
   reducers: {
     setUserSession: (state, action) => {
@@ -88,20 +110,22 @@ const authSlice = createSlice({
     });
     builder.addCase(loginUser.rejected, (state, action) => {
       state.isLoading = false;
-      state.error = action.payload;
+      state.error = typeof action.payload === 'object' ? action.payload.message : action.payload;
     });
 
-    // Signup Hospital
+    // Signup Hospital (Pending Admin Approval - DO NOT authenticate immediately)
     builder.addCase(signupHospitalUser.pending, (state) => {
       state.isLoading = true;
       state.error = null;
     });
     builder.addCase(signupHospitalUser.fulfilled, (state, action) => {
       state.isLoading = false;
-      state.user = action.payload.user;
-      state.token = action.payload.token;
-      state.role = 'hospital';
-      state.isAuthenticated = true;
+      state.registeredHospital = action.payload?.hospital || null;
+      // Newly registered hospital remains in pending state without active session
+      state.user = null;
+      state.token = null;
+      state.role = null;
+      state.isAuthenticated = false;
     });
     builder.addCase(signupHospitalUser.rejected, (state, action) => {
       state.isLoading = false;

@@ -1,5 +1,5 @@
-import { getStoredItem, setStoredItem, KEYS, getHospitalDocumentChecklist } from './storage';
-import { auditService } from './auditService';
+import { getStoredItem, setStoredItem, KEYS, getHospitalDocumentChecklist } from './storage.js';
+import { auditService } from './auditService.js';
 
 export const authService = {
   // Login method for Hospital or Admin (DEMO PROTOTYPE ONLY)
@@ -41,6 +41,43 @@ export const authService = {
       // Hospital role
       const matched = hospitals.find((h) => h.email.toLowerCase() === email.toLowerCase());
       if (matched) {
+        // Enforce approval status check
+        if (matched.status === 'pending' || matched.status === 'pending_approval') {
+          const err = new Error('Your hospital registration is pending admin approval.');
+          err.code = 'PENDING_ADMIN_APPROVAL';
+          err.hospital = {
+            id: matched.id,
+            name: matched.name,
+            registrationNo: matched.registrationNo,
+            email: matched.email,
+            status: matched.status,
+            city: matched.city,
+            state: matched.state,
+          };
+          throw err;
+        }
+
+        if (matched.status === 'rejected') {
+          const err = new Error(matched.rejectionReason || 'Hospital registration requires attention.');
+          err.code = 'REGISTRATION_REJECTED';
+          err.rejectionReason = matched.rejectionReason || 'Statutory documentation incomplete or failed compliance verification.';
+          err.hospital = {
+            id: matched.id,
+            name: matched.name,
+            registrationNo: matched.registrationNo,
+            email: matched.email,
+            status: matched.status,
+          };
+          throw err;
+        }
+
+        if (matched.status === 'suspended') {
+          const err = new Error('Hospital operational privileges have been suspended by central logistics oversight.');
+          err.code = 'HOSPITAL_SUSPENDED';
+          throw err;
+        }
+
+        // Only approved / verified hospital gets active session
         const user = {
           id: matched.id,
           name: matched.name,
@@ -56,9 +93,9 @@ export const authService = {
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
-      } else if (email === 'apollo.mumbai@smartmedishare.org' || email.includes('hospital') || email.includes('apollo')) {
-        // Default quick login fallback (e.g. apollo)
-        const defaultHosp = hospitals[0] || {
+      } else if (email === 'apollo.mumbai@smartmedishare.org' || email.includes('apollo')) {
+        // Default quick login fallback (Apollo Hospital - verified)
+        const defaultHosp = hospitals.find((h) => h.id === 'hosp-1' || h.name?.includes('Apollo')) || hospitals[0] || {
           id: 'hosp-1',
           name: 'Apollo Hospital',
           email: 'apollo.mumbai@smartmedishare.org',
@@ -80,23 +117,31 @@ export const authService = {
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
-      } else {
-        // Generic login allowing test testing
-        const newUser = {
-          id: 'hosp-' + Date.now().toString().slice(-4),
-          name: email.split('@')[0].toUpperCase() + ' Hospital',
-          email,
-          role: 'hospital',
+      } else if (email.includes('fortis')) {
+        const fortisHosp = hospitals.find((h) => h.id === 'hosp-2' || h.name?.includes('Fortis')) || {
+          id: 'hosp-2',
+          name: 'Fortis Memorial Research Institute',
+          email: 'fortis.gurgaon@smartmedishare.org',
+          city: 'Gurgaon',
           status: 'verified',
-          registrationNo: 'REG-' + Math.floor(100000 + Math.random() * 900000),
-          authorizedPerson: 'Dr. Authorized Signatory',
-          city: 'Mumbai',
-          state: 'Maharashtra',
-          phone: '+91 98200 12345',
+        };
+        const user = {
+          id: fortisHosp.id,
+          name: fortisHosp.name,
+          email: fortisHosp.email,
+          role: 'hospital',
+          status: fortisHosp.status,
+          registrationNo: fortisHosp.registrationNo,
+          authorizedPerson: fortisHosp.authorizedPerson,
+          city: fortisHosp.city,
+          state: fortisHosp.state,
+          phone: fortisHosp.phone,
         };
         const token = 'mock_jwt_token_hospital_' + Date.now();
-        setStoredItem(KEYS.AUTH, { user: newUser, token });
-        authResult = { user: newUser, token };
+        setStoredItem(KEYS.AUTH, { user, token });
+        authResult = { user, token };
+      } else {
+        throw new Error('Hospital account not found. Please check your credentials or complete institutional registration.');
       }
     }
 
@@ -118,86 +163,91 @@ export const authService = {
   },
 
   async signupHospital(formData) {
-    await new Promise((r) => setTimeout(r, 600));
+    await new Promise((r) => setTimeout(r, 400));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
 
     // Strict validation: every mandatory statutory document must be submitted
-    const docChecklist = getHospitalDocumentChecklist(formData.documents || []);
+    const docChecklist = getHospitalDocumentChecklist(formData?.documents || []);
     if (!docChecklist.isComplete) {
-      const missingLabels = docChecklist.missingItems.map((m) => m.label).join(', ');
+      const missingLabels = (docChecklist.missingItems || []).map((m) => m.label).join(', ');
       throw new Error(`Application submission blocked: All required documents must be submitted before registration. Missing: ${missingLabels}`);
     }
 
-    const newHospitalId = 'hosp-' + Date.now();
-    const normalizedDocs = docChecklist.items.filter((d) => d.isSubmitted).map((doc, idx) => ({
-      id: doc.id || `doc-${newHospitalId}-${idx + 1}`,
-      hospitalId: newHospitalId,
-      documentType: doc.documentType,
-      documentName: doc.documentName || `${doc.documentType.replace(/\s+/g, '_')}.pdf`,
-      name: doc.documentName || `${doc.documentType.replace(/\s+/g, '_')}.pdf`,
-      type: doc.documentType,
+    // Prevent duplicate hospital records on repeated clicks or duplicate registration
+    const existingIndex = hospitals.findIndex(
+      (h) => (formData?.email && h.email?.toLowerCase() === formData.email.toLowerCase()) ||
+             (formData?.registrationNo && h.registrationNo?.toLowerCase() === formData.registrationNo.toLowerCase())
+    );
+
+    const hospitalId = existingIndex !== -1 ? hospitals[existingIndex].id : ('hosp-' + Date.now());
+    const normalizedDocs = (docChecklist.items || []).filter((d) => d.isSubmitted).map((doc, idx) => ({
+      id: doc.id || `doc-${hospitalId}-${idx + 1}`,
+      hospitalId: hospitalId,
+      documentType: doc.documentType || doc.type || 'Registration Certificate',
+      documentName: doc.documentName || doc.name || `${(doc.documentType || 'Document').replace(/\s+/g, '_')}.pdf`,
+      name: doc.name || doc.documentName || `${(doc.documentType || 'Document').replace(/\s+/g, '_')}.pdf`,
+      type: doc.type || doc.documentType || 'Registration Certificate',
       required: true,
       submissionStatus: 'submitted',
       status: 'Submitted',
       size: doc.size || '2.4 MB',
       uploadedAt: new Date().toISOString().split('T')[0],
-      documentUrl: doc.documentUrl || `/documents/${doc.documentName || 'document.pdf'}`,
-      uploadedBy: formData.authorizedPerson || 'Hospital Administrator',
+      documentUrl: doc.documentUrl || `/documents/${doc.documentName || doc.name || 'document.pdf'}`,
+      uploadedBy: formData?.authorizedPerson || formData?.contactPerson || 'Hospital Administrator',
     }));
 
-    const newHospital = {
-      id: newHospitalId,
-      name: formData.name,
-      registrationNo: formData.registrationNo,
-      authorizedPerson: formData.authorizedPerson,
-      email: formData.email,
-      phone: formData.phone,
-      address: formData.address,
-      city: formData.city,
-      state: formData.state,
-      pincode: formData.pincode,
-      status: 'pending', // Requires admin verification
-      registeredDate: new Date().toISOString().split('T')[0],
+    const stableRegNo = formData?.registrationNo?.trim() || 
+      (existingIndex !== -1 && hospitals[existingIndex].registrationNo ? hospitals[existingIndex].registrationNo : ('HOSP-2026-' + (hospitalId.replace('hosp-', '').slice(-4) || '9012')));
+
+    const hospitalData = {
+      id: hospitalId,
+      name: formData?.name || 'Healthcare Institution',
+      registrationNo: stableRegNo,
+      authorizedPerson: formData?.authorizedPerson || formData?.contactPerson || 'Chief Pharmacist',
+      email: formData?.email || '',
+      phone: formData?.phone || '',
+      address: formData?.address || '',
+      city: formData?.city || '',
+      state: formData?.state || '',
+      pincode: formData?.pincode || '',
+      status: 'pending', // PENDING ADMIN APPROVAL (Operational trading access blocked until verified)
+      registeredDate: existingIndex !== -1 ? (hospitals[existingIndex].registeredDate || new Date().toISOString().split('T')[0]) : new Date().toISOString().split('T')[0],
       verifiedDate: null,
       documents: normalizedDocs,
     };
 
-    hospitals.unshift(newHospital);
+    if (existingIndex !== -1) {
+      hospitals[existingIndex] = { ...hospitals[existingIndex], ...hospitalData };
+    } else {
+      hospitals.unshift(hospitalData);
+    }
     setStoredItem(KEYS.HOSPITALS, hospitals);
 
     // Record application-level audit event
     auditService.logEvent({
       action: 'HOSPITAL_APPLICATION_SUBMITTED',
       entityType: 'Hospitals',
-      entityId: newHospital.id,
-      hospitalId: newHospital.id,
-      hospitalName: newHospital.name,
-      actor: newHospital.authorizedPerson,
-      adminUser: newHospital.authorizedPerson,
-      summary: `Hospital registration application submitted by ${newHospital.name} (${newHospital.registrationNo}) with all ${normalizedDocs.length} required statutory documents.`,
+      entityId: hospitalData.id,
+      hospitalId: hospitalData.id,
+      hospitalName: hospitalData.name,
+      actor: hospitalData.authorizedPerson,
+      adminUser: hospitalData.authorizedPerson,
+      summary: `Hospital registration application submitted for ${hospitalData.name} (${hospitalData.registrationNo}) with all ${normalizedDocs.length} required statutory documents. Account status set to Pending Admin Approval.`,
       resultingStatus: 'pending',
       metadata: {
-        registrationNo: newHospital.registrationNo,
+        registrationNo: hospitalData.registrationNo,
         submittedDocuments: normalizedDocs.length,
         documents: normalizedDocs.map((d) => d.documentType),
       },
     });
 
-    const user = {
-      id: newHospital.id,
-      name: newHospital.name,
-      email: newHospital.email,
-      role: 'hospital',
+    // CRITICAL: DO NOT create an active authenticated session in KEYS.AUTH!
+    // Hospital remains in PENDING_APPROVAL state until administrator reviews and approves.
+    return {
+      hospital: hospitalData,
       status: 'pending',
-      registrationNo: newHospital.registrationNo,
-      authorizedPerson: newHospital.authorizedPerson,
-      city: newHospital.city,
-      state: newHospital.state,
-      phone: newHospital.phone,
+      message: 'Your hospital registration has been submitted successfully. Kindly wait for admin approval before accessing the hospital portal.',
     };
-    const token = 'mock_jwt_token_hosp_' + Date.now();
-    setStoredItem(KEYS.AUTH, { user, token });
-    return { user, token };
   },
 
   async signupAdmin(formData) {

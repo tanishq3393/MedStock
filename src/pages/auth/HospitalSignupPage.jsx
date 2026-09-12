@@ -19,14 +19,38 @@ import {
   Sparkles,
   X,
   Upload,
-  Plus
+  Plus,
+  Clock,
+  Check
 } from 'lucide-react';
 import { signupHospitalUser } from '../../store/slices/authSlice';
 import { getHospitalDocumentChecklist, MANDATORY_DOCUMENTS } from '../../services/storage';
 import toast from 'react-hot-toast';
 
 export const HospitalSignupPage = () => {
+  const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { isLoading } = useSelector((state) => state.auth);
+
   const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submittedHospital, setSubmittedHospital] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('sms_last_registered_hospital');
+      return stored ? JSON.parse(stored) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [registrationSuccess, setRegistrationSuccess] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('sms_last_registered_hospital');
+      return !!stored;
+    } catch (e) {
+      return false;
+    }
+  });
+
   const [formData, setFormData] = useState({
     // Step 1
     name: 'Max Healthcare Institute Ltd',
@@ -123,20 +147,25 @@ export const HospitalSignupPage = () => {
   const handleNext = (e) => {
     e.preventDefault();
     if (step === 1) {
-      if (!formData.name || !formData.registrationNo || !formData.email || !formData.phone) {
+      if (!formData?.name?.trim() || !formData?.registrationNo?.trim() || !formData?.email?.trim() || !formData?.phone?.trim()) {
         toast.error('Please complete all hospital identity fields');
         return;
       }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email.trim())) {
+        toast.error('Please enter a valid official email address');
+        return;
+      }
     } else if (step === 2) {
-      if (!formData.address || !formData.city || !formData.state || !formData.pincode) {
+      if (!formData?.address?.trim() || !formData?.city?.trim() || !formData?.state?.trim() || !formData?.pincode?.trim()) {
         toast.error('Please complete all physical campus location details');
         return;
       }
     } else if (step === 3) {
-      const checklist = getHospitalDocumentChecklist(formData.documents);
+      const checklist = getHospitalDocumentChecklist(formData?.documents || []);
       if (!checklist.isComplete) {
-        const missingLabels = checklist.missingItems.map((m) => m.label).join(', ');
-        toast.error(`Please upload all required documents before submitting your application. Missing: ${missingLabels}`);
+        const missingLabels = (checklist.missingItems || []).map((m) => m.label).join(', ');
+        toast.error(`Please upload all required documents before proceeding. Missing: ${missingLabels}`);
         return;
       }
     }
@@ -149,17 +178,18 @@ export const HospitalSignupPage = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting || isLoading || registrationSuccess) return;
 
     // Validation: All required documents are strictly compulsory
-    const checklist = getHospitalDocumentChecklist(formData.documents);
+    const checklist = getHospitalDocumentChecklist(formData?.documents || []);
     if (!checklist.isComplete) {
-      const missingLabels = checklist.missingItems.map((m) => m.label).join(', ');
+      const missingLabels = (checklist.missingItems || []).map((m) => m.label).join(', ');
       toast.error(`Cannot submit application: Please upload all required documents (${missingLabels})`);
       setStep(3);
       return;
     }
 
-    if (formData.password.length < 6) {
+    if (!formData?.password || formData.password.length < 6) {
       toast.error('Password must be at least 6 characters long');
       return;
     }
@@ -168,18 +198,191 @@ export const HospitalSignupPage = () => {
       return;
     }
 
+    setIsSubmitting(true);
     try {
       const resultAction = await dispatch(signupHospitalUser(formData));
       if (signupHospitalUser.fulfilled.match(resultAction)) {
-        toast.success('Account created! Application submitted for supervisory administrative review.');
-        navigate(`/verify-email?email=${encodeURIComponent(formData.email)}&role=hospital`, { replace: true });
+        const hospitalPayload = resultAction.payload?.hospital || {
+          name: formData.name,
+          registrationNo: formData.registrationNo || 'HOSP-2026-PENDING',
+          authorizedPerson: formData.authorizedPerson,
+          email: formData.email,
+          city: formData.city,
+          state: formData.state,
+          status: 'pending',
+        };
+        setSubmittedHospital(hospitalPayload);
+        setRegistrationSuccess(true);
+        try {
+          sessionStorage.setItem('sms_last_registered_hospital', JSON.stringify(hospitalPayload));
+        } catch (e) {}
+        toast.success('Registration submitted for admin approval');
+        // CRITICAL: DO NOT redirect to hospital dashboard!
+        // Hospital enters PENDING ADMIN APPROVAL state and sees the dedicated confirmation screen.
       } else {
-        toast.error(resultAction.payload || 'Signup failed');
+        const errPayload = resultAction.payload;
+        const msg = typeof errPayload === 'string'
+          ? errPayload
+          : 'Registration could not be completed. Please review the highlighted information and try again.';
+        toast.error(msg);
       }
     } catch (err) {
-      toast.error(err.message || 'Unexpected error occurred');
+      console.error('[Hospital Registration Error]:', err);
+      toast.error('Registration could not be completed. Please review the highlighted information and try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
+
+  const handleReturnToLogin = () => {
+    try {
+      sessionStorage.removeItem('sms_last_registered_hospital');
+    } catch (e) {}
+    setRegistrationSuccess(false);
+    setSubmittedHospital(null);
+    navigate('/login', {
+      state: {
+        email: submittedHospital?.email,
+        fromRegistration: true,
+      },
+    });
+  };
+
+  // Dedicated Pending Approval Success Screen
+  if (registrationSuccess && submittedHospital) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] py-10 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
+        <div className="max-w-2xl w-full space-y-6 animate-fadeIn">
+          {/* Brand Header */}
+          <div className="text-center space-y-1.5">
+            <Link to="/" className="inline-flex items-center gap-2">
+              <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
+                <Pill className="w-5 h-5 rotate-45" />
+              </div>
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                Smart<span className="text-teal-600">MediShare</span>
+              </span>
+            </Link>
+          </div>
+
+          {/* Dedicated Success / Pending Approval Card */}
+          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl overflow-hidden">
+            {/* Header Banner */}
+            <div className="bg-gradient-to-r from-teal-900 via-ocean-900 to-slate-900 p-6 sm:p-8 text-white text-center relative overflow-hidden">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto mb-4 shadow-lg">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 stroke-[2.2]" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
+                Hospital Registered Successfully
+              </h1>
+              <p className="text-sm text-slate-300 max-w-md mx-auto mt-2">
+                Your hospital registration has been submitted successfully.
+              </p>
+            </div>
+
+            <div className="p-6 sm:p-8 space-y-6">
+              {/* Prominent Admin Approval Required Notice */}
+              <div className="p-5 rounded-2xl bg-amber-50/90 border-2 border-amber-300 text-amber-950 space-y-2 shadow-sm">
+                <div className="flex items-center gap-2 text-amber-800 font-extrabold text-xs uppercase tracking-wider">
+                  <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                  <span>Admin Approval Required</span>
+                </div>
+                <div className="text-base font-bold text-amber-950 leading-snug">
+                  Kindly wait for admin approval before accessing the hospital portal.
+                </div>
+                <p className="text-xs text-amber-900/90 leading-relaxed">
+                  Our administrators will review your hospital details and approve your account before you can access the hospital portal. Please wait for approval.
+                </p>
+              </div>
+
+              {/* Registration Summary Details */}
+              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+                  <div>
+                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Hospital</div>
+                    <div className="text-slate-900 font-extrabold text-sm mt-0.5">{submittedHospital.name}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Registration ID</div>
+                    <div className="text-teal-700 font-mono font-bold text-sm mt-0.5">{submittedHospital.registrationNo || submittedHospital.id}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Official Email</div>
+                    <div className="text-slate-800 font-medium text-xs mt-0.5">{submittedHospital.email}</div>
+                  </div>
+                  <div>
+                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Campus Location</div>
+                    <div className="text-slate-800 font-medium text-xs mt-0.5">{submittedHospital.city}, {submittedHospital.state}</div>
+                  </div>
+                </div>
+
+                <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Status:</span>
+                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-950 border border-amber-300">
+                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                    PENDING ADMIN APPROVAL
+                  </span>
+                </div>
+              </div>
+
+              {/* Status Timeline */}
+              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-3.5">
+                <div className="text-xs font-black uppercase tracking-wider text-slate-700">Verification Timeline</div>
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3 text-xs">
+                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Registration Submitted</div>
+                      <div className="text-[11px] text-emerald-700 font-medium">Completed — Statutory Form 20B/21B files uploaded</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 text-xs">
+                    <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-amber-600 animate-pulse" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900">Admin Verification</div>
+                      <div className="text-[11px] text-amber-800 font-medium">Pending — Administrative audit of hospital permits in queue</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3 text-xs">
+                    <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-300" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-400">Hospital Portal Access</div>
+                      <div className="text-[11px] text-slate-400 font-medium">Available after administrator approval</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Explanatory Message */}
+              <p className="text-xs text-slate-600 text-center leading-relaxed">
+                Your hospital details are now waiting for administrator verification. You will be able to access the hospital portal after your registration is approved.
+              </p>
+
+              {/* Action */}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={handleReturnToLogin}
+                  className="w-full py-3.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft className="w-4 h-4" />
+                  <span>Return to Login</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-8rem)] py-8 px-4 sm:px-6 lg:px-8 flex justify-center">
@@ -612,8 +815,8 @@ export const HospitalSignupPage = () => {
                     <Lock className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-slate-900">Step 4: Create Master Terminal Password</h3>
-                    <p className="text-[10px] text-slate-400">Institutional authentication key</p>
+                    <h3 className="text-sm font-bold text-slate-900">Step 4: Final Security Check & Master Password</h3>
+                    <p className="text-[10px] text-slate-400">Institutional verification layer & portal credentials</p>
                   </div>
                 </div>
                 <span className="text-xs font-mono text-slate-400">4 of 4</span>
@@ -627,7 +830,7 @@ export const HospitalSignupPage = () => {
                   type="password"
                   required
                   placeholder="At least 6 characters"
-                  value={formData.password}
+                  value={formData?.password || ''}
                   onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-mono"
                 />
@@ -641,10 +844,104 @@ export const HospitalSignupPage = () => {
                   type="password"
                   required
                   placeholder="Re-enter password"
-                  value={formData.confirmPassword}
+                  value={formData?.confirmPassword || ''}
                   onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                   className="w-full px-3.5 py-2.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all font-mono"
                 />
+              </div>
+
+              {/* FINAL SECURITY CHECK VERIFICATION CARD */}
+              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/90 space-y-3">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-200/70">
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-lg bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
+                      <ShieldCheck className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-900">Final Security Check</h4>
+                      <p className="text-[10px] text-slate-500">Prototype credential & statutory validation layer</p>
+                    </div>
+                  </div>
+                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-teal-700 bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+                    <CheckCircle2 className="w-3 h-3 text-teal-600" />
+                    Validated
+                  </span>
+                </div>
+
+                <div className="space-y-2 text-xs">
+                  {/* 1. Registration information complete */}
+                  <div className="flex items-start gap-2 text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200/70">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-800">Registration information complete</span>
+                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Passed</span>
+                      </div>
+                      <p className="text-[11px] text-slate-600 truncate mt-0.5">
+                        {formData?.name || 'Not provided'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 2. Required fields validated */}
+                  <div className="flex items-start gap-2 text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200/70">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-800">Required fields validated</span>
+                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Passed</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5 space-y-0.5">
+                        <div className="truncate">
+                          <span className="text-slate-400">Reg No:</span>{' '}
+                          <span className="font-mono text-slate-700 font-semibold">{formData?.registrationNo || formData?.registrationNumber || 'Not provided'}</span>
+                        </div>
+                        <div className="truncate">
+                          <span className="text-slate-400">Location:</span>{' '}
+                          <span>{formData?.address || 'Not provided'}, {formData?.city || 'Not provided'}, {formData?.state || 'Not provided'} ({formData?.pincode || 'Not provided'})</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3. Hospital role confirmed */}
+                  <div className="flex items-start gap-2 text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200/70">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-800">Hospital role confirmed</span>
+                        <span className="text-[10px] font-mono font-bold text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">HOSPITAL</span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Authorized for hospital medicine sharing, inventory management, and cold-chain transfers.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* 4. Account information ready */}
+                  <div className="flex items-start gap-2 text-slate-700 bg-white p-2.5 rounded-xl border border-slate-200/70">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="font-bold text-slate-800">Account information ready</span>
+                        <span className="text-[10px] font-mono font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">Ready</span>
+                      </div>
+                      <div className="text-[11px] text-slate-600 mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                        <span><span className="text-slate-400">Contact:</span> {formData?.authorizedPerson || formData?.contactPerson || 'Not provided'}</span>
+                        <span>•</span>
+                        <span className="font-mono">{formData?.email || 'Not provided'}</span>
+                        <span>•</span>
+                        <span className="font-mono">{formData?.phone || 'Not provided'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 5. Ready to create hospital account */}
+                  <div className="flex items-center gap-2 text-emerald-800 bg-emerald-50/70 p-2.5 rounded-xl border border-emerald-200">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-bold text-xs">Ready to create hospital account</span>
+                  </div>
+                </div>
               </div>
 
               {/* Supporting Documents Recap */}
@@ -655,11 +952,11 @@ export const HospitalSignupPage = () => {
                     <span>Supporting Regulatory Dossier</span>
                   </div>
                   <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                    {docChecklist.submittedCount} of {docChecklist.totalRequired} Submitted
+                    {docChecklist?.submittedCount || 0} of {docChecklist?.totalRequired || 4} Submitted
                   </span>
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
-                  {docChecklist.checklist.map((item) => (
+                  {(docChecklist?.checklist || []).map((item) => (
                     <div key={item.documentType} className="p-2 rounded-xl bg-white border border-slate-200/70 flex items-center justify-between">
                       <span className="font-medium text-slate-700 truncate mr-2">{item.label}</span>
                       <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 shrink-0">
@@ -691,18 +988,23 @@ export const HospitalSignupPage = () => {
                 </button>
                 <button
                   type="submit"
-                  disabled={isLoading || !docChecklist.isComplete}
+                  disabled={isSubmitting || isLoading || !docChecklist?.isComplete || registrationSuccess}
                   className="inline-flex items-center gap-2 px-7 py-2.5 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold shadow-lg shadow-teal-600/25 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isLoading ? (
+                  {registrationSuccess ? (
+                    <>
+                      <CheckCircle2 className="w-4 h-4 text-white" />
+                      <span>Registration Submitted</span>
+                    </>
+                  ) : (isSubmitting || isLoading) ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Submitting Complete Application...</span>
+                      <span>Submitting Registration...</span>
                     </>
                   ) : (
                     <>
                       <ShieldCheck className="w-4 h-4" />
-                      <span>Submit Complete Application</span>
+                      <span>Submit Registration</span>
                     </>
                   )}
                 </button>

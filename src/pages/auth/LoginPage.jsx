@@ -15,7 +15,10 @@ import {
   ShieldCheck,
   CheckCircle2,
   LockKeyhole,
-  AlertTriangle
+  AlertTriangle,
+  Clock,
+  ArrowLeft,
+  XCircle
 } from 'lucide-react';
 import { loginUser, clearAuthError } from '../../store/slices/authSlice';
 import toast from 'react-hot-toast';
@@ -31,6 +34,9 @@ export const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showUnverifiedBanner, setShowUnverifiedBanner] = useState(isUnverifiedParam);
 
+  const [pendingApprovalHospital, setPendingApprovalHospital] = useState(null);
+  const [rejectedHospital, setRejectedHospital] = useState(null);
+
   const { isLoading, error } = useSelector((state) => state.auth);
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -42,6 +48,8 @@ export const LoginPage = () => {
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     dispatch(clearAuthError());
+    setPendingApprovalHospital(null);
+    setRejectedHospital(null);
     if (tab === 'admin') {
       setEmail('admin@smartmedishare.org');
       setPassword('Admin@123');
@@ -52,6 +60,8 @@ export const LoginPage = () => {
   };
 
   const handleQuickDemoFill = (roleType) => {
+    setPendingApprovalHospital(null);
+    setRejectedHospital(null);
     if (roleType === 'admin') {
       setActiveTab('admin');
       setEmail('admin@smartmedishare.org');
@@ -82,12 +92,158 @@ export const LoginPage = () => {
         const redirectPath = activeTab === 'admin' ? '/admin/dashboard' : '/hospital/dashboard';
         navigate(redirectPath, { replace: true });
       } else {
-        toast.error(resultAction.payload || 'Login failed');
+        const payload = resultAction.payload;
+        if (payload?.code === 'PENDING_ADMIN_APPROVAL') {
+          setPendingApprovalHospital(payload.hospital || { email });
+          setRejectedHospital(null);
+          return;
+        }
+        if (payload?.code === 'REGISTRATION_REJECTED') {
+          setRejectedHospital(payload);
+          setPendingApprovalHospital(null);
+          return;
+        }
+        const errorMsg = typeof payload === 'string' ? payload : (payload?.message || 'Login failed');
+        toast.error(errorMsg);
       }
     } catch (err) {
       toast.error(err.message || 'Unexpected login error');
     }
   };
+
+  // Dedicated Pending Approval View on Login
+  if (pendingApprovalHospital) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div className="max-w-md w-full space-y-5 animate-fadeIn">
+          {/* Brand Header */}
+          <div className="text-center space-y-2">
+            <Link to="/" className="inline-flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
+                <Pill className="w-5 h-5 rotate-45" />
+              </div>
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                Smart<span className="text-teal-600">MediShare</span>
+              </span>
+            </Link>
+          </div>
+
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
+            <div className="text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto border border-amber-200 shadow-sm">
+                <Clock className="w-7 h-7 stroke-[2.3] animate-pulse" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 leading-snug">
+                Your hospital registration is pending admin approval.
+              </h2>
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                Status: PENDING APPROVAL
+              </div>
+            </div>
+
+            {/* Hospital Details Box */}
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
+              <div className="flex justify-between items-center py-1 border-b border-slate-200">
+                <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Hospital Name:</span>
+                <span className="font-extrabold text-slate-900 text-right">{pendingApprovalHospital.name || 'Registered Hospital'}</span>
+              </div>
+              {pendingApprovalHospital.registrationNo && (
+                <div className="flex justify-between items-center py-1 border-b border-slate-200">
+                  <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Registration ID:</span>
+                  <span className="font-mono font-bold text-teal-700">{pendingApprovalHospital.registrationNo}</span>
+                </div>
+              )}
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Account Email:</span>
+                <span className="font-medium text-slate-700">{pendingApprovalHospital.email || email}</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-950 space-y-1.5">
+              <div className="font-bold flex items-center gap-1.5 text-amber-900">
+                <ShieldAlert className="w-4 h-4 text-amber-600" />
+                <span>Verification In Progress</span>
+              </div>
+              <p className="leading-relaxed text-[11px] text-amber-900/90">
+                Your registration has been submitted successfully and is currently being reviewed by an administrator. Please wait for approval before accessing the hospital portal.
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPendingApprovalHospital(null);
+                  dispatch(clearAuthError());
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Login</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Dedicated Rejected View on Login
+  if (rejectedHospital) {
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div className="max-w-md w-full space-y-5 animate-fadeIn">
+          {/* Brand Header */}
+          <div className="text-center space-y-2">
+            <Link to="/" className="inline-flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
+                <Pill className="w-5 h-5 rotate-45" />
+              </div>
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                Smart<span className="text-teal-600">MediShare</span>
+              </span>
+            </Link>
+          </div>
+
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-rose-200 shadow-xl space-y-6">
+            <div className="text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-sm">
+                <XCircle className="w-7 h-7 stroke-[2.3]" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 leading-snug">
+                Hospital registration requires attention.
+              </h2>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-900 border border-rose-300">
+                Status: REGISTRATION REJECTED
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-950 space-y-1.5">
+              <div className="font-bold text-rose-900">Administrator Notice:</div>
+              <p className="leading-relaxed text-[11px] text-rose-900/90 font-medium">
+                {rejectedHospital.rejectionReason || 'Documentation audit incomplete or statutory compliance missing.'}
+              </p>
+            </div>
+
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setRejectedHospital(null);
+                  dispatch(clearAuthError());
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Back to Login</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
