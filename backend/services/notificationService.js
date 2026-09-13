@@ -104,7 +104,7 @@ const notificationService = {
           .range(parsedOffset, parsedOffset + parsedLimit - 1);
 
         const { data, count, error } = await query;
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return {
             items: data,
             notifications: data,

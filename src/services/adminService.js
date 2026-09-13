@@ -24,7 +24,52 @@ export const adminService = {
   // 1. DASHBOARD & SUPERVISORY ANALYTICS
   // ==========================================
   async getDashboard() {
-    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const response = await fetch(`${API_BASE}/admin/reports?range=30d`, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const body = await response.json();
+        const rep = body?.data;
+        if (rep) {
+          return {
+            stats: {
+              totalHospitals: rep.hospitals?.total || 0,
+              verifiedHospitals: rep.hospitals?.verified || 0,
+              pendingVerification: rep.hospitals?.newRegistrations || 0,
+              totalMedicines: rep.medicines?.total || 0,
+              lowStock: rep.medicines?.lowStock || 0,
+              expiringSoon: rep.medicines?.expiringSoon || 0,
+              pendingOrders: rep.orders?.daily || 0,
+              totalOrders: rep.orders?.total || 0,
+            },
+            medicineStockOverview: [
+              { name: 'In Stock', value: Math.max(0, (rep.medicines?.total || 0) - (rep.medicines?.lowStock || 0) - (rep.medicines?.outOfStock || 0) - (rep.medicines?.expired || 0)), color: '#0A6E79' },
+              { name: 'Low Stock', value: rep.medicines?.lowStock || 0, color: '#F59E0B' },
+              { name: 'Out of Stock', value: rep.medicines?.outOfStock || 0, color: '#EF4444' },
+              { name: 'Expired', value: rep.medicines?.expired || 0, color: '#94A3B8' },
+            ],
+            ordersOverview: [
+              { status: 'Completed Trades', count: rep.trades?.completedTrades || 0, color: '#10B981' },
+              { status: 'Active Requisitions', count: Math.max(0, (rep.orders?.total || 0) - (rep.trades?.completedTrades || 0) - (rep.trades?.cancelledTrades || 0)), color: '#3B82F6' },
+              { status: 'Cancelled Trades', count: rep.trades?.cancelledTrades || 0, color: '#EF4444' },
+            ],
+            hospitalRegistrationTrend: [
+              { month: 'Total', count: rep.hospitals?.total || 0, verified: rep.hospitals?.verified || 0 },
+            ],
+            recentActivity: [],
+            feedbackSummary: rep.feedback || { total: 0, new: 0, underReview: 0, resolved: 0, averageRating: '5.0' },
+            transferTrends: rep.movementTrends || [],
+            systemPerformance: { coldChainAdherence: '99.8%', avgTransitTime: '4.2 hrs', errorRate: '0.02%' },
+            topHotMedicines: rep.medicines?.mostRequested || [],
+          };
+        }
+      }
+    } catch (err) {
+      console.warn('Backend admin dashboard reports unavailable, using fallback:', err.message);
+    }
+
+    await new Promise((r) => setTimeout(r, 100));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const requests = getStoredItem(KEYS.REQUESTS, []);
@@ -2105,7 +2150,19 @@ export const adminService = {
   // 8. REPORTS & ANALYTICS
   // ==========================================
   async getReports(range = '30d') {
-    await new Promise((r) => setTimeout(r, 200));
+    try {
+      const response = await fetch(`${API_BASE}/admin/reports?range=${encodeURIComponent(range)}`, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const body = await response.json();
+        if (body?.data) return body.data;
+      }
+    } catch (err) {
+      console.warn('Backend admin/reports unavailable, using fallback:', err.message);
+    }
+
+    await new Promise((r) => setTimeout(r, 100));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const requests = getStoredItem(KEYS.REQUESTS, []);
@@ -2200,6 +2257,34 @@ export const adminService = {
         ],
       },
     };
+  },
+
+  async exportTradingReportCSV(filters = {}) {
+    const query = new URLSearchParams();
+    if (filters.startDate) query.append('startDate', filters.startDate);
+    if (filters.endDate) query.append('endDate', filters.endDate);
+    if (filters.status && filters.status !== 'all') query.append('status', filters.status);
+    if (filters.search) query.append('search', filters.search);
+    if (filters.medicineId) query.append('medicineId', filters.medicineId);
+
+    const response = await fetch(`${API_BASE}/trades/export?${query.toString()}`, {
+      headers: getAuthHeaders(),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Export failed with HTTP status ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.download = `medex-national-trading-report-${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   },
 
   // ==========================================

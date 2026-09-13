@@ -560,7 +560,7 @@ const alertService = {
           .order('created_at', { ascending: false })
           .range(parsedOffset, parsedOffset + limitNum - 1);
 
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           const unreadRes = await this.getUnreadCount({ hospitalId, isAdmin });
           return {
             items: data,

@@ -41,4 +41,9 @@ router.get('/inventory/batches/:batchId', adminController.getBatchDetail);
 const refundController = require('../controllers/refundController');
 router.get('/refunds', refundController.getAdminRefunds);
 
+// 7. Phase 10: Admin Reports & Multi-Echelon Analytics
+router.get('/reports', adminController.getReports);
+router.get('/analytics', adminController.getAnalytics);
+router.get('/hospitals/:id/trading-analytics', adminController.getHospitalTradingAnalytics);
+
 module.exports = router;

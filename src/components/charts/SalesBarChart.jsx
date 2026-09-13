@@ -11,16 +11,17 @@ import {
 } from 'recharts';
 
 export const SalesBarChart = ({ data }) => {
-  const chartData = data || [
-    { month: 'Mar', amount: 480000, units: 190 },
-    { month: 'Apr', amount: 530000, units: 220 },
-    { month: 'May', amount: 590000, units: 250 },
-    { month: 'Jun', amount: 620000, units: 280 },
-    { month: 'Jul', amount: 645000, units: 310 },
-    { month: 'Aug', amount: 689000, units: 340 },
-  ];
+  const chartData = Array.isArray(data) ? data : [];
 
   const formatCurrency = (val) => `₹${(val / 1000).toFixed(0)}k`;
+
+  if (chartData.length === 0 || chartData.every(d => !d.amount && !d.units)) {
+    return (
+      <div className="w-full h-72 flex flex-col items-center justify-center text-slate-400 text-xs font-medium">
+        <p>No surplus sales recorded for this period.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-72">

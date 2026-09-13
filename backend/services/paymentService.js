@@ -894,7 +894,7 @@ const paymentService = {
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);
 
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return {
             payments: data,
             total: count || data.length,
@@ -946,7 +946,7 @@ const paymentService = {
           .order('created_at', { ascending: false })
           .range(offset, offset + limit - 1);
 
-        if (!error && data) {
+        if (!error && data && data.length > 0) {
           return {
             payments: data,
             total: count || data.length,

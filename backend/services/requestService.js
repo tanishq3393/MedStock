@@ -560,6 +560,13 @@ const requestService = {
         }
       });
 
+      try {
+        const tradingService = require('./tradingService');
+        await tradingService.syncTradeFromRequest(request, { actor: 'Buyer Hospital' });
+      } catch (trdErr) {
+        logger.warn('Failed to sync trade in cancelRequest:', trdErr.message);
+      }
+
       return {
         request,
         refund: refundRecord,
@@ -649,6 +656,13 @@ const requestService = {
         summary: `Accepted requisition ${request.transactionId} for ${request.quantity} units of ${request.medicineName}.`,
         resultingStatus: 'accepted',
       });
+
+      try {
+        const tradingService = require('./tradingService');
+        await tradingService.syncTradeFromRequest(request, { actor: 'Supplier Hospital' });
+      } catch (trdErr) {
+        logger.warn('Failed to sync trade in acceptRequest:', trdErr.message);
+      }
 
       return request;
     } finally {
@@ -1058,6 +1072,13 @@ const requestService = {
         } catch (dbErr) {
           logger.warn('Supabase markRequestAsPaid failed:', dbErr.message);
         }
+      }
+
+      try {
+        const tradingService = require('./tradingService');
+        await tradingService.syncTradeFromRequest(request, { paymentId, actor });
+      } catch (trdErr) {
+        logger.warn('Failed to sync trade in markRequestAsPaid:', trdErr.message);
       }
 
       return request;

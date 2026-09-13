@@ -654,6 +654,9 @@ CREATE TABLE IF NOT EXISTS trading_transactions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   transaction_id VARCHAR(100) NOT NULL,
   request_id UUID REFERENCES requests(id) ON DELETE SET NULL,
+  order_id VARCHAR(100),
+  payment_id VARCHAR(100),
+  transfer_id UUID REFERENCES transfers(id) ON DELETE SET NULL,
   buyer_hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
   seller_hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
   medicine_id UUID REFERENCES medicines(id) ON DELETE SET NULL,
@@ -665,9 +668,13 @@ CREATE TABLE IF NOT EXISTS trading_transactions (
   amount NUMERIC(12, 2) NOT NULL CHECK (amount >= 0),
   total_amount NUMERIC(12, 2) NOT NULL CHECK (total_amount >= 0),
   transaction_type VARCHAR(50) NOT NULL CHECK (transaction_type IN ('PURCHASE', 'SALE', 'purchase', 'sale')),
-  status VARCHAR(50) NOT NULL DEFAULT 'completed' CHECK (status IN ('in_progress', 'completed', 'cancelled')),
+  status VARCHAR(50) NOT NULL DEFAULT 'completed' CHECK (status IN (
+    'requested', 'accepted', 'payment_pending', 'paid', 'transfer_created',
+    'in_transit', 'delivered', 'completed', 'cancelled', 'refund_pending', 'refunded', 'in_progress'
+  )),
   timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   transaction_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  completed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
@@ -675,6 +682,15 @@ CREATE INDEX IF NOT EXISTS idx_trading_buyer ON trading_transactions(buyer_hospi
 CREATE INDEX IF NOT EXISTS idx_trading_seller ON trading_transactions(seller_hospital_id);
 CREATE INDEX IF NOT EXISTS idx_trading_txn ON trading_transactions(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_trading_type_date ON trading_transactions(transaction_type, transaction_date);
+CREATE INDEX IF NOT EXISTS idx_trading_completed ON trading_transactions(status, completed_at);
+CREATE INDEX IF NOT EXISTS idx_trading_medicine ON trading_transactions(medicine_id);
+CREATE INDEX IF NOT EXISTS idx_trading_lot ON trading_transactions(inventory_lot_id);
+CREATE INDEX IF NOT EXISTS idx_trading_buyer_seller ON trading_transactions(buyer_hospital_id, seller_hospital_id);
+CREATE INDEX IF NOT EXISTS idx_trading_date ON trading_transactions(transaction_date);
+CREATE INDEX IF NOT EXISTS idx_trading_status ON trading_transactions(status);
+CREATE INDEX IF NOT EXISTS idx_trading_order_id ON trading_transactions(order_id);
+CREATE INDEX IF NOT EXISTS idx_trading_payment_id ON trading_transactions(payment_id);
+CREATE INDEX IF NOT EXISTS idx_trading_transfer_id ON trading_transactions(transfer_id);
 
 -- ====================================================================
 -- ENTITY 16: AUDIT_LOGS

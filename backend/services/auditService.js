@@ -83,7 +83,7 @@ const auditService = {
         }
 
         const { data, error } = await query;
-        if (!error && data) return data;
+        if (!error && data && data.length > 0) return data;
       } catch (err) {
         logger.warn('Failed to query Supabase audit logs, falling back to local store:', err.message);
       }

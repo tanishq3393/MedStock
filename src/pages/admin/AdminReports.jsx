@@ -68,64 +68,16 @@ export const AdminReports = () => {
     fetchReports(selectedRange);
   }, [selectedRange]);
 
-  const handleExportCSV = () => {
-    if (!reports) return;
-
-    let csvContent = 'data:text/csv;charset=utf-8,';
-    csvContent += 'MEDEX NATIONAL HEALTHCARE REPORT EXPORT\r\n';
-    csvContent += `Generated At,${new Date().toISOString()}\r\n`;
-    csvContent += `Timeframe,${selectedRange}\r\n\r\n`;
-
-    // 1. Hospital Reports
-    csvContent += 'HOSPITAL METRICS\r\n';
-    csvContent += 'Metric,Count\r\n';
-    csvContent += `Total Hospitals,${reports.hospitals.total}\r\n`;
-    csvContent += `Verified Hospitals,${reports.hospitals.verified}\r\n`;
-    csvContent += `Pending / New Registrations,${reports.hospitals.newRegistrations}\r\n`;
-    csvContent += `Rejected Hospitals,${reports.hospitals.rejected}\r\n`;
-    csvContent += `Suspended Hospitals,${reports.hospitals.suspended}\r\n\r\n`;
-
-    // 2. Medicine Reports
-    csvContent += 'MEDICINE METRICS\r\n';
-    csvContent += 'Metric,Count\r\n';
-    csvContent += `Total Medicines,${reports.medicines.total}\r\n`;
-    csvContent += `Low Stock Reserves,${reports.medicines.lowStock}\r\n`;
-    csvContent += `Out of Stock Outages,${reports.medicines.outOfStock}\r\n`;
-    csvContent += `Expired Medicines,${reports.medicines.expired}\r\n`;
-    csvContent += `Expiring Soon (<60d),${reports.medicines.expiringSoon}\r\n\r\n`;
-
-    // Top Medicines
-    csvContent += 'MOST REQUESTED MEDICINES\r\n';
-    csvContent += 'Medicine Name,Quantity Units\r\n';
-    reports.medicines.mostRequested.forEach((m) => {
-      csvContent += `"${m.name}",${m.units}\r\n`;
-    });
-    csvContent += '\r\n';
-
-    // 3. Order Reports
-    csvContent += 'ORDERS METRICS\r\n';
-    csvContent += 'Period,Volume\r\n';
-    csvContent += `Daily Orders (Est),${reports.orders.daily}\r\n`;
-    csvContent += `Weekly Orders (Est),${reports.orders.weekly}\r\n`;
-    csvContent += `Monthly Orders Total,${reports.orders.monthly}\r\n`;
-    csvContent += `Total Requisitions,${reports.orders.total}\r\n\r\n`;
-
-    // 4. Feedback Reports
-    csvContent += 'FEEDBACK METRICS\r\n';
-    csvContent += 'Metric,Value\r\n';
-    csvContent += `Total Feedback,${reports.feedback.total}\r\n`;
-    csvContent += `Average CSAT Rating,${reports.feedback.averageRating}\r\n`;
-    csvContent += `Resolved Feedback,${reports.feedback.resolved}\r\n`;
-    csvContent += `Unresolved Feedback,${reports.feedback.unresolved}\r\n`;
-
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `medex-report-${selectedRange}-${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('CSV Report downloaded successfully');
+  const handleExportCSV = async () => {
+    try {
+      await adminService.exportTradingReportCSV({
+        startDate: selectedRange === 'custom' ? customStartDate : null,
+        endDate: selectedRange === 'custom' ? customEndDate : null,
+      });
+      toast.success('National trading report exported to CSV');
+    } catch (err) {
+      toast.error('Failed to download report export: ' + (err?.message || err));
+    }
   };
 
   const handlePrintPDF = () => {
@@ -345,7 +297,7 @@ export const AdminReports = () => {
           <div className="p-3.5 rounded-xl bg-rose-50/50 border border-rose-200/80 space-y-0.5">
             <div className="text-[10px] font-bold uppercase text-rose-700">Expired Medicines</div>
             <div className="text-xl font-black text-rose-800 font-mono">{reports.medicines.expired}</div>
-            <div className="text-[10px] text-rose-600">Pending incinerator</div>
+            <div className="text-[10px] text-rose-600">Quarantined regulatory hold</div>
           </div>
 
           <div className="p-3.5 rounded-xl bg-orange-50/50 border border-orange-200/80 space-y-0.5">

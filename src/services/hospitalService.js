@@ -87,20 +87,50 @@ export const hospitalService = {
     const trackingList = getStoredItem(KEYS.TRACKING, []);
     const myTransfers = trackingList.filter((t) => t.senderHospitalId === hospitalId || t.receiverHospitalId === hospitalId);
 
-    // Calculate dynamic monthly financial values from actual fulfilled transactions
-    const monthlySales = myIncoming
-      .filter((r) => ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
-      .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
+    // Phase 10: Query authoritative trading summary from backend
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    let apiSummary = null;
 
-    const monthlyPurchases = myOutgoing
-      .filter((r) => ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
-      .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
+    if (token) {
+      try {
+        const summaryRes = await fetch(`http://localhost:5000/api/trades/summary?hospitalId=${encodeURIComponent(hospitalId)}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          }
+        });
+        if (summaryRes.ok) {
+          const body = await summaryRes.json();
+          apiSummary = body?.data;
+        }
+      } catch (err) {
+        // Fall back to local calculation
+      }
+    }
 
-    const profitabilityPercent = monthlySales > 0 
-      ? Math.round(((monthlySales - monthlyPurchases) / monthlySales) * 100 * 10) / 10
-      : (myIncoming.length > 0 ? 18.5 : 0);
+    // Calculate monthly financial values from actual fulfilled transactions
+    const monthlySales = apiSummary?.metrics?.totalSalesAmount !== undefined
+      ? apiSummary.metrics.totalSalesAmount
+      : myIncoming
+          .filter((r) => ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
+          .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
 
-    const pendingRequestsCount = myIncoming.filter((r) => r.status === 'pending').length;
+    const monthlyPurchases = apiSummary?.metrics?.totalPurchaseAmount !== undefined
+      ? apiSummary.metrics.totalPurchaseAmount
+      : myOutgoing
+          .filter((r) => ['accepted', 'paid', 'dispatched', 'delivered'].includes(r.status))
+          .reduce((sum, r) => sum + Number(r.totalAmount || 0), 0);
+
+    const profitabilityPercent = apiSummary?.metrics?.ratios?.salesPercentage !== undefined
+      ? apiSummary.metrics.ratios.salesPercentage
+      : (monthlySales > 0 
+          ? Math.round(((monthlySales - monthlyPurchases) / monthlySales) * 100 * 10) / 10
+          : 0);
+
+    const pendingRequestsCount = apiSummary?.metrics?.pendingTrades !== undefined
+      ? apiSummary.metrics.pendingTrades
+      : myIncoming.filter((r) => r.status === 'pending').length;
     const activeShipmentsCount = myTransfers.filter((t) => !['Delivered', 'Cancelled'].includes(t.status)).length;
 
     const calculatedStats = {
@@ -111,14 +141,43 @@ export const hospitalService = {
       profitabilityPercent,
       pendingRequestsCount,
       activeShipmentsCount,
-      isDemoSimulation: true,
+      isDemoSimulation: false,
     };
+
+    // Convert real backend timeSeries into chart formats
+    let purchasesMonthly = [];
+    let salesMonthly = [];
+    let profitabilityTrend = [];
+
+    if (apiSummary?.timeSeries && apiSummary.timeSeries.length > 0) {
+      purchasesMonthly = apiSummary.timeSeries.map((t) => ({
+        month: t.month,
+        amount: t.purchases,
+        units: t.purchaseUnits,
+      }));
+      salesMonthly = apiSummary.timeSeries.map((t) => ({
+        month: t.month,
+        amount: t.sales,
+        units: t.saleUnits,
+      }));
+      profitabilityTrend = apiSummary.timeSeries.map((t) => ({
+        month: t.month,
+        revenue: t.sales,
+        cost: t.purchases,
+        marginPercent: t.sales > 0 ? Math.round(((t.sales - t.purchases) / t.sales) * 1000) / 10 : 0,
+      }));
+    } else {
+      // Clean zero dataset for empty states (no fake fallback numbers)
+      purchasesMonthly = [{ month: 'Current', amount: monthlyPurchases, units: 0 }];
+      salesMonthly = [{ month: 'Current', amount: monthlySales, units: 0 }];
+      profitabilityTrend = [{ month: 'Current', revenue: monthlySales, cost: monthlyPurchases, marginPercent: profitabilityPercent }];
+    }
 
     return {
       stats: calculatedStats,
-      purchasesMonthly: HOSPITAL_ANALYTICS.purchasesMonthly,
-      salesMonthly: HOSPITAL_ANALYTICS.salesMonthly,
-      profitabilityTrend: HOSPITAL_ANALYTICS.profitabilityTrend,
+      purchasesMonthly,
+      salesMonthly,
+      profitabilityTrend,
     };
   },
 
@@ -2216,5 +2275,169 @@ export const hospitalService = {
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
     if (!hospitalId) return feedbacks;
     return feedbacks.filter((f) => f.hospitalId === hospitalId);
+  },
+
+  // ==========================================
+  // 11. PHASE 10: TRADING & REPORTS
+  // ==========================================
+  async getTrades(params = {}) {
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    const query = new URLSearchParams();
+    if (params.page) query.append('page', params.page);
+    if (params.limit) query.append('limit', params.limit);
+    if (params.status && params.status !== 'all') query.append('status', params.status);
+    if (params.search) query.append('search', params.search);
+    if (params.startDate) query.append('startDate', params.startDate);
+    if (params.endDate) query.append('endDate', params.endDate);
+    if (params.medicineId) query.append('medicineId', params.medicineId);
+
+    if (token) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/trades?${query.toString()}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          }
+        });
+        if (res.ok) {
+          const body = await res.json();
+          if (body?.data) return body.data;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch trades from backend:', err.message);
+      }
+    }
+
+    // Client fallback
+    const requests = getStoredItem(KEYS.REQUESTS, []);
+    const hospitalId = resolveHospitalId(params.hospitalId);
+    let filtered = requests.filter((r) => r.fromHospitalId === hospitalId || r.toHospitalId === hospitalId);
+    if (params.status && params.status !== 'all') {
+      filtered = filtered.filter((r) => (r.status || '').toLowerCase() === params.status.toLowerCase());
+    }
+    return {
+      trades: filtered.map((r) => ({
+        id: r.id,
+        transactionId: r.transactionId,
+        orderId: r.orderId,
+        buyerHospitalId: r.fromHospitalId,
+        buyerHospitalName: r.fromHospitalName,
+        sellerHospitalId: r.toHospitalId,
+        sellerHospitalName: r.toHospitalName,
+        medicineName: r.medicineName,
+        batchNo: r.batchNo,
+        quantity: r.quantity,
+        unitPrice: r.unitFinalPrice || r.unitOriginalPrice || 0,
+        totalAmount: r.totalAmount,
+        status: r.status,
+        transactionDate: r.requestDate || r.createdAt,
+      })),
+      pagination: {
+        total: filtered.length,
+        page: Number(params.page) || 1,
+        limit: Number(params.limit) || 20,
+        pages: Math.ceil(filtered.length / (Number(params.limit) || 20)) || 1,
+      }
+    };
+  },
+
+  async getTradeById(id) {
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    if (token) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/trades/${id}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          }
+        });
+        if (res.ok) {
+          const body = await res.json();
+          if (body?.data) return body.data;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch trade detail from backend:', err.message);
+      }
+    }
+    const trades = await this.getTrades({ limit: 100 });
+    return (trades?.trades || []).find((t) => t.id === id || t.transactionId === id) || null;
+  },
+
+  async getTradingSummary(params = {}) {
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    const query = new URLSearchParams();
+    if (params.startDate) query.append('startDate', params.startDate);
+    if (params.endDate) query.append('endDate', params.endDate);
+    if (params.hospitalId) query.append('hospitalId', params.hospitalId);
+
+    if (token) {
+      try {
+        const res = await fetch(`http://localhost:5000/api/trades/summary?${query.toString()}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          }
+        });
+        if (res.ok) {
+          const body = await res.json();
+          if (body?.data) return body.data;
+        }
+      } catch (err) {
+        console.warn('Failed to fetch trading summary:', err.message);
+      }
+    }
+
+    return {
+      metrics: {
+        totalTrades: 0,
+        totalPurchases: 0,
+        totalSales: 0,
+        totalQuantityPurchased: 0,
+        totalQuantitySold: 0,
+        totalPurchaseAmount: 0,
+        totalSalesAmount: 0,
+        completedTrades: 0,
+        cancelledTrades: 0,
+        pendingTrades: 0,
+        ratios: { purchasesPercentage: 0, salesPercentage: 0 },
+      },
+      hasData: false,
+      timeSeries: [],
+    };
+  },
+
+  async exportTradesCSV(params = {}) {
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    const query = new URLSearchParams();
+    if (params.startDate) query.append('startDate', params.startDate);
+    if (params.endDate) query.append('endDate', params.endDate);
+    if (params.status && params.status !== 'all') query.append('status', params.status);
+    if (params.search) query.append('search', params.search);
+
+    const url = `http://localhost:5000/api/trades/export?${query.toString()}`;
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      }
+    });
+
+    if (!res.ok) {
+      throw new Error(`Export failed with HTTP status ${res.status}`);
+    }
+
+    const blob = await res.blob();
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    const dateStr = new Date().toISOString().split('T')[0];
+    a.download = `medex-trading-report-${dateStr}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.URL.revokeObjectURL(downloadUrl);
   }
 };

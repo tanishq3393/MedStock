@@ -11,16 +11,17 @@ import {
 } from 'recharts';
 
 export const PurchasesBarChart = ({ data }) => {
-  const chartData = data || [
-    { month: 'Mar', amount: 320000, units: 140 },
-    { month: 'Apr', amount: 410000, units: 185 },
-    { month: 'May', amount: 380000, units: 160 },
-    { month: 'Jun', amount: 490000, units: 210 },
-    { month: 'Jul', amount: 440000, units: 195 },
-    { month: 'Aug', amount: 462500, units: 205 },
-  ];
+  const chartData = Array.isArray(data) ? data : [];
 
   const formatCurrency = (val) => `₹${(val / 1000).toFixed(0)}k`;
+
+  if (chartData.length === 0 || chartData.every(d => !d.amount && !d.units)) {
+    return (
+      <div className="w-full h-72 flex flex-col items-center justify-center text-slate-400 text-xs font-medium">
+        <p>No procurement spend recorded for this period.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-72">

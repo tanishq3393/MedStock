@@ -12,16 +12,18 @@ import {
 } from 'recharts';
 
 export const ProfitabilityComboChart = ({ data }) => {
-  const chartData = data || [
-    { month: 'Apr', revenue: 530000, cost: 410000, marginPercent: 22.6 },
-    { month: 'May', revenue: 590000, cost: 380000, marginPercent: 35.5 },
-    { month: 'Jun', revenue: 620000, cost: 490000, marginPercent: 20.9 },
-    { month: 'Jul', revenue: 645000, cost: 440000, marginPercent: 31.7 },
-    { month: 'Aug', revenue: 689000, cost: 462500, marginPercent: 32.8 },
-  ];
+  const chartData = Array.isArray(data) ? data : [];
 
   const formatCurrency = (val) => `₹${(val / 1000).toFixed(0)}k`;
   const formatPercent = (val) => `${val}%`;
+
+  if (chartData.length === 0 || chartData.every(d => !d.revenue && !d.cost)) {
+    return (
+      <div className="w-full h-80 flex flex-col items-center justify-center text-slate-400 text-xs font-medium">
+        <p>No margin or transaction yield data recorded for this period.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="w-full h-80">
