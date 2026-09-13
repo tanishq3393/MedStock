@@ -138,7 +138,7 @@ export const PrivacyPolicyPage = () => {
                 <li>Verify institutional accreditation through regulatory supervisory reviews.</li>
                 <li>Generate automated notifications for expiring pharmaceutical batches.</li>
                 <li>Provide simulated corridor routing and cold-chain telemetry tracking.</li>
-                <li>Create statutory bio-waste manifests for expired batch destruction.</li>
+                <li>Automatically quarantine expired batches to maintain marketplace integrity.</li>
               </ul>
             </section>
 

@@ -2,6 +2,7 @@ const express = require('express');
 const hospitalController = require('../controllers/hospitalController');
 const { authenticateUser, requireAdmin, requireHospital, allowPendingHospital } = require('../middleware/auth');
 const { requireBodyFields } = require('../middleware/validator');
+const { registrationLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
@@ -10,7 +11,7 @@ const router = express.Router();
  * Public registration endpoint for hospitals
  * Enforces mandatory fields, document checklist, duplicate detection, and PENDING_APPROVAL state.
  */
-router.post('/register', hospitalController.registerHospital);
+router.post('/register', registrationLimiter, hospitalController.registerHospital);
 
 /**
  * GET /api/hospitals/me

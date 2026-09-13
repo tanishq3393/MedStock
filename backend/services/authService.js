@@ -132,10 +132,22 @@ const authService = {
           resultingStatus: 'authenticated',
         });
 
+        if (process.env.NODE_ENV === 'production' && !authData.session?.access_token) {
+          const err = new Error('Failed to obtain authenticated session token.');
+          err.statusCode = 401;
+          throw err;
+        }
+
         return {
           user: sessionUser,
           token: authData.session?.access_token || `jwt_${Date.now()}`,
         };
+      }
+
+      if (process.env.NODE_ENV === 'production') {
+        const err = new Error(authError?.message || 'Invalid credentials.');
+        err.statusCode = 401;
+        throw err;
       }
 
       const isDevAdmin = emailClean === 'admin@medex.org' || emailClean.includes('admin') || roleClean === 'admin';
@@ -153,6 +165,12 @@ const authService = {
     }
 
     // 2. Development / Sandbox Fallback Mode
+    if (process.env.NODE_ENV === 'production') {
+      const err = new Error('Invalid credentials.');
+      err.statusCode = 401;
+      throw err;
+    }
+
     if (roleClean === 'admin') {
       if ((emailClean === 'admin@medex.org' || emailClean.includes('admin')) && (!password || password.length >= 6)) {
         const user = {
@@ -421,6 +439,10 @@ const authService = {
       } catch (err) {
         logger.warn('Supabase admin signup fallback:', err.message);
       }
+    }
+
+    if (process.env.NODE_ENV === 'production') {
+      return { user: adminUser, message: 'Administrator account registered successfully. Please proceed to login.' };
     }
 
     const token = `mock_jwt_token_admin_${Date.now()}`;

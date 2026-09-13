@@ -346,7 +346,7 @@ export const HospitalProfilePage = () => {
                 />
               </div>
               <p className="text-[11px] text-slate-500 leading-snug">
-                Require OTP challenge for hazardous bio-waste manifests.
+                Require OTP challenge for high-value orders and inventory transfers.
               </p>
             </div>
           </div>

@@ -6,7 +6,6 @@ import {
   ArrowUpRight, 
   ArrowDownLeft, 
   Truck, 
-  Trash2, 
   CheckCircle2, 
   Send, 
   Clock, 
@@ -25,12 +24,11 @@ import { getStoredItem, KEYS } from '../../services/storage';
  * - Stock received & inventory lot arrivals
  * - Requisitions reviewed & approved
  * - Transfers dispatched & delivered
- * - Medicines marked for bio-medical disposal
  */
 export const RecentActivitySection = ({ limit = 8, showHeader = true, title = "Recent Operational Activity" }) => {
   const { user } = useSelector((state) => state.auth);
-  const { inventory = [], disposals = [] } = useSelector((state) => state.hospital);
-  const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'TRANSFERS' | 'REQUESTS' | 'DISPOSAL'
+  const { inventory = [] } = useSelector((state) => state.hospital);
+  const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'TRANSFERS' | 'REQUESTS' | 'INVENTORY'
 
   const storedRequests = getStoredItem(KEYS.REQUESTS, []);
   const storedTrackings = getStoredItem(KEYS.TRACKING, []);
@@ -113,27 +111,9 @@ export const RecentActivitySection = ({ limit = 8, showHeader = true, title = "R
       });
     });
 
-    // 4. Bio-Waste disposal activity
-    disposals.forEach((disp, idx) => {
-      list.push({
-        id: `act-disp-${disp.id || idx}`,
-        type: 'DISPOSAL',
-        action: disp.status === 'Incinerated & Certified' ? 'Form-IV Certified Incinerated' : 'Medicine Marked for Disposal',
-        icon: Trash2,
-        iconBg: 'bg-rose-50 text-rose-600',
-        entity: disp.medicineName || 'Expired Pharmaceuticals',
-        badge: `Batch: ${disp.batchNo || 'HAZ-2024'}`,
-        quantity: `${disp.quantity || 40} units`,
-        detail: `Scheduled: ${disp.facilityName || 'Enviro-Power CBMWTF Facility'}`,
-        timestamp: new Date(now.getTime() - (idx * 120 + 240) * 60000),
-        timeFormatted: 'Yesterday',
-        link: '/hospital/waste-management',
-      });
-    });
-
     // Sort chronologically descending
     return list.sort((a, b) => b.timestamp - a.timestamp);
-  }, [inventory, disposals, storedRequests, storedTrackings]);
+  }, [inventory, storedRequests, storedTrackings]);
 
   const filteredList = useMemo(() => {
     if (filterType === 'ALL') return activities.slice(0, limit);
@@ -154,7 +134,7 @@ export const RecentActivitySection = ({ limit = 8, showHeader = true, title = "R
               </h3>
             </div>
             <p className="text-xs text-slate-500 mt-0.5">
-              Chronological ledger of stock receipts, approvals, transfers, and disposal actions.
+              Chronological ledger of stock receipts, requisitions, and transfer logistics.
             </p>
           </div>
 
@@ -165,7 +145,6 @@ export const RecentActivitySection = ({ limit = 8, showHeader = true, title = "R
               { id: 'INVENTORY', label: 'Stock' },
               { id: 'REQUESTS', label: 'Requests' },
               { id: 'TRANSFERS', label: 'Transfers' },
-              { id: 'DISPOSAL', label: 'Disposal' },
             ].map((tab) => (
               <button
                 key={tab.id}

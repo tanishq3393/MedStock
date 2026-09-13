@@ -10,9 +10,39 @@ import react from '@vitejs/plugin-react'
  */
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules')) {
+            if (
+              id.includes('react') || 
+              id.includes('react-dom') || 
+              id.includes('react-router-dom') || 
+              id.includes('react-router')
+            ) {
+              return 'vendor-react';
+            }
+            if (id.includes('@reduxjs/toolkit') || id.includes('react-redux')) {
+              return 'vendor-redux';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
+          }
+        },
+      },
+    },
+  },
   server: {
     host: true,
     port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
     headers: {
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'SAMEORIGIN',
@@ -23,6 +53,12 @@ export default defineConfig({
   },
   preview: {
     port: 3000,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+      },
+    },
     headers: {
       'X-Content-Type-Options': 'nosniff',
       'X-Frame-Options': 'SAMEORIGIN',

@@ -73,7 +73,7 @@ export const calculateMedicineExpiry = (
       isCritical: true,
       isLowStock: qty <= minStockThreshold,
       canBeListed: false, // Expired medicine CANNOT be listed or purchased
-      canBeDisposed: true, // Eligible for bio-waste disposal
+      canBeDisposed: true, // Eligible for quarantine / removal
     };
   }
 

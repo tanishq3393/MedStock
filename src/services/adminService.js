@@ -8,7 +8,7 @@ const assertAdminSession = () => {
   if (session?.user?.role !== 'admin') throw new Error('Admin authorization is required for this action');
 };
 
-const API_BASE = 'http://localhost:5000/api';
+import { API_BASE } from '../config/api.js';
 
 const getAuthHeaders = () => {
   const session = getStoredItem(KEYS.AUTH, null);

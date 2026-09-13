@@ -116,7 +116,7 @@ export const AdminSignupPage = () => {
                 >
                   <option value="Verification & Compliance Authority">Compliance Authority</option>
                   <option value="Logistics & Cold-Chain Oversight">Logistics Telemetry</option>
-                  <option value="Bio-Medical Waste Disposal Bureau">Bio-Waste Bureau</option>
+                  <option value="Inventory & Quality Assurance">Quality Assurance</option>
                   <option value="Escrow Settlement & Audit">Escrow Audit</option>
                 </select>
               </div>

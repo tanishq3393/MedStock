@@ -4,6 +4,14 @@ const auditService = require('./auditService');
 const alertService = require('./alertService');
 const logger = require('../utils/logger');
 
+const crypto = require('crypto');
+
+function deterministicTradeId(seed) {
+  if (!seed) return uuidv4();
+  const hash = crypto.createHash('sha256').update(String(seed)).digest('hex');
+  return `${hash.substring(0, 8)}-${hash.substring(8, 12)}-4${hash.substring(13, 16)}-a${hash.substring(17, 20)}-${hash.substring(20, 32)}`;
+}
+
 // Mutex to protect concurrent trade synchronization operations
 class TradeMutex {
   constructor() {
@@ -216,7 +224,7 @@ const tradingService = {
       const effectiveCompletedAt = completedAt || (isCompleted ? (request.completedAt || request.deliveredAt || nowIso) : null);
 
       const tradeRecord = {
-        id: request.tradeId || uuidv4(),
+        id: request.tradeId || deterministicTradeId(request.id || request.transactionId),
         transactionId: request.transactionId || request.transaction_id || `TRD-${Date.now()}`,
         transaction_id: request.transactionId || request.transaction_id || `TRD-${Date.now()}`,
         requestId: request.id,
@@ -295,7 +303,9 @@ const tradingService = {
       // 2. In-memory update
       const existingIdx = fallbackTrades.findIndex((t) => 
         (t.requestId && t.requestId === tradeRecord.requestId) || 
+        (t.request_id && t.request_id === tradeRecord.request_id) ||
         (t.transactionId && t.transactionId === tradeRecord.transactionId) ||
+        (t.transaction_id && t.transaction_id === tradeRecord.transaction_id) ||
         (t.id && t.id === tradeRecord.id)
       );
 
@@ -965,4 +975,5 @@ const tradingService = {
   }
 };
 
+tradingService.fallbackTrades = fallbackTrades;
 module.exports = tradingService;

@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { Suspense } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Navbar from '../components/common/Navbar';
 import Sidebar from '../components/common/Sidebar';
 import StatusBadge from '../components/common/StatusBadge';
+import RouteLoadingFallback from '../components/common/RouteLoadingFallback';
 import { Building2, PlusCircle, Search, Radio, ShieldCheck, Sparkles, Navigation } from 'lucide-react';
 
 export const HospitalLayout = () => {
@@ -19,7 +20,6 @@ export const HospitalLayout = () => {
     { to: '/hospital/track', label: 'Live Track' },
     { to: '/hospital/history', label: 'Trade History' },
     { to: '/hospital/payment-history', label: 'Payment History' },
-    { to: '/hospital/waste-management', label: 'Bio-Waste Disposal' },
     { to: '/hospital/reports', label: 'Reports' },
     { to: '/hospital/feedback', label: 'Feedback' },
   ];
@@ -106,7 +106,9 @@ export const HospitalLayout = () => {
 
         {/* Page Main Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-7 overflow-y-auto">
-          <Outlet />
+          <Suspense fallback={<RouteLoadingFallback text="Loading hospital workspace..." />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

@@ -436,6 +436,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_txn ON payments(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_payments_request ON payments(request_id);
 CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
 CREATE INDEX IF NOT EXISTS idx_payments_prov_order ON payments(provider_order_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_payments_provider_order ON payments(provider_order_id) WHERE provider_order_id IS NOT NULL;
 
 -- ====================================================================
 -- ENTITY 9B: WEBHOOK EVENTS (Idempotency & Event Processing Ledger)
@@ -492,6 +493,7 @@ CREATE TABLE IF NOT EXISTS refunds (
 );
 
 CREATE INDEX IF NOT EXISTS idx_refunds_request ON refunds(request_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_refunds_request ON refunds(request_id);
 CREATE INDEX IF NOT EXISTS idx_refunds_buyer ON refunds(buyer_hospital_id);
 CREATE INDEX IF NOT EXISTS idx_refunds_seller ON refunds(seller_hospital_id);
 CREATE INDEX IF NOT EXISTS idx_refunds_number ON refunds(refund_number);
@@ -691,6 +693,7 @@ CREATE INDEX IF NOT EXISTS idx_trading_status ON trading_transactions(status);
 CREATE INDEX IF NOT EXISTS idx_trading_order_id ON trading_transactions(order_id);
 CREATE INDEX IF NOT EXISTS idx_trading_payment_id ON trading_transactions(payment_id);
 CREATE INDEX IF NOT EXISTS idx_trading_transfer_id ON trading_transactions(transfer_id);
+CREATE UNIQUE INDEX IF NOT EXISTS uq_trading_request ON trading_transactions(request_id) WHERE request_id IS NOT NULL;
 
 -- ====================================================================
 -- ENTITY 16: AUDIT_LOGS

@@ -5,6 +5,7 @@ import { calculateOrderPricing } from '../utils/pricingUtils.js';
 import { auditService } from './auditService.js';
 import { findAlternatives } from './medicineAlternativeService.js';
 import { getCancellationPolicy, calculateRefundAmounts } from '../utils/cancellationPolicy.js';
+import { API_BASE_URL } from '../config/api.js';
 
 const SUSPENDED_HOSPITAL_ERROR = 'Your hospital account is currently suspended. You cannot perform transactions or operational activities.';
 
@@ -42,7 +43,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch('http://localhost:5000/api/hospitals/me', {
+        const response = await fetch(`${API_BASE_URL}/hospitals/me`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -94,7 +95,7 @@ export const hospitalService = {
 
     if (token) {
       try {
-        const summaryRes = await fetch(`http://localhost:5000/api/trades/summary?hospitalId=${encodeURIComponent(hospitalId)}`, {
+        const summaryRes = await fetch(`${API_BASE_URL}/trades/summary?hospitalId=${encodeURIComponent(hospitalId)}`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -189,7 +190,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        let url = 'http://localhost:5000/api/inventory?limit=200';
+        let url = `${API_BASE_URL}/inventory?limit=200`;
         if (hospitalIdParam && session?.user?.role === 'admin') {
           url += `&hospitalId=${encodeURIComponent(hospitalIdParam)}`;
         }
@@ -339,7 +340,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch('http://localhost:5000/api/inventory', {
+        const response = await fetch(`${API_BASE_URL}/inventory`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -375,7 +376,7 @@ export const hospitalService = {
     if (medicineData.expiryDate) {
       const exp = calculateMedicineExpiry(medicineData.expiryDate, qty);
       if (exp.isExpired) {
-        throw new Error('Cannot add expired medicine to active inventory. Please route directly to Bio-Waste Disposal.');
+        throw new Error('Cannot add expired medicine to active inventory. Expired medicines must be quarantined.');
       }
     }
     if (medicineData.mfgDate && medicineData.expiryDate) {
@@ -634,7 +635,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch(`http://localhost:5000/api/inventory/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}`, {
           method: 'PATCH',
           headers: {
             'Content-Type': 'application/json',
@@ -849,7 +850,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch(`http://localhost:5000/api/inventory/${id}`, {
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}`, {
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json',
@@ -896,7 +897,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch(`http://localhost:5000/api/inventory/${id}/adjust`, {
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}/adjust`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -922,7 +923,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch(`http://localhost:5000/api/inventory/${id}/history`, {
+        const response = await fetch(`${API_BASE_URL}/inventory/${id}/history`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -1008,7 +1009,7 @@ export const hospitalService = {
         status: exp.isExpired ? 'expired' : 'active',
         minStockThreshold: Number(item.minStockThreshold) || 25,
         unit: item.unit || 'Units',
-        notes: item.notes || (exp.isExpired ? 'Imported expired batch. Quarantined for bio-waste disposal.' : 'Imported via Hospital CSV system.'),
+        notes: item.notes || (exp.isExpired ? 'Imported expired batch. Quarantined from exchange.' : 'Imported via Hospital CSV system.'),
       };
 
       medicines.unshift(newMedicine);
@@ -1058,7 +1059,7 @@ export const hospitalService = {
         const queryParams = new URLSearchParams();
         if (filters.search) queryParams.set('search', filters.search);
         if (filters.dosageForm && filters.dosageForm !== 'all') queryParams.set('dosageForm', filters.dosageForm);
-        const response = await fetch(`http://localhost:5000/api/marketplace?${queryParams.toString()}`, {
+        const response = await fetch(`${API_BASE_URL}/marketplace?${queryParams.toString()}`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -1145,7 +1146,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch('http://localhost:5000/api/requests', {
+        const response = await fetch(`${API_BASE_URL}/requests`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1459,7 +1460,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch(`http://localhost:5000/api/requests/${requestId}/cancellation-policy`, {
+        const response = await fetch(`${API_BASE_URL}/requests/${requestId}/cancellation-policy`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -1489,7 +1490,7 @@ export const hospitalService = {
       const session = getStoredItem(KEYS.AUTH, null);
       const token = session?.token;
       if (token) {
-        const response = await fetch(`http://localhost:5000/api/requests/${requestId}/cancel`, {
+        const response = await fetch(`${API_BASE_URL}/requests/${requestId}/cancel`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1668,7 +1669,7 @@ export const hospitalService = {
 
     if (token) {
       try {
-        const createRes = await fetch('http://localhost:5000/api/payments/create', {
+        const createRes = await fetch(`${API_BASE_URL}/payments/create`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -1683,7 +1684,7 @@ export const hospitalService = {
           const providerPaymentId = 'pay_' + Math.random().toString(36).substring(2, 12);
           const providerSignature = `mock_sig_${order.providerOrderId}_${providerPaymentId}`;
 
-          const verifyRes = await fetch('http://localhost:5000/api/payments/verify', {
+          const verifyRes = await fetch(`${API_BASE_URL}/payments/verify`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -1825,7 +1826,7 @@ export const hospitalService = {
     const token = session?.token;
     if (token) {
       try {
-        await fetch('http://localhost:5000/api/payments/fail', {
+        await fetch(`${API_BASE_URL}/payments/fail`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -2294,7 +2295,7 @@ export const hospitalService = {
 
     if (token) {
       try {
-        const res = await fetch(`http://localhost:5000/api/trades?${query.toString()}`, {
+        const res = await fetch(`${API_BASE_URL}/trades?${query.toString()}`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -2347,7 +2348,7 @@ export const hospitalService = {
     const token = session?.token;
     if (token) {
       try {
-        const res = await fetch(`http://localhost:5000/api/trades/${id}`, {
+        const res = await fetch(`${API_BASE_URL}/trades/${id}`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -2375,7 +2376,7 @@ export const hospitalService = {
 
     if (token) {
       try {
-        const res = await fetch(`http://localhost:5000/api/trades/summary?${query.toString()}`, {
+        const res = await fetch(`${API_BASE_URL}/trades/summary?${query.toString()}`, {
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${token}`,
@@ -2418,7 +2419,7 @@ export const hospitalService = {
     if (params.status && params.status !== 'all') query.append('status', params.status);
     if (params.search) query.append('search', params.search);
 
-    const url = `http://localhost:5000/api/trades/export?${query.toString()}`;
+    const url = `${API_BASE_URL}/trades/export?${query.toString()}`;
     const res = await fetch(url, {
       headers: {
         Authorization: `Bearer ${token}`,

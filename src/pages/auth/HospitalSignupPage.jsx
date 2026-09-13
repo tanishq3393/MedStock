@@ -138,10 +138,26 @@ export const HospitalSignupPage = () => {
     toast.success(`Attached ${acceptedFiles.length} file(s) for compliance review`);
   };
 
+  const onDropRejected = (fileRejections) => {
+    fileRejections.forEach((rejection) => {
+      const { file, errors } = rejection;
+      errors.forEach((err) => {
+        if (err.code === 'file-too-large') {
+          toast.error(`"${file.name}" exceeds the maximum allowed size of 5MB.`);
+        } else if (err.code === 'file-invalid-type') {
+          toast.error(`"${file.name}" is not a PDF. Only PDF files (.pdf) are permitted.`);
+        } else {
+          toast.error(`Upload error: ${err.message}`);
+        }
+      });
+    });
+  };
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
+    onDropRejected,
     accept: { 'application/pdf': ['.pdf'] },
-    maxSize: 20 * 1024 * 1024, // 20MB
+    maxSize: 5 * 1024 * 1024, // 5MB max PDF size
   });
 
   const handleNext = (e) => {
@@ -672,7 +688,7 @@ export const HospitalSignupPage = () => {
                 <p className="text-xs font-bold text-slate-800">
                   Drag & drop compliance PDFs, or <span className="text-teal-700 underline">browse workstation</span>
                 </p>
-                <p className="text-[10px] text-slate-400 mt-1">Accepts PDF files up to 20MB per statutory document</p>
+                <p className="text-[10px] text-slate-400 mt-1">Accepts PDF files up to 5MB per statutory document</p>
               </div>
 
               {/* Compulsory Statutory Document Checklist */}

@@ -401,6 +401,65 @@ const requestService = {
       const nowIso = new Date().toISOString();
       const combinedReason = note ? `${reason} (${note})` : reason;
 
+      // Atomic multi-instance cancellation lock in database
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data: existingRow } = await client
+              .from('requests')
+              .select('id, status')
+              .eq('id', request.id)
+              .maybeSingle();
+
+            if (existingRow) {
+              if (existingRow.status === 'cancelled') {
+                const err = new Error('Requisition is already cancelled.');
+                err.statusCode = 409;
+                err.code = 'ALREADY_CANCELLED';
+                throw err;
+              }
+
+              const { data: cancelledRow, error: updateErr } = await client
+                .from('requests')
+                .update({
+                  status: 'cancelled',
+                  cancelled_at: nowIso,
+                  cancelled_by: reqUser?.id,
+                  cancellation_reason: combinedReason,
+                  cancellation_stage: policy.stage,
+                  cancellation_penalty_percent: policy.penaltyPercent,
+                  cancellation_penalty_amount: amounts.penaltyAmount,
+                  cancellation_refund_percent: policy.refundPercent,
+                  cancellation_refund_amount: amounts.refundAmount,
+                  updated_at: nowIso,
+                })
+                .eq('id', request.id)
+                .neq('status', 'cancelled')
+                .select();
+
+              if (!updateErr && (!cancelledRow || cancelledRow.length === 0)) {
+                const err = new Error('Requisition is already cancelled.');
+                err.statusCode = 409;
+                err.code = 'ALREADY_CANCELLED';
+                throw err;
+              }
+            }
+          } catch (dbErr) {
+            if (dbErr.statusCode) throw dbErr;
+            logger.warn('Supabase cancellation transition check note:', dbErr.message);
+          }
+        }
+      }
+
+      if (request.status === 'cancelled') {
+        const err = new Error('This requisition is already cancelled.');
+        err.statusCode = 409;
+        err.code = 'ALREADY_CANCELLED';
+        throw err;
+      }
+      request.status = 'cancelled';
+
       // 1. Release reserved stock if request has an inventory lot attached
       const lotId = request.inventoryLotId || request.inventory_lot_id;
       if (lotId) {
@@ -440,7 +499,6 @@ const requestService = {
         refundNumber: refundRecord.refundNumber,
       };
 
-      request.status = 'cancelled';
       request.cancelledAt = nowIso;
       request.cancelledBy = reqUser?.id || hospitalId;
       request.cancellationReason = combinedReason;
@@ -460,27 +518,21 @@ const requestService = {
         note: `Requisition cancelled (${policy.stageLabel}). Penalty: ₹${amounts.penaltyAmount} (${policy.penaltyPercent}%). Refund: ₹${amounts.refundAmount}. Reason: ${combinedReason}`,
       });
 
-      if (isConfigured && supabaseAdmin) {
-        try {
-          await supabaseAdmin
-            .from('requests')
-            .update({
-              status: 'cancelled',
-              cancelled_at: nowIso,
-              cancelled_by: reqUser?.id,
-              cancellation_reason: combinedReason,
-              cancellation_stage: policy.stage,
-              cancellation_penalty_percent: policy.penaltyPercent,
-              cancellation_penalty_amount: amounts.penaltyAmount,
-              cancellation_refund_percent: policy.refundPercent,
-              cancellation_refund_amount: amounts.refundAmount,
-              cancellation: cancellationData,
-              timeline: request.timeline,
-              updated_at: nowIso,
-            })
-            .eq('id', request.id);
-        } catch (dbErr) {
-          logger.warn('Supabase cancellation update failed:', dbErr.message);
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            await client
+              .from('requests')
+              .update({
+                cancellation: cancellationData,
+                timeline: request.timeline,
+                updated_at: nowIso,
+              })
+              .eq('id', request.id);
+          } catch (dbErr) {
+            logger.warn('Supabase cancellation metadata update note:', dbErr.message);
+          }
         }
       }
 
@@ -599,6 +651,48 @@ const requestService = {
       }
 
       const nowIso = new Date().toISOString();
+
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data: existingRow } = await client
+              .from('requests')
+              .select('id, status')
+              .eq('id', request.id)
+              .maybeSingle();
+
+            if (existingRow) {
+              if (existingRow.status !== 'pending') {
+                const err = new Error(`Cannot accept requisition: Current status is already "${existingRow.status}".`);
+                err.statusCode = 400;
+                throw err;
+              }
+
+              const { data: acceptedRow, error: updateErr } = await client
+                .from('requests')
+                .update({
+                  status: 'accepted',
+                  accepted_at: nowIso,
+                  updated_at: nowIso,
+                })
+                .eq('id', request.id)
+                .eq('status', 'pending')
+                .select();
+
+              if (!updateErr && (!acceptedRow || acceptedRow.length === 0)) {
+                const err = new Error(`Cannot accept requisition: Current status is already "${request.status}".`);
+                err.statusCode = 400;
+                throw err;
+              }
+            }
+          } catch (dbErr) {
+            if (dbErr.statusCode) throw dbErr;
+            logger.warn('Supabase acceptRequest note:', dbErr.message);
+          }
+        }
+      }
+
       request.status = 'accepted';
       request.acceptedAt = nowIso;
       request.updatedAt = nowIso;
@@ -611,19 +705,20 @@ const requestService = {
         note: `Requisition accepted. Stock reservation confirmed for dispatch.`,
       });
 
-      if (isConfigured && supabaseAdmin) {
-        try {
-          await supabaseAdmin
-            .from('requests')
-            .update({
-              status: 'accepted',
-              accepted_at: nowIso,
-              timeline: request.timeline,
-              updated_at: nowIso,
-            })
-            .eq('id', request.id);
-        } catch (dbErr) {
-          logger.warn('Supabase acceptRequest failed:', dbErr.message);
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            await client
+              .from('requests')
+              .update({
+                timeline: request.timeline,
+                updated_at: nowIso,
+              })
+              .eq('id', request.id);
+          } catch (dbErr) {
+            logger.warn('Supabase acceptRequest timeline update note:', dbErr.message);
+          }
         }
       }
 
@@ -694,16 +789,63 @@ const requestService = {
 
       const nowIso = new Date().toISOString();
 
-      // Release reserved stock back to available pool
-      const lotId = request.inventoryLotId || request.inventory_lot_id;
-      if (lotId) {
-        await inventoryService.releaseReservation(lotId, request.quantity);
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data: existingRow } = await client
+              .from('requests')
+              .select('id, status')
+              .eq('id', request.id)
+              .maybeSingle();
+
+            if (existingRow) {
+              if (existingRow.status !== 'pending') {
+                const err = new Error(`Cannot decline requisition: Current status is already "${existingRow.status}".`);
+                err.statusCode = 400;
+                throw err;
+              }
+
+              const { data: rejectedRow, error: updateErr } = await client
+                .from('requests')
+                .update({
+                  status: 'rejected',
+                  rejected_at: nowIso,
+                  reject_reason: reason,
+                  updated_at: nowIso,
+                })
+                .eq('id', request.id)
+                .eq('status', 'pending')
+                .select();
+
+              if (!updateErr && (!rejectedRow || rejectedRow.length === 0)) {
+                const err = new Error(`Cannot decline requisition: Current status is already "${request.status}".`);
+                err.statusCode = 400;
+                throw err;
+              }
+            }
+          } catch (dbErr) {
+            if (dbErr.statusCode) throw dbErr;
+            logger.warn('Supabase rejectRequest note:', dbErr.message);
+          }
+        }
       }
 
+      if (request.status !== 'pending') {
+        const err = new Error(`Cannot decline requisition: Current status is already "${request.status}".`);
+        err.statusCode = 400;
+        throw err;
+      }
       request.status = 'rejected';
       request.rejectedAt = nowIso;
       request.rejectReason = reason;
       request.updatedAt = nowIso;
+
+      // Release reserved stock back to available pool ONLY after status successfully transitioned
+      const lotId = request.inventoryLotId || request.inventory_lot_id;
+      if (lotId) {
+        await inventoryService.releaseReservation(lotId, request.quantity);
+      }
 
       if (!request.timeline) request.timeline = [];
       request.timeline.push({
@@ -713,20 +855,20 @@ const requestService = {
         note: `Requisition declined: ${reason}. Stock reservation released.`,
       });
 
-      if (isConfigured && supabaseAdmin) {
-        try {
-          await supabaseAdmin
-            .from('requests')
-            .update({
-              status: 'rejected',
-              rejected_at: nowIso,
-              reject_reason: reason,
-              timeline: request.timeline,
-              updated_at: nowIso,
-            })
-            .eq('id', request.id);
-        } catch (dbErr) {
-          logger.warn('Supabase rejectRequest failed:', dbErr.message);
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            await client
+              .from('requests')
+              .update({
+                timeline: request.timeline,
+                updated_at: nowIso,
+              })
+              .eq('id', request.id);
+          } catch (dbErr) {
+            logger.warn('Supabase rejectRequest timeline note:', dbErr.message);
+          }
         }
       }
 
@@ -1036,6 +1178,10 @@ const requestService = {
     const unlock = await requestMutex.acquire(requestId);
     try {
       const request = await this.getRequestById(requestId, { isAdmin: true });
+      if (request.status === 'paid' && (request.paymentStatus === 'paid' || request.payment_status === 'paid')) {
+        return request;
+      }
+
       const nowIso = new Date().toISOString();
 
       request.paymentStatus = 'paid';
@@ -1056,21 +1202,24 @@ const requestService = {
         note: `Payment verified & locked in Escrow. Provider Ref: ${providerPaymentId || providerOrderId || 'N/A'}. Order marked for preparation.`,
       });
 
-      if (isConfigured && supabaseAdmin) {
-        try {
-          await supabaseAdmin
-            .from('requests')
-            .update({
-              status: 'paid',
-              payment_status: 'paid',
-              payment_id: paymentId,
-              paid_date: nowIso,
-              timeline: request.timeline,
-              updated_at: nowIso,
-            })
-            .eq('id', request.id);
-        } catch (dbErr) {
-          logger.warn('Supabase markRequestAsPaid failed:', dbErr.message);
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            await client
+              .from('requests')
+              .update({
+                status: 'paid',
+                payment_status: 'paid',
+                payment_id: paymentId,
+                paid_date: nowIso,
+                timeline: request.timeline,
+                updated_at: nowIso,
+              })
+              .eq('id', request.id);
+          } catch (dbErr) {
+            logger.warn('Supabase markRequestAsPaid failed:', dbErr.message);
+          }
         }
       }
 
@@ -1134,4 +1283,6 @@ const requestService = {
   }
 };
 
+requestService.devRequests = devRequests;
+requestService.fallbackRequests = devRequests;
 module.exports = requestService;

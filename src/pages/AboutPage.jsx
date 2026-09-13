@@ -167,9 +167,9 @@ export const AboutPage = () => {
 
             <div className="p-5 rounded-2xl bg-white border border-slate-200/90 space-y-2">
               <AlertTriangle className="w-6 h-6 text-rose-600" />
-              <h4 className="text-sm font-extrabold text-slate-900">Safe Bio-Waste Protocol</h4>
+              <h4 className="text-sm font-extrabold text-slate-900">Quarantine & Expiry Safeguards</h4>
               <p className="text-xs text-slate-500 leading-relaxed">
-                When medicines reach terminal expiry, the platform transitions them into authorized bio-hazard disposal tracking.
+                When medicines reach terminal expiry, the platform automatically quarantines them to protect supply-chain integrity and patient safety.
               </p>
             </div>
           </div>

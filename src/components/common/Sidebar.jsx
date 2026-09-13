@@ -19,7 +19,6 @@ import {
   ChevronRight,
   Sparkles,
   Flame,
-  Trash2,
   Bell,
   BarChart3,
   Settings
@@ -59,11 +58,10 @@ export const Sidebar = ({ role = 'hospital' }) => {
       ]
     },
     {
-      title: 'INVENTORY & DISPOSAL',
+      title: 'INVENTORY',
       items: [
         { to: '/hospital/inventory', icon: Boxes, label: 'My Inventory' },
         { to: '/hospital/marketplace', icon: ShoppingBag, label: 'Marketplace' },
-        { to: '/hospital/waste-management', icon: Trash2, label: 'Bio-Waste Disposal' },
       ]
     },
     {

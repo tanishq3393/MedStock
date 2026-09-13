@@ -1579,22 +1579,98 @@ const inventoryService = {
 
     const unlock = await lotMutex.acquire(lotId);
     try {
-      if (isConfigured && supabaseAdmin) {
-        try {
-          const { data, error } = await supabaseAdmin.rpc('reserve_stock_for_request', {
-            p_lot_id: lotId,
-            p_quantity: qty,
-          });
-          if (!error && data?.success) {
-            return data;
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data, error } = await client.rpc('reserve_stock_for_request', {
+              p_lot_id: lotId,
+              p_quantity: qty,
+            });
+            if (!error && data?.success) {
+              const devLot = devInventory.find((l) => l.id === lotId || l.batchNumber === lotId || l.batchNo === lotId);
+              if (devLot) {
+                devLot.available_quantity = data.available_quantity;
+                devLot.availableQuantity = data.available_quantity;
+                devLot.reserved_quantity = data.reserved_quantity;
+                devLot.reservedQuantity = data.reserved_quantity;
+              }
+              return data;
+            }
+            if (error && (error.message.includes('Insufficient available stock') || error.message.includes('insufficient'))) {
+              const err = new Error(error.message);
+              err.statusCode = 409;
+              err.code = 'INSUFFICIENT_STOCK';
+              throw err;
+            }
+          } catch (dbErr) {
+            if (dbErr.statusCode) throw dbErr;
           }
-          if (error && error.message.includes('Insufficient available stock')) {
-            const err = new Error(error.message);
-            err.statusCode = 409;
-            throw err;
+
+          // Direct Optimistic Concurrency Control (CAS) fallback on inventory_lots
+          try {
+            const { data: dbLot, error: fetchErr } = await client
+              .from('inventory_lots')
+              .select('*')
+              .eq('id', lotId)
+              .single();
+
+            if (!fetchErr && dbLot) {
+              const expDate = dbLot.expiry_date || dbLot.expiryDate;
+              if (expDate && new Date(expDate) <= new Date()) {
+                const err = new Error(`Cannot request expired lot (expired on ${expDate}).`);
+                err.statusCode = 400;
+                throw err;
+              }
+
+              const currentAvail = Number(dbLot.available_quantity);
+              if (currentAvail < qty) {
+                const err = new Error(`Insufficient available stock: Only ${currentAvail} units available, but ${qty} requested.`);
+                err.statusCode = 409;
+                err.code = 'INSUFFICIENT_STOCK';
+                throw err;
+              }
+
+              const newAvail = currentAvail - qty;
+              const newRes = Number(dbLot.reserved_quantity || 0) + qty;
+              const { data: updatedRows, error: updateErr } = await client
+                .from('inventory_lots')
+                .update({
+                  available_quantity: newAvail,
+                  reserved_quantity: newRes,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', lotId)
+                .eq('available_quantity', currentAvail)
+                .gte('available_quantity', qty)
+                .select();
+
+              if (!updateErr && updatedRows && updatedRows.length > 0) {
+                const saved = updatedRows[0];
+                return {
+                  success: true,
+                  lotId: saved.id,
+                  availableQuantity: saved.available_quantity,
+                  reservedQuantity: saved.reserved_quantity,
+                  totalQuantity: saved.quantity,
+                  unitPrice: Number(saved.concession_rate || saved.unit_price || 100),
+                  medicineId: saved.medicine_id,
+                  medicineName: saved.medicine_name,
+                  genericName: saved.generic_name,
+                  batchNumber: saved.batch_number,
+                  hospitalId: saved.hospital_id,
+                };
+              }
+              if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+                const err = new Error('Concurrent stock reservation conflict. Insufficient stock available.');
+                err.statusCode = 409;
+                err.code = 'INSUFFICIENT_STOCK';
+                throw err;
+              }
+            }
+          } catch (casErr) {
+            if (casErr.statusCode) throw casErr;
           }
-        } catch (dbErr) {
-          if (dbErr.statusCode) throw dbErr;
         }
       }
 
@@ -1666,17 +1742,54 @@ const inventoryService = {
 
     const unlock = await lotMutex.acquire(lotId);
     try {
-      if (isConfigured && supabaseAdmin) {
-        try {
-          const { data, error } = await supabaseAdmin.rpc('release_reserved_stock', {
-            p_lot_id: lotId,
-            p_quantity: qty,
-          });
-          if (!error && data?.success) {
-            return data;
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data, error } = await client.rpc('release_reserved_stock', {
+              p_lot_id: lotId,
+              p_quantity: qty,
+            });
+            if (!error && data?.success) {
+              const devLot = devInventory.find((l) => l.id === lotId || l.batchNumber === lotId || l.batchNo === lotId);
+              if (devLot) {
+                devLot.available_quantity = data.available_quantity;
+                devLot.availableQuantity = data.available_quantity;
+                devLot.reserved_quantity = data.reserved_quantity;
+                devLot.reservedQuantity = data.reserved_quantity;
+              }
+              return data;
+            }
+          } catch (dbErr) {
+            // Fall through to CAS update
           }
-        } catch (dbErr) {
-          // Fall through to memory
+
+          try {
+            const { data: dbLot, error: fetchErr } = await client
+              .from('inventory_lots')
+              .select('id, quantity, available_quantity, reserved_quantity')
+              .eq('id', lotId)
+              .single();
+
+            if (!fetchErr && dbLot) {
+              const curRes = Number(dbLot.reserved_quantity || 0);
+              const curAvail = Number(dbLot.available_quantity || 0);
+              const totalQty = Number(dbLot.quantity || 0);
+              const newRes = Math.max(0, curRes - qty);
+              const newAvail = Math.min(totalQty, curAvail + qty);
+
+              await client
+                .from('inventory_lots')
+                .update({
+                  available_quantity: newAvail,
+                  reserved_quantity: newRes,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', lotId);
+            }
+          } catch (casErr) {
+            // Fall through
+          }
         }
       }
 
@@ -1721,6 +1834,38 @@ const inventoryService = {
     const qty = Number(quantity);
     const unlock = await lotMutex.acquire(lotId);
     try {
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data: dbLot, error: fetchErr } = await client
+              .from('inventory_lots')
+              .select('id, quantity, reserved_quantity')
+              .eq('id', lotId)
+              .single();
+
+            if (!fetchErr && dbLot) {
+              const totalQty = Number(dbLot.quantity || 0);
+              const curReserved = Number(dbLot.reserved_quantity || 0);
+              const newTotal = Math.max(0, totalQty - qty);
+              const newReserved = Math.max(0, curReserved - qty);
+
+              await client
+                .from('inventory_lots')
+                .update({
+                  quantity: newTotal,
+                  total_quantity: newTotal,
+                  reserved_quantity: newReserved,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', lotId);
+            }
+          } catch (dbErr) {
+            // Note error
+          }
+        }
+      }
+
       const lot = devInventory.find((l) => l.id === lotId || l.batchNumber === lotId || l.batchNo === lotId);
       if (!lot) return { success: false };
 
@@ -2061,4 +2206,5 @@ const inventoryService = {
   }
 };
 
+inventoryService.devInventory = devInventory;
 module.exports = inventoryService;

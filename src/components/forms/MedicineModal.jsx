@@ -165,7 +165,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
     // Defensive safeguard: Expired medicines cannot be added to active trade stock
     const exp = calculateMedicineExpiry(sanitizedData.expiryDate, sanitizedData.quantity);
     if (exp.isExpired && !isEdit) {
-      toast.error('Cannot add an expired medicine batch to active stock. Please route expired items to Bio-Waste Disposal.');
+      toast.error('Cannot add an expired medicine batch to active stock. Expired medicines must be quarantined.');
       return;
     }
 
@@ -445,7 +445,7 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
               <Info className="w-4 h-4 flex-shrink-0" />
               <span>
                 {expiryEvaluation.isExpired ? (
-                  <><strong>Expiry Status:</strong> Expired ({Math.abs(expiryEvaluation.daysRemaining)} days ago). This batch will be tracked in inventory and available in <strong>Bio-Waste Disposal</strong>.</>
+                  <><strong>Expiry Status:</strong> Expired ({Math.abs(expiryEvaluation.daysRemaining)} days ago). This batch will be marked as expired and quarantined in inventory.</>
                 ) : expiryEvaluation.isNearExpiry ? (
                   <><strong>Expiry Status:</strong> Expiring soon in {expiryEvaluation.daysRemaining} days. Eligible for redistribution discount.</>
                 ) : (

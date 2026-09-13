@@ -1,7 +1,6 @@
 import { getStoredItem, setStoredItem, KEYS, getHospitalDocumentChecklist } from './storage.js';
 import { auditService } from './auditService.js';
-
-const API_BASE = 'http://localhost:5000/api';
+import { API_BASE } from '../config/api.js';
 
 export const authService = {
   // Login method for Hospital or Admin (Supports MedEx Express/Supabase API with offline fallback)

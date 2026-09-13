@@ -655,20 +655,16 @@ export const HospitalInventory = () => {
               Expired Stock
             </span>
             {metrics.expiredCount > 0 && (
-              <Link 
-                to="/hospital/waste-management" 
-                className="text-[10px] font-bold text-rose-700 hover:underline flex items-center gap-0.5"
-              >
-                <span>Bio-Waste</span>
-                <ArrowRight className="w-2.5 h-2.5" />
-              </Link>
+              <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded-full font-mono">
+                Quarantined
+              </span>
             )}
           </div>
           <div className="text-2xl font-black text-rose-700 font-mono">
             {metrics.expiredCount} <span className="text-xs font-normal text-rose-500">batches</span>
           </div>
           <p className="text-[11px] text-rose-600 font-medium">
-            Tracked for Bio-Waste Disposal
+            Quarantined from exchange
           </p>
         </div>
 
@@ -782,7 +778,7 @@ export const HospitalInventory = () => {
           {metrics.expiredCount > 0 && (
             <span className="text-rose-600 font-semibold text-[11px] flex items-center gap-1">
               <AlertTriangle className="w-3.5 h-3.5" />
-              <span>{metrics.expiredCount} expired items are ready for disposal under Bio-Waste Disposal</span>
+              <span>{metrics.expiredCount} expired items quarantined from marketplace</span>
             </span>
           )}
         </div>
@@ -1321,7 +1317,7 @@ export const HospitalInventory = () => {
                 </div>
               </div>
 
-              {/* SECTION 4: EXPIRED ITEM BIO-WASTE NOTICE */}
+              {/* SECTION 4: EXPIRED ITEM QUARANTINE NOTICE */}
               {selectedMedicineForDetails.expiryMeta?.isExpired && selectedMedicineForDetails.status !== 'disposed' && (
                 <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 space-y-2">
                   <div className="flex items-center gap-2 text-rose-800 font-bold">
@@ -1329,16 +1325,8 @@ export const HospitalInventory = () => {
                     <span>Expired Batch Notice</span>
                   </div>
                   <p className="text-[11px] text-rose-700 leading-relaxed">
-                    This medicine batch is past its expiration date. You can review and safely destroy it via the <strong>Bio-Waste Disposal</strong> section.
+                    This medicine batch is past its expiration date. In accordance with statutory drug safety standards, expired medicines are quarantined and cannot be listed on the marketplace.
                   </p>
-                  <Link
-                    to="/hospital/waste-management"
-                    onClick={() => setSelectedMedicineForDetails(null)}
-                    className="inline-flex items-center gap-1.5 text-xs font-bold text-rose-800 hover:text-rose-900 underline pt-1"
-                  >
-                    <span>Open Bio-Waste Disposal</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
                 </div>
               )}
 

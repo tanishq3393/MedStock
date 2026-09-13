@@ -331,7 +331,7 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
         expiryMeta = calculateMedicineExpiry(expiryDate, mfgDate, qty, minStockThreshold);
         if (expiryMeta.isExpired) {
           expiredCount++;
-          warnings.push('Medicine is expired (statutory quarantine for bio-waste disposal)');
+          warnings.push('Medicine is expired (statutory quarantine - excluded from exchange)');
         } else if (expiryMeta.isNearExpiry) {
           nearExpiryCount++;
           warnings.push(`Near expiry (${expiryMeta.daysRemaining} days remaining)`);
@@ -556,11 +556,6 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
       onImportSuccess();
     }
     onClose();
-  };
-
-  const handleGoToWasteManagement = () => {
-    onClose();
-    navigate('/hospital/waste-management');
   };
 
   if (!isOpen) return null;
@@ -1430,23 +1425,16 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                 </div>
               </div>
 
-              {/* Waste Management Callout if expired items imported */}
+              {/* Quarantine Notice if expired items imported */}
               {importResult?.expired > 0 && (
                 <div className="max-w-xl mx-auto p-4 rounded-2xl border border-rose-200 bg-rose-50/40 text-left text-xs space-y-2">
                   <div className="flex items-center gap-2 text-rose-900 font-bold">
                     <Flame className="w-4 h-4 text-rose-600" />
-                    <span>{importResult.expired} Expired Medicines Quarantined for Bio-Waste Disposal</span>
+                    <span>{importResult.expired} Expired Medicines Quarantined</span>
                   </div>
                   <p className="text-[11px] text-rose-700">
-                    These items have been automatically excluded from marketplace peer requests and registered as eligible for certified statutory disposal under Bio-Medical Waste rules.
+                    These items have been automatically excluded from marketplace peer requests in accordance with statutory drug safety standards.
                   </p>
-                  <button
-                    onClick={handleGoToWasteManagement}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold transition-all shadow-sm"
-                  >
-                    <span>Review in Waste Management</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
                 </div>
               )}
             </div>

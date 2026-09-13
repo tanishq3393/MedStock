@@ -1,61 +1,63 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { Toaster } from 'react-hot-toast';
 
-// Layouts
+// Layouts (Static for structural stability)
 import MainLayout from './layouts/MainLayout';
 import HospitalLayout from './layouts/HospitalLayout';
 import AdminLayout from './layouts/AdminLayout';
 
-// Public & Auth Pages
+// Critical Initial Pages (Static for instant first render)
 import LandingPage from './pages/LandingPage';
 import LoginPage from './pages/auth/LoginPage';
-import HospitalSignupPage from './pages/auth/HospitalSignupPage';
-import AdminSignupPage from './pages/auth/AdminSignupPage';
-import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
-import ResetPasswordPage from './pages/auth/ResetPasswordPage';
-import EmailVerificationPage from './pages/auth/EmailVerificationPage';
 
-// Informational & Legal Pages
-import AboutPage from './pages/AboutPage';
-import HowItWorksPage from './pages/HowItWorksPage';
-import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
-import TermsPage from './pages/TermsPage';
-import CookiePreferencesPage from './pages/CookiePreferencesPage';
-import NotFoundPage from './pages/NotFoundPage';
+// Secondary Auth Pages (Lazy)
+const HospitalSignupPage = lazy(() => import('./pages/auth/HospitalSignupPage'));
+const AdminSignupPage = lazy(() => import('./pages/auth/AdminSignupPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/auth/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/auth/ResetPasswordPage'));
+const EmailVerificationPage = lazy(() => import('./pages/auth/EmailVerificationPage'));
 
-// Hospital Pages
-import HospitalDashboard from './pages/hospital/HospitalDashboard';
-import HospitalInventory from './pages/hospital/HospitalInventory';
-import Marketplace from './pages/hospital/Marketplace';
-import MyRequests from './pages/hospital/MyRequests';
-import IncomingRequests from './pages/hospital/IncomingRequests';
-import HistoryPage from './pages/hospital/HistoryPage';
-import TrackPage from './pages/hospital/TrackPage';
-import PaymentHistory from './pages/hospital/PaymentHistory';
-import HospitalFeedback from './pages/hospital/HospitalFeedback';
-import HospitalProfilePage from './pages/hospital/HospitalProfilePage';
-import HospitalWasteManagement from './pages/hospital/HospitalWasteManagement';
-import HospitalReports from './pages/hospital/HospitalReports';
+// Informational & Legal Pages (Lazy)
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const HowItWorksPage = lazy(() => import('./pages/HowItWorksPage'));
+const PrivacyPolicyPage = lazy(() => import('./pages/PrivacyPolicyPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
+const CookiePreferencesPage = lazy(() => import('./pages/CookiePreferencesPage'));
+const NotFoundPage = lazy(() => import('./pages/NotFoundPage'));
 
-// Admin Pages
-import AdminDashboard from './pages/admin/AdminDashboard';
-import AdminHospitals from './pages/admin/AdminHospitals';
-import AdminHospitalDetails from './pages/admin/AdminHospitalDetails';
-import AdminVerification from './pages/admin/AdminVerification';
-import AdminMedicineData from './pages/admin/AdminMedicineData';
-import AdminInventory from './pages/admin/AdminInventory';
-import AdminOrders from './pages/admin/AdminOrders';
-import AdminAlerts from './pages/admin/AdminAlerts';
-import AdminFeedback from './pages/admin/AdminFeedback';
-import AdminReports from './pages/admin/AdminReports';
-import AdminAuditLogs from './pages/admin/AdminAuditLogs';
-import AdminSettings from './pages/admin/AdminSettings';
-import AdminManagement from './pages/admin/AdminManagement';
+// Hospital Portal Pages (Lazy)
+const HospitalDashboard = lazy(() => import('./pages/hospital/HospitalDashboard'));
+const HospitalInventory = lazy(() => import('./pages/hospital/HospitalInventory'));
+const Marketplace = lazy(() => import('./pages/hospital/Marketplace'));
+const MyRequests = lazy(() => import('./pages/hospital/MyRequests'));
+const IncomingRequests = lazy(() => import('./pages/hospital/IncomingRequests'));
+const HistoryPage = lazy(() => import('./pages/hospital/HistoryPage'));
+const TrackPage = lazy(() => import('./pages/hospital/TrackPage'));
+const PaymentHistory = lazy(() => import('./pages/hospital/PaymentHistory'));
+const HospitalFeedback = lazy(() => import('./pages/hospital/HospitalFeedback'));
+const HospitalProfilePage = lazy(() => import('./pages/hospital/HospitalProfilePage'));
+const HospitalReports = lazy(() => import('./pages/hospital/HospitalReports'));
 
-// Protected Route Wrapper & Error Boundary
+// Admin Portal Pages (Lazy)
+const AdminDashboard = lazy(() => import('./pages/admin/AdminDashboard'));
+const AdminHospitals = lazy(() => import('./pages/admin/AdminHospitals'));
+const AdminHospitalDetails = lazy(() => import('./pages/admin/AdminHospitalDetails'));
+const AdminVerification = lazy(() => import('./pages/admin/AdminVerification'));
+const AdminMedicineData = lazy(() => import('./pages/admin/AdminMedicineData'));
+const AdminInventory = lazy(() => import('./pages/admin/AdminInventory'));
+const AdminOrders = lazy(() => import('./pages/admin/AdminOrders'));
+const AdminAlerts = lazy(() => import('./pages/admin/AdminAlerts'));
+const AdminFeedback = lazy(() => import('./pages/admin/AdminFeedback'));
+const AdminReports = lazy(() => import('./pages/admin/AdminReports'));
+const AdminAuditLogs = lazy(() => import('./pages/admin/AdminAuditLogs'));
+const AdminSettings = lazy(() => import('./pages/admin/AdminSettings'));
+const AdminManagement = lazy(() => import('./pages/admin/AdminManagement'));
+
+// Protected Route Wrapper, Error Boundary & Fallback
 import ProtectedRoute from './components/common/ProtectedRoute';
 import ErrorBoundary from './components/common/ErrorBoundary';
+import RouteLoadingFallback from './components/common/RouteLoadingFallback';
 
 export const App = () => {
   return (
@@ -88,80 +90,80 @@ export const App = () => {
       />
 
       <ErrorBoundary>
-        <Routes>
-          {/* Public Informational & Auth Routes with MainLayout */}
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/about" element={<AboutPage />} />
-            <Route path="/how-it-works" element={<HowItWorksPage />} />
-            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
-            <Route path="/terms" element={<TermsPage />} />
-            <Route path="/cookie-preferences" element={<CookiePreferencesPage />} />
+        <Suspense fallback={<RouteLoadingFallback text="Loading MedEx application..." />}>
+          <Routes>
+            {/* Public Informational & Auth Routes with MainLayout */}
+            <Route element={<MainLayout />}>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/about" element={<AboutPage />} />
+              <Route path="/how-it-works" element={<HowItWorksPage />} />
+              <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+              <Route path="/terms" element={<TermsPage />} />
+              <Route path="/cookie-preferences" element={<CookiePreferencesPage />} />
 
-            {/* Authentication & Security Routes */}
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/hospital-signup" element={<HospitalSignupPage />} />
-            <Route path="/admin-signup" element={<AdminSignupPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-            <Route path="/reset-password" element={<ResetPasswordPage />} />
-            <Route path="/verify-email" element={<EmailVerificationPage />} />
-          </Route>
+              {/* Authentication & Security Routes */}
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/hospital-signup" element={<HospitalSignupPage />} />
+              <Route path="/admin-signup" element={<AdminSignupPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+              <Route path="/reset-password" element={<ResetPasswordPage />} />
+              <Route path="/verify-email" element={<EmailVerificationPage />} />
+            </Route>
 
-          {/* Hospital Portal Routes */}
-          <Route
-            path="/hospital"
-            element={
-              <ProtectedRoute allowedRole="hospital">
-                <HospitalLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/hospital/dashboard" replace />} />
-            <Route path="dashboard" element={<HospitalDashboard />} />
-            <Route path="inventory" element={<HospitalInventory />} />
-            <Route path="marketplace" element={<Marketplace />} />
-            <Route path="my-requests" element={<MyRequests />} />
-            <Route path="incoming-requests" element={<IncomingRequests />} />
-            <Route path="history" element={<HistoryPage />} />
-            <Route path="track" element={<TrackPage />} />
-            <Route path="payment-history" element={<PaymentHistory />} />
-            <Route path="waste-management" element={<HospitalWasteManagement />} />
-            <Route path="bio-waste-disposal" element={<HospitalWasteManagement />} />
-            <Route path="feedback" element={<HospitalFeedback />} />
-            <Route path="reports" element={<HospitalReports />} />
-            <Route path="profile" element={<HospitalProfilePage />} />
-          </Route>
-          <Route path="/hospital-dashboard" element={<Navigate to="/hospital/dashboard" replace />} />
+            {/* Hospital Portal Routes */}
+            <Route
+              path="/hospital"
+              element={
+                <ProtectedRoute allowedRole="hospital">
+                  <HospitalLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/hospital/dashboard" replace />} />
+              <Route path="dashboard" element={<HospitalDashboard />} />
+              <Route path="inventory" element={<HospitalInventory />} />
+              <Route path="marketplace" element={<Marketplace />} />
+              <Route path="my-requests" element={<MyRequests />} />
+              <Route path="incoming-requests" element={<IncomingRequests />} />
+              <Route path="history" element={<HistoryPage />} />
+              <Route path="track" element={<TrackPage />} />
+              <Route path="payment-history" element={<PaymentHistory />} />
+              <Route path="feedback" element={<HospitalFeedback />} />
+              <Route path="reports" element={<HospitalReports />} />
+              <Route path="profile" element={<HospitalProfilePage />} />
+            </Route>
+            <Route path="/hospital-dashboard" element={<Navigate to="/hospital/dashboard" replace />} />
 
-          {/* Admin Portal Routes */}
-          <Route
-            path="/admin"
-            element={
-              <ProtectedRoute allowedRole="admin">
-                <AdminLayout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Navigate to="/admin/dashboard" replace />} />
-            <Route path="dashboard" element={<AdminDashboard />} />
-            <Route path="hospitals" element={<AdminHospitals />} />
-            <Route path="hospital-details" element={<AdminHospitalDetails />} />
-            <Route path="verification" element={<AdminVerification />} />
-            <Route path="medicines" element={<AdminMedicineData />} />
-            <Route path="medicine-data" element={<Navigate to="/admin/medicines" replace />} />
-            <Route path="inventory" element={<AdminInventory />} />
-            <Route path="orders" element={<AdminOrders />} />
-            <Route path="alerts" element={<AdminAlerts />} />
-            <Route path="feedback" element={<AdminFeedback />} />
-            <Route path="reports" element={<AdminReports />} />
-            <Route path="audit-logs" element={<AdminAuditLogs />} />
-            <Route path="settings" element={<AdminSettings />} />
-            <Route path="management" element={<AdminManagement />} />
-          </Route>
+            {/* Admin Portal Routes */}
+            <Route
+              path="/admin"
+              element={
+                <ProtectedRoute allowedRole="admin">
+                  <AdminLayout />
+                </ProtectedRoute>
+              }
+            >
+              <Route index element={<Navigate to="/admin/dashboard" replace />} />
+              <Route path="dashboard" element={<AdminDashboard />} />
+              <Route path="hospitals" element={<AdminHospitals />} />
+              <Route path="hospital-details" element={<AdminHospitalDetails />} />
+              <Route path="verification" element={<AdminVerification />} />
+              <Route path="medicines" element={<AdminMedicineData />} />
+              <Route path="medicine-data" element={<Navigate to="/admin/medicines" replace />} />
+              <Route path="inventory" element={<AdminInventory />} />
+              <Route path="orders" element={<AdminOrders />} />
+              <Route path="alerts" element={<AdminAlerts />} />
+              <Route path="feedback" element={<AdminFeedback />} />
+              <Route path="reports" element={<AdminReports />} />
+              <Route path="audit-logs" element={<AdminAuditLogs />} />
+              <Route path="settings" element={<AdminSettings />} />
+              <Route path="management" element={<AdminManagement />} />
+            </Route>
 
-          {/* Catch-all 404 Route */}
-          <Route path="*" element={<NotFoundPage />} />
-        </Routes>
+            {/* Catch-all 404 Route */}
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
+        </Suspense>
       </ErrorBoundary>
     </>
   );

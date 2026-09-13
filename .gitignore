@@ -17,6 +17,7 @@ build/
 .env.production.local
 *.env
 *.env.*
+!.env.example
 
 # Logs
 npm-debug.log*
@@ -44,6 +45,9 @@ Desktop.ini
 scratch/
 tmp/
 temp/
+
+# Supabase CLI local state
+supabase/.temp/
 
 # Nested clones/subfolders
 MedStock/

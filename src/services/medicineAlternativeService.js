@@ -10,6 +10,7 @@
  */
 
 import { calculateMedicineExpiry } from '../utils/expiryUtils.js';
+import { API_BASE_URL } from '../config/api.js';
 
 // Standard Synonym & Ingredient Normalization Dictionary
 const INGREDIENT_SYNONYMS = {
@@ -491,7 +492,7 @@ export const findAlternativesForSearchQuery = (query, marketplaceInventory = [],
 export const fetchAlternatives = async (medicineId, options = {}) => {
   try {
     const q = new URLSearchParams(options).toString();
-    const res = await fetch(`http://localhost:5000/api/medicines/${medicineId}/alternatives?${q}`);
+    const res = await fetch(`${API_BASE_URL}/medicines/${medicineId}/alternatives?${q}`);
     const json = await res.json().catch(() => null);
     if (res.ok && json?.success && json?.data) {
       return json.data;

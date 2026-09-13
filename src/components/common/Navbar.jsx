@@ -246,7 +246,7 @@ export const Navbar = () => {
                         <div className="p-6 text-center text-slate-400 space-y-1">
                           <CheckCircle2 className="w-6 h-6 mx-auto text-emerald-500" />
                           <p className="text-xs font-bold text-slate-700">All Systems Nominal</p>
-                          <p className="text-[11px] text-slate-500">No active inventory, request, or disposal alerts.</p>
+                          <p className="text-[11px] text-slate-500">No active inventory, request, or transfer alerts.</p>
                         </div>
                       ) : (
                         alerts.map((n) => (
@@ -375,14 +375,6 @@ export const Navbar = () => {
                           >
                             <Pill className="w-4 h-4 text-emerald-600" />
                             <span>Pharmacy Inventory</span>
-                          </Link>
-                          <Link
-                            to="/hospital/waste-management"
-                            onClick={() => setUserDropdownOpen(false)}
-                            className="flex items-center gap-2 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-rose-600 transition-colors"
-                          >
-                            <AlertTriangle className="w-4 h-4 text-rose-500" />
-                            <span>Bio-Waste & Destruction</span>
                           </Link>
                           <Link
                             to="/hospital/profile"

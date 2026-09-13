@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
 import { useSelector } from 'react-redux';
 import Navbar from '../components/common/Navbar';
 import Sidebar from '../components/common/Sidebar';
+import RouteLoadingFallback from '../components/common/RouteLoadingFallback';
 import { ShieldAlert, FileCheck2, Activity, Radio, ShieldCheck, Bell, Building2 } from 'lucide-react';
 import { alertService } from '../services/alertService';
 
@@ -120,7 +121,9 @@ export const AdminLayout = () => {
 
         {/* Main Content */}
         <main className="flex-1 p-4 sm:p-6 lg:p-7 overflow-y-auto">
-          <Outlet />
+          <Suspense fallback={<RouteLoadingFallback text="Loading supervisory portal..." />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
 

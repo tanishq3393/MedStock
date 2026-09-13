@@ -1,30 +1,30 @@
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
+const fs = require('fs');
+const path = require('path');
 const environment = require('./config/environment');
+const { createCorsOptions } = require('./config/cors');
 const { checkConnection } = require('./config/supabase');
 const abdmConfig = require('./config/abdm');
 const logger = require('./utils/logger');
 
 const app = express();
 
+// Trust Proxy Configuration (Safely enabled only when TRUST_PROXY is explicitly specified)
+if (environment.security && environment.security.trustProxy) {
+  const tp = environment.security.trustProxy;
+  const parsedTp = tp === 'true' ? true : tp === 'false' ? false : !isNaN(Number(tp)) ? Number(tp) : tp;
+  app.set('trust proxy', parsedTp);
+  logger.info(`Trust proxy configured: ${parsedTp}`);
+}
+
 // 1. Security & Core Middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-app.use(cors({
-  origin: [
-    'http://localhost:3000',
-    'http://localhost:5173',
-    'http://127.0.0.1:3000',
-    'http://127.0.0.1:5173',
-    environment.frontendUrl,
-  ],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-}));
+app.use(cors(createCorsOptions()));
 
 app.use(express.json({
   limit: '10mb',
@@ -86,7 +86,19 @@ app.get('/', (req, res) => {
 const apiRoutes = require('./routes');
 app.use('/api', apiRoutes);
 
-// 4. 404 Not Found Handler
+// Optional: Serve compiled production frontend if dist directory is present
+const distPath = path.resolve(__dirname, '../dist');
+if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'))) {
+  app.use(express.static(distPath));
+  app.use((req, res, next) => {
+    if (req.method === 'GET' && !req.path.startsWith('/api')) {
+      return res.sendFile(path.join(distPath, 'index.html'));
+    }
+    next();
+  });
+}
+
+// 4. 404 Not Found Handler (applies to unmatched /api routes or missing assets)
 app.use((req, res) => {
   res.status(404).json({
     success: false,
@@ -98,7 +110,7 @@ app.use((req, res) => {
   });
 });
 
-// 4. Centralized Error Handler
+// 5. Centralized Error Handler
 app.use((err, req, res, next) => {
   logger.error(`Error on ${req.method} ${req.originalUrl}:`, err.message);
 
@@ -119,24 +131,53 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 5. Server Startup
+// 6. Server Startup & Graceful Lifecycle
+let serverInstance = null;
+
 if (require.main === module) {
-  const server = app.listen(environment.port, () => {
+  serverInstance = app.listen(environment.port, () => {
     logger.info('=======================================================');
     logger.info(`  MedEx Backend running on http://localhost:${environment.port}`);
     logger.info(`  Health Check: http://localhost:${environment.port}/api/health`);
     logger.info(`  Environment: ${environment.nodeEnv}`);
+    logger.info(`  CORS Mode: ${environment.isProduction ? 'PRODUCTION_ALLOWLIST' : 'DEVELOPMENT_DEFAULTS'}`);
+    logger.info(`  Allowed Origins: ${environment.cors.origins.length > 0 ? environment.cors.origins.join(', ') : '(None configured - all cross-origin browser requests blocked)'}`);
     logger.info(`  Supabase: ${environment.supabase.isConfigured ? 'CONFIGURED' : 'PENDING'}`);
     logger.info(`  ABDM Placeholder: READY`);
     logger.info('=======================================================');
   });
 
+  let isShuttingDown = false;
   const handleShutdown = (signal) => {
-    logger.info(`Received ${signal}. Shutting down MedEx server gracefully...`);
-    server.close(() => {
-      logger.info('MedEx server closed.');
+    if (isShuttingDown) return;
+    isShuttingDown = true;
+    logger.info(`Received ${signal}. Initiating graceful shutdown...`);
+
+    // Safety timeout: force process exit after 10s if connections fail to drain
+    const forceTimeout = setTimeout(() => {
+      logger.error('Graceful shutdown timed out (10s). Forcing termination.');
+      process.exit(1);
+    }, 10000);
+    forceTimeout.unref();
+
+    // Close idle connections immediately to speed up drain (Node 18.2+)
+    if (serverInstance && typeof serverInstance.closeIdleConnections === 'function') {
+      serverInstance.closeIdleConnections();
+    }
+
+    if (serverInstance) {
+      serverInstance.close((err) => {
+        clearTimeout(forceTimeout);
+        if (err) {
+          logger.error('Error occurred while closing HTTP server:', err.message);
+          process.exit(1);
+        }
+        logger.info('MedEx HTTP server closed cleanly. All connections terminated.');
+        process.exit(0);
+      });
+    } else {
       process.exit(0);
-    });
+    }
   };
 
   process.on('SIGINT', () => handleShutdown('SIGINT'));

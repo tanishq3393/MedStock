@@ -154,33 +154,36 @@ const paymentService = {
       };
 
       // Persist payment record
-      if (isConfigured && supabaseAdmin) {
-        try {
-          await supabaseAdmin.from('payments').insert([{
-            id: paymentRecord.id,
-            transaction_id: paymentRecord.transaction_id,
-            request_id: paymentRecord.request_id,
-            medicine_name: paymentRecord.medicine_name,
-            quantity: paymentRecord.quantity,
-            amount: paymentRecord.amount,
-            gst_amount: paymentRecord.gst_amount,
-            total_paid: paymentRecord.total_paid,
-            currency: paymentRecord.currency,
-            provider: paymentRecord.provider,
-            provider_order_id: paymentRecord.provider_order_id,
-            status: paymentRecord.status,
-            payment_status: paymentRecord.payment_status,
-            payment_method: paymentRecord.payment_method,
-            buyer_hospital_id: paymentRecord.buyer_hospital_id,
-            buyer_hospital_name: paymentRecord.buyer_hospital_name,
-            seller_hospital_id: paymentRecord.seller_hospital_id,
-            seller_hospital_name: paymentRecord.seller_hospital_name,
-            is_demo_simulation: paymentRecord.is_demo_simulation,
-            created_at: nowIso,
-            updated_at: nowIso,
-          }]);
-        } catch (dbErr) {
-          logger.warn('Supabase payment insert failed:', dbErr.message);
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            await client.from('payments').insert([{
+              id: paymentRecord.id,
+              transaction_id: paymentRecord.transaction_id,
+              request_id: paymentRecord.request_id,
+              medicine_name: paymentRecord.medicine_name,
+              quantity: paymentRecord.quantity,
+              amount: paymentRecord.amount,
+              gst_amount: paymentRecord.gst_amount,
+              total_paid: paymentRecord.total_paid,
+              currency: paymentRecord.currency,
+              provider: paymentRecord.provider,
+              provider_order_id: paymentRecord.provider_order_id,
+              status: paymentRecord.status,
+              payment_status: paymentRecord.payment_status,
+              payment_method: paymentRecord.payment_method,
+              buyer_hospital_id: paymentRecord.buyer_hospital_id,
+              buyer_hospital_name: paymentRecord.buyer_hospital_name,
+              seller_hospital_id: paymentRecord.seller_hospital_id,
+              seller_hospital_name: paymentRecord.seller_hospital_name,
+              is_demo_simulation: paymentRecord.is_demo_simulation,
+              created_at: nowIso,
+              updated_at: nowIso,
+            }]);
+          } catch (dbErr) {
+            logger.warn('Supabase payment insert failed:', dbErr.message);
+          }
         }
       }
 
@@ -318,8 +321,59 @@ const paymentService = {
         throw err;
       }
 
-      // 3. Mark payment as PAID
+      // 3. Mark payment as PAID with conditional CAS update
       const nowIso = new Date().toISOString();
+
+      if (isConfigured) {
+        const client = supabaseAdmin || supabaseAnon;
+        if (client) {
+          try {
+            const { data: existingDbRow } = await client
+              .from('payments')
+              .select('id, status')
+              .eq('id', payment.id)
+              .maybeSingle();
+
+            if (existingDbRow) {
+              const { data: updatedRows, error: updateErr } = await client
+                .from('payments')
+                .update({
+                  status: 'PAID',
+                  payment_status: 'paid',
+                  provider_payment_id: providerPaymentId,
+                  provider_signature: providerSignature,
+                  paid_at: nowIso,
+                  escrow_locked_at: nowIso,
+                  updated_at: nowIso,
+                })
+                .eq('id', payment.id)
+                .neq('status', 'PAID')
+                .select();
+
+              if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+                return {
+                  success: true,
+                  payment,
+                  message: 'Payment has already been verified and locked in escrow.',
+                  alreadyProcessed: true,
+                };
+              }
+            }
+          } catch (dbErr) {
+            logger.warn('Supabase payment update to PAID failed:', dbErr.message);
+          }
+        }
+      }
+
+      if (payment.status === 'PAID' || payment.status === 'paid') {
+        return {
+          success: true,
+          payment,
+          message: 'Payment has already been verified and locked in escrow.',
+          alreadyProcessed: true,
+        };
+      }
+
       payment.status = 'PAID';
       payment.payment_status = 'paid';
       payment.providerPaymentId = providerPaymentId;
@@ -330,25 +384,6 @@ const paymentService = {
       payment.paid_at = nowIso;
       payment.escrowLockedAt = nowIso;
       payment.updatedAt = nowIso;
-
-      if (isConfigured && supabaseAdmin) {
-        try {
-          await supabaseAdmin
-            .from('payments')
-            .update({
-              status: 'PAID',
-              payment_status: 'paid',
-              provider_payment_id: providerPaymentId,
-              provider_signature: providerSignature,
-              paid_at: nowIso,
-              escrow_locked_at: nowIso,
-              updated_at: nowIso,
-            })
-            .eq('id', payment.id);
-        } catch (dbErr) {
-          logger.warn('Supabase payment update to PAID failed:', dbErr.message);
-        }
-      }
 
       // 4. Atomically transition request to PAID
       await requestService.markRequestAsPaid({
@@ -485,13 +520,23 @@ const paymentService = {
     }
 
     // Record event as PROCESSING
-    await this.recordWebhookEvent({
+    const recordResult = await this.recordWebhookEvent({
       eventId,
       eventType,
       provider: provider.name,
       payload,
       processingResult: 'PROCESSING',
     });
+
+    if (recordResult && recordResult.duplicate) {
+      logger.info(`Webhook event '${eventId}' detected as duplicate during ledger write. Skipping.`);
+      return {
+        received: true,
+        duplicate: true,
+        eventId,
+        message: 'Webhook event already processed previously.',
+      };
+    }
 
     const unlock = await paymentMutex.acquire(eventId);
     try {
@@ -505,6 +550,46 @@ const paymentService = {
           const payment = await this.findPaymentByProviderOrderId(orderId);
           if (payment && payment.status !== 'PAID') {
             const nowIso = new Date().toISOString();
+
+            if (isConfigured) {
+              const client = supabaseAdmin || supabaseAnon;
+              if (client) {
+                try {
+                  const { data: existingDbPayment } = await client
+                    .from('payments')
+                    .select('id, status')
+                    .eq('id', payment.id)
+                    .maybeSingle();
+
+                  if (existingDbPayment) {
+                    const { data: updatedRows, error: updateErr } = await client
+                      .from('payments')
+                      .update({
+                        status: 'PAID',
+                        provider_payment_id: providerPaymentId,
+                        paid_at: nowIso,
+                        updated_at: nowIso,
+                      })
+                      .eq('id', payment.id)
+                      .neq('status', 'PAID')
+                      .select();
+
+                    if (!updateErr && (!updatedRows || updatedRows.length === 0)) {
+                      await this.updateWebhookEventResult(eventId, 'SUCCESS');
+                      return {
+                        received: true,
+                        duplicate: true,
+                        eventId,
+                        message: 'Webhook event already processed previously.',
+                      };
+                    }
+                  }
+                } catch (dbErr) {
+                  logger.warn('Supabase webhook payment update failed:', dbErr.message);
+                }
+              }
+            }
+
             payment.status = 'PAID';
             payment.providerPaymentId = providerPaymentId;
             payment.paidAt = nowIso;
@@ -712,23 +797,26 @@ const paymentService = {
    * Helper: Check if webhook event has already been processed
    */
   async isWebhookEventProcessed(eventId) {
-    if (isConfigured && supabaseAdmin) {
-      try {
-        const { data, error } = await supabaseAdmin
-          .from('webhook_events')
-          .select('id, processing_result')
-          .eq('event_id', eventId)
-          .single();
+    if (isConfigured) {
+      const client = supabaseAdmin || supabaseAnon;
+      if (client) {
+        try {
+          const { data, error } = await client
+            .from('webhook_events')
+            .select('id, processing_result')
+            .eq('event_id', eventId)
+            .single();
 
-        if (!error && data && data.processing_result === 'SUCCESS') {
-          return true;
+          if (!error && data && data.processing_result === 'SUCCESS') {
+            return true;
+          }
+        } catch {
+          // Fall through to in-memory check
         }
-      } catch {
-        // Fall through to in-memory check
       }
     }
 
-    const inMem = fallbackWebhookEvents.find((e) => e.eventId === eventId);
+    const inMem = fallbackWebhookEvents.find((e) => e.eventId === eventId || e.event_id === eventId);
     return inMem ? inMem.processingResult === 'SUCCESS' : false;
   },
 
@@ -750,19 +838,31 @@ const paymentService = {
       created_at: new Date().toISOString(),
     };
 
-    if (isConfigured && supabaseAdmin) {
-      try {
-        await supabaseAdmin.from('webhook_events').insert([{
-          id: record.id,
-          event_id: record.event_id,
-          event_type: record.event_type,
-          provider: record.provider,
-          payload: record.payload,
-          processing_result: record.processing_result,
-        }]);
-      } catch (dbErr) {
-        logger.warn('Failed to insert webhook_events record in Supabase:', dbErr.message);
+    if (isConfigured) {
+      const client = supabaseAdmin || supabaseAnon;
+      if (client) {
+        try {
+          const { error } = await client.from('webhook_events').insert([{
+            id: record.id,
+            event_id: record.event_id,
+            event_type: record.event_type,
+            provider: record.provider,
+            payload: record.payload,
+            processing_result: record.processing_result,
+          }]);
+
+          if (error && (error.code === '23505' || error.message.includes('unique') || error.message.includes('duplicate'))) {
+            return { duplicate: true, ...record };
+          }
+        } catch (dbErr) {
+          logger.warn('Failed to insert webhook_events record in Supabase:', dbErr.message);
+        }
       }
+    }
+
+    const inMemExisting = fallbackWebhookEvents.find((e) => e.eventId === eventId || e.event_id === eventId);
+    if (inMemExisting) {
+      return { duplicate: true, ...inMemExisting };
     }
 
     fallbackWebhookEvents.unshift(record);
@@ -776,21 +876,24 @@ const paymentService = {
   async updateWebhookEventResult(eventId, result, errorMessage = null) {
     const nowIso = new Date().toISOString();
 
-    if (isConfigured && supabaseAdmin) {
-      try {
-        await supabaseAdmin
-          .from('webhook_events')
-          .update({
-            processing_result: result,
-            processed_at: nowIso,
-          })
-          .eq('event_id', eventId);
-      } catch (dbErr) {
-        logger.warn('Failed to update webhook event status in Supabase:', dbErr.message);
+    if (isConfigured) {
+      const client = supabaseAdmin || supabaseAnon;
+      if (client) {
+        try {
+          await client
+            .from('webhook_events')
+            .update({
+              processing_result: result,
+              processed_at: nowIso,
+            })
+            .eq('event_id', eventId);
+        } catch (dbErr) {
+          logger.warn('Failed to update webhook event status in Supabase:', dbErr.message);
+        }
       }
     }
 
-    const inMem = fallbackWebhookEvents.find((e) => e.eventId === eventId);
+    const inMem = fallbackWebhookEvents.find((e) => e.eventId === eventId || e.event_id === eventId);
     if (inMem) {
       inMem.processingResult = result;
       inMem.processedAt = nowIso;
@@ -981,4 +1084,7 @@ const paymentService = {
   }
 };
 
+paymentService.fallbackPayments = fallbackPayments;
+paymentService.fallbackWebhookEvents = fallbackWebhookEvents;
+paymentService.processWebhookEvent = paymentService.handleWebhook;
 module.exports = paymentService;

@@ -1,11 +1,12 @@
 const express = require('express');
 const paymentController = require('../controllers/paymentController');
 const { authenticateUser, requireAdmin } = require('../middleware/auth');
+const { webhookLimiter } = require('../middleware/rateLimiter');
 
 const router = express.Router();
 
-// 1. Gateway Webhook Endpoint (Unauthenticated, signature verified)
-router.post('/webhook', paymentController.handleWebhook);
+// 1. Gateway Webhook Endpoint (Unauthenticated, signature verified, rate limited)
+router.post('/webhook', webhookLimiter, paymentController.handleWebhook);
 
 // 2. Authenticated Endpoints
 router.use(authenticateUser);

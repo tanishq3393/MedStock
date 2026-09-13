@@ -409,8 +409,8 @@ export const generateSampleCsv = () => {
     ['Ceftriaxone 1g Sterile Vial', 'Injection', 'CTX-23091', '40', formatDate(45), 'Sun Pharma Industries', formatDate(-300), '115.00', '40', '15', 'Vials', 'Critical shelf-life, suitable for immediate emergency transfer'],
     // 4. Low stock medicine (<25 units)
     ['Metformin Hydrochloride 500mg', 'Tablet', 'MET-24012', '18', formatDate(420), 'Torrent Pharmaceuticals', formatDate(-90), '45.00', '5', '30', 'Tablets', 'Low stock buffer reached'],
-    // 5. Expired medicine (past expiry) - Bio-waste eligible
-    ['Pantoprazole IV 40mg Infusion', 'Injection', 'PAN-22019', '25', formatDate(-35), 'Alkem Laboratories', formatDate(-500), '65.00', '0', '10', 'Vials', 'Statutory quarantine: Expired. Eligible for bio-waste disposal'],
+    // 5. Expired medicine (past expiry) - Quarantined
+    ['Pantoprazole IV 40mg Infusion', 'Injection', 'PAN-22019', '25', formatDate(-35), 'Alkem Laboratories', formatDate(-500), '65.00', '0', '10', 'Vials', 'Statutory quarantine: Expired. Quarantined from exchange.'],
     // 6. Oral Syrup
     ['Azithromycin Oral Suspension 200mg/5ml', 'Syrup', 'AZI-24033', '85', formatDate(180), 'Lupin Pharmaceuticals', formatDate(-45), '125.00', '20', '20', 'Bottles', 'Shake well before administration'],
     // 7. Infusion / IV Fluid
