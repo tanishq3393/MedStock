@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useSearchParams, useLocation } from 'react-router-dom';
 import { 
   PlusCircle, 
   Search, 
@@ -76,6 +76,13 @@ export const HospitalInventory = () => {
     }
   }, [dispatch, user?.id]);
 
+  // Alert Deep-Link & Focus Highlighting States
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const [highlightedId, setHighlightedId] = useState(null);
+  const [highlightFeedback, setHighlightFeedback] = useState(null);
+  const processedTargetRef = useRef(null);
+
   useEffect(() => {
     if (selectedMedicineForDetails) {
       const fresh = inventory.find((m) => m.id === selectedMedicineForDetails.id);
@@ -84,6 +91,109 @@ export const HospitalInventory = () => {
       }
     }
   }, [inventory]);
+
+  // Alert Deep-Linking Effect
+  useEffect(() => {
+    if (isLoading || !inventory || inventory.length === 0) return;
+
+    const targetInvId = searchParams.get('inventoryId') || searchParams.get('lotId') || location.state?.alertTarget?.inventoryId;
+    const targetBatchNo = searchParams.get('batchNo') || searchParams.get('batchId') || location.state?.alertTarget?.batchNo || location.state?.alertTarget?.batchId;
+    const targetMedName = searchParams.get('medicineName') || location.state?.alertTarget?.medicineName;
+
+    if (!targetInvId && !targetBatchNo && !targetMedName) return;
+
+    const targetSig = `${targetInvId || ''}__${targetBatchNo || ''}__${targetMedName || ''}`;
+    if (processedTargetRef.current === targetSig) return;
+    processedTargetRef.current = targetSig;
+
+    const cleanParams = () => {
+      try {
+        const next = new URLSearchParams(searchParams);
+        next.delete('inventoryId');
+        next.delete('lotId');
+        next.delete('batchNo');
+        next.delete('batchId');
+        next.delete('medicineName');
+        setSearchParams(next, { replace: true });
+        if (location.state?.alertTarget) {
+          navigate(location.pathname + (next.toString() ? `?${next.toString()}` : ''), {
+            replace: true,
+            state: {},
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to clean target search params', e);
+      }
+    };
+
+    // Priority matching
+    let matched = null;
+    if (targetInvId) {
+      matched = inventory.find((m) => m.id === targetInvId || m.inventoryId === targetInvId);
+    }
+    if (!matched && targetBatchNo) {
+      matched = inventory.find((m) => m.batchNo === targetBatchNo || m.batchNumber === targetBatchNo || m.id === targetBatchNo);
+    }
+    if (!matched && targetMedName && targetBatchNo) {
+      const norm = targetMedName.trim().toLowerCase();
+      matched = inventory.find((m) => 
+        ((m.brandName || m.medicineName || '').toLowerCase() === norm ||
+         (m.genericName || '').toLowerCase() === norm) &&
+        (m.batchNo === targetBatchNo || m.batchNumber === targetBatchNo)
+      );
+    }
+    if (!matched && targetMedName) {
+      const norm = targetMedName.trim().toLowerCase();
+      matched = inventory.find((m) => 
+        (m.brandName || m.medicineName || '').toLowerCase() === norm ||
+        (m.genericName || '').toLowerCase() === norm
+      );
+    }
+
+    if (matched) {
+      // Clear filters so item is guaranteed visible
+      setSearchTerm('');
+      setSelectedStatusFilter('all');
+      setSelectedFormFilter('all');
+
+      setHighlightedId(matched.id);
+      const feedbackMsg = `Focused on ${matched.brandName || matched.medicineName} — Batch ${matched.batchNo || matched.batchNumber || targetBatchNo || 'N/A'}`;
+      setHighlightFeedback(feedbackMsg);
+      toast.success(feedbackMsg, { icon: '🎯', id: 'hosp-inspect-toast' });
+
+      let attempts = 0;
+      const scrollTimer = setInterval(() => {
+        attempts++;
+        const targetEl = document.getElementById(`hosp-med-row-${matched.id}`) || document.getElementById(`hosp-med-card-${matched.id}`);
+        if (targetEl) {
+          clearInterval(scrollTimer);
+          targetEl.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        } else if (attempts > 30) {
+          clearInterval(scrollTimer);
+        }
+      }, 75);
+
+      const fadeTimer = setTimeout(() => {
+        setHighlightedId(null);
+      }, 4200);
+
+      cleanParams();
+      return () => {
+        clearInterval(scrollTimer);
+        clearTimeout(fadeTimer);
+      };
+    }
+
+    toast.error('Inventory item from this alert is no longer available.', {
+      icon: '⚠️',
+      duration: 4000,
+      id: 'hosp-missing-toast',
+    });
+    cleanParams();
+  }, [inventory, isLoading, searchParams, location.state]);
 
   // Helper for medicine form classification
   const getMedicineForm = (med) => {
@@ -470,6 +580,31 @@ export const HospitalInventory = () => {
         </div>
       </div>
 
+      {/* Alert Target Inspection Notification Banner */}
+      {highlightFeedback && (
+        <div 
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-teal-50/90 border-2 border-teal-500/80 text-teal-900 shadow-md text-xs font-semibold"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-600"></span>
+            </span>
+            <Sparkles className="w-4 h-4 text-teal-700 shrink-0" />
+            <span>{highlightFeedback}</span>
+          </div>
+          <button
+            onClick={() => setHighlightFeedback(null)}
+            className="p-1 rounded-lg text-teal-600 hover:text-teal-900 hover:bg-teal-100 transition-colors"
+            title="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* 2. Inventory KPI Summary Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5">
         
@@ -710,7 +845,12 @@ export const HospitalInventory = () => {
                     return (
                       <tr 
                         key={med.id} 
-                        className={`hover:bg-slate-50/90 transition-colors cursor-pointer ${
+                        id={`hosp-med-row-${med.id}`}
+                        className={`transition-colors cursor-pointer ${
+                          highlightedId === med.id
+                            ? 'alert-target-highlight shadow-lg ring-2 ring-primary-500'
+                            : 'hover:bg-slate-50/90'
+                        } ${
                           isDisposed ? 'opacity-60 bg-slate-50/50' : ''
                         }`}
                         onClick={() => setSelectedMedicineForDetails(med)}
@@ -826,8 +966,13 @@ export const HospitalInventory = () => {
                 return (
                   <div
                     key={med.id}
+                    id={`hosp-med-card-${med.id}`}
                     onClick={() => setSelectedMedicineForDetails(med)}
-                    className={`p-4 rounded-2xl bg-white border border-slate-200 space-y-3 cursor-pointer hover:border-slate-300 transition-all ${
+                    className={`p-4 rounded-2xl bg-white border space-y-3 cursor-pointer transition-all ${
+                      highlightedId === med.id
+                        ? 'alert-target-highlight shadow-lg ring-2 ring-primary-500'
+                        : 'border-slate-200 hover:border-slate-300'
+                    } ${
                       isDisposed ? 'opacity-65' : ''
                     }`}
                   >

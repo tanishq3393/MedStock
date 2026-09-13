@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useSelector } from 'react-redux';
+import { useSearchParams, useLocation, useNavigate } from 'react-router-dom';
 import { 
   Boxes, 
   Search, 
@@ -29,7 +30,8 @@ import {
   Percent,
   MapPin,
   Calendar,
-  Hash
+  Hash,
+  Sparkles
 } from 'lucide-react';
 import { adminService } from '../../services/adminService';
 import { getStoredItem, KEYS } from '../../services/storage';
@@ -85,6 +87,15 @@ export const AdminInventory = () => {
   const [selectedMedicineKey, setSelectedMedicineKey] = useState(null);
   const [selectedHospitalId, setSelectedHospitalId] = useState(null);
   const [selectedBatchId, setSelectedBatchId] = useState(null);
+
+  // Router hooks & Alert Target Highlighting State
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const [highlightedBatchId, setHighlightedBatchId] = useState(null);
+  const [highlightedMedicineKey, setHighlightedMedicineKey] = useState(null);
+  const [highlightFeedback, setHighlightFeedback] = useState(null);
+  const processedTargetRef = useRef(null);
 
   // Level 4 Bill Preview Modal State
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
@@ -615,6 +626,263 @@ export const AdminInventory = () => {
     }
     return rawItems.find((i) => i.id === selectedBatchId) || null;
   }, [inventoryMode, currentHospitalMedicine, currentHospitalContribution, selectedBatchId, rawItems]);
+
+  // --------------------------------------------------------------------------
+  // ALERT DEEP-LINKING & EXACT RECORD TARGETING ENGINE (Section 1 - 24)
+  // --------------------------------------------------------------------------
+  useEffect(() => {
+    // Wait until inventory has finished loading and rawItems are populated
+    if (isLoading || !rawItems || rawItems.length === 0) return;
+
+    const targetInvId = searchParams.get('inventoryId') || searchParams.get('lotId') || location.state?.alertTarget?.inventoryId;
+    const targetBatchNo = searchParams.get('batchNo') || searchParams.get('batchId') || location.state?.alertTarget?.batchNo || location.state?.alertTarget?.batchId;
+    const targetHospId = searchParams.get('hospitalId') || location.state?.alertTarget?.hospitalId;
+    const targetMedName = searchParams.get('medicineName') || location.state?.alertTarget?.medicineName;
+    const targetMedId = searchParams.get('medicineId') || location.state?.alertTarget?.medicineId;
+    const targetMode = searchParams.get('mode');
+
+    // If no target parameters exist, do nothing
+    if (!targetInvId && !targetBatchNo && !targetMedName && !targetMedId && !targetHospId) {
+      return;
+    }
+
+    // Deduplicate processing for the exact same target parameters
+    const targetSignature = `${targetInvId || ''}__${targetBatchNo || ''}__${targetHospId || ''}__${targetMedName || ''}__${targetMedId || ''}`;
+    if (processedTargetRef.current === targetSignature) {
+      return;
+    }
+    processedTargetRef.current = targetSignature;
+
+    // Helper to clean search parameters from URL so page reloads do not re-run animation
+    const cleanTargetParams = () => {
+      try {
+        const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('inventoryId');
+        nextParams.delete('lotId');
+        nextParams.delete('batchNo');
+        nextParams.delete('batchId');
+        nextParams.delete('hospitalId');
+        nextParams.delete('medicineName');
+        nextParams.delete('medicineId');
+        nextParams.delete('targetType');
+        nextParams.delete('mode');
+        setSearchParams(nextParams, { replace: true });
+        if (location.state?.alertTarget) {
+          navigate(location.pathname + (nextParams.toString() ? `?${nextParams.toString()}` : ''), {
+            replace: true,
+            state: {},
+          });
+        }
+      } catch (e) {
+        console.warn('Failed to clean target search params', e);
+      }
+    };
+
+    // 1. EXACT BATCH MATCHING HIERARCHY (Section 1, 15)
+    let matchedLot = null;
+
+    // Priority 1: inventoryId / lotId (Primary stable unique identifier)
+    if (targetInvId) {
+      matchedLot = rawItems.find((i) => i.id === targetInvId || i.inventoryId === targetInvId || i.lotId === targetInvId);
+    }
+
+    // Priority 2: batchId
+    if (!matchedLot && targetBatchNo) {
+      matchedLot = rawItems.find((i) => i.id === targetBatchNo || i.batchId === targetBatchNo);
+    }
+
+    // Priority 3: hospitalId + medicineId + batchNumber
+    if (!matchedLot && targetHospId && targetMedId && targetBatchNo) {
+      matchedLot = rawItems.find((i) => 
+        i.hospitalId === targetHospId &&
+        (i.medicineId === targetMedId || i.masterMedicineId === targetMedId) &&
+        (i.batchNumber === targetBatchNo || i.batchNo === targetBatchNo)
+      );
+    }
+
+    // Priority 4: hospitalId + medicineName + batchNumber
+    if (!matchedLot && targetHospId && targetMedName && targetBatchNo) {
+      const normMed = targetMedName.trim().toLowerCase();
+      matchedLot = rawItems.find((i) => 
+        i.hospitalId === targetHospId &&
+        ((i.medicineName || i.medicine || i.brandName || '').trim().toLowerCase() === normMed ||
+         (i.genericName || '').trim().toLowerCase() === normMed) &&
+        (i.batchNumber === targetBatchNo || i.batchNo === targetBatchNo)
+      );
+    }
+
+    // Priority 4b: medicineName + batchNumber (across hospitals fallback)
+    if (!matchedLot && targetMedName && targetBatchNo) {
+      const normMed = targetMedName.trim().toLowerCase();
+      matchedLot = rawItems.find((i) => 
+        ((i.medicineName || i.medicine || i.brandName || '').trim().toLowerCase() === normMed ||
+         (i.genericName || '').trim().toLowerCase() === normMed) &&
+        (i.batchNumber === targetBatchNo || i.batchNo === targetBatchNo)
+      );
+    }
+
+    // IF EXACT BATCH RECORD FOUND:
+    if (matchedLot) {
+      const medKey = getMedicineGroupKey(matchedLot);
+      const hospId = matchedLot.hospitalId;
+
+      // Ensure appropriate view mode is active if specified
+      if (targetMode === 'hospital') {
+        setInventoryMode('hospital');
+        setSelectedHospitalId(hospId);
+        setSelectedMedicineKey(medKey);
+        setSelectedBatchId(null);
+      } else {
+        // Default hierarchical view: Medicine -> Hospital -> Batches (Level 3)
+        setInventoryMode('medicine');
+        setSelectedMedicineKey(medKey);
+        setSelectedHospitalId(hospId);
+        setSelectedBatchId(null);
+      }
+
+      // Apply target highlight state
+      setHighlightedBatchId(matchedLot.id);
+      const medDisplayName = matchedLot.medicineName || matchedLot.medicine || targetMedName || 'Medicine';
+      const batchDisplay = matchedLot.batchNumber || matchedLot.batchNo || targetBatchNo;
+      const hospDisplay = matchedLot.hospitalName || matchedLot.hospital || 'Hospital';
+
+      const feedbackMsg = `Focused on ${medDisplayName} — Batch ${batchDisplay} (${hospDisplay})`;
+      setHighlightFeedback(feedbackMsg);
+      toast.success(feedbackMsg, { icon: '🎯', id: 'inspect-target-toast' });
+
+      // Smooth scroll to the exact target batch card
+      let attempts = 0;
+      const scrollTimer = setInterval(() => {
+        attempts++;
+        const targetElement = document.getElementById(`batch-card-${matchedLot.id}`);
+        if (targetElement) {
+          clearInterval(scrollTimer);
+          targetElement.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+          });
+        } else if (attempts > 30) {
+          clearInterval(scrollTimer);
+        }
+      }, 75);
+
+      // Temporary focus highlight duration (3-4 cycles, fades out smoothly after ~4.2s)
+      const fadeTimer = setTimeout(() => {
+        setHighlightedBatchId(null);
+      }, 4200);
+
+      cleanTargetParams();
+      return () => {
+        clearInterval(scrollTimer);
+        clearTimeout(fadeTimer);
+      };
+    }
+
+    // 2. AGGREGATED MEDICINE MATCHING (Section 4: Low Stock Alert targeting medicine)
+    if (targetMedName || targetMedId) {
+      let matchedMed = null;
+      if (targetMedId) {
+        matchedMed = aggregatedMedicines.find((m) => m.lots?.some((l) => l.medicineId === targetMedId || l.masterMedicineId === targetMedId));
+      }
+      if (!matchedMed && targetMedName) {
+        const norm = targetMedName.trim().toLowerCase();
+        matchedMed = aggregatedMedicines.find((m) => 
+          m.medicineName.toLowerCase() === norm ||
+          m.genericName.toLowerCase() === norm ||
+          m.medicineName.toLowerCase().startsWith(norm)
+        );
+      }
+
+      if (matchedMed) {
+        setInventoryMode('medicine');
+
+        // If target specifies a hospital, drill down to Level 2
+        if (targetHospId && matchedMed.hospitalContributions.some((h) => h.hospitalId === targetHospId)) {
+          setSelectedMedicineKey(matchedMed.key);
+          setSelectedHospitalId(null);
+          setSelectedBatchId(null);
+
+          setHighlightedMedicineKey(matchedMed.key);
+          const hospName = matchedMed.hospitalContributions.find((h) => h.hospitalId === targetHospId)?.hospitalName || 'Hospital';
+          const feedbackMsg = `Focused on ${matchedMed.medicineName} (${hospName})`;
+          setHighlightFeedback(feedbackMsg);
+          toast.success(feedbackMsg, { icon: '🎯', id: 'inspect-med-toast' });
+
+          let attempts = 0;
+          const scrollTimer = setInterval(() => {
+            attempts++;
+            const targetElement = document.getElementById(`hosp-contrib-${targetHospId}`);
+            if (targetElement) {
+              clearInterval(scrollTimer);
+              targetElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+              });
+            } else if (attempts > 30) {
+              clearInterval(scrollTimer);
+            }
+          }, 75);
+
+          const fadeTimer = setTimeout(() => {
+            setHighlightedMedicineKey(null);
+          }, 4200);
+
+          cleanTargetParams();
+          return () => {
+            clearInterval(scrollTimer);
+            clearTimeout(fadeTimer);
+          };
+        } else {
+          // Highlight in Level 1 Aggregated Medicine Table
+          setSearchTerm('');
+          setStatusFilter('all');
+          setDosageFormFilter('all');
+          setCategoryFilter('all');
+          setSelectedMedicineKey(null);
+          setSelectedHospitalId(null);
+          setSelectedBatchId(null);
+
+          setHighlightedMedicineKey(matchedMed.key);
+          const feedbackMsg = `Focused on ${matchedMed.medicineName}`;
+          setHighlightFeedback(feedbackMsg);
+          toast.success(feedbackMsg, { icon: '🎯', id: 'inspect-med-toast' });
+
+          let attempts = 0;
+          const scrollTimer = setInterval(() => {
+            attempts++;
+            const targetElement = document.getElementById(`medicine-row-${matchedMed.key}`);
+            if (targetElement) {
+              clearInterval(scrollTimer);
+              targetElement.scrollIntoView({
+                behavior: 'smooth',
+                block: 'center',
+              });
+            } else if (attempts > 30) {
+              clearInterval(scrollTimer);
+            }
+          }, 75);
+
+          const fadeTimer = setTimeout(() => {
+            setHighlightedMedicineKey(null);
+          }, 4200);
+
+          cleanTargetParams();
+          return () => {
+            clearInterval(scrollTimer);
+            clearTimeout(fadeTimer);
+          };
+        }
+      }
+    }
+
+    // 3. TARGET NOT FOUND (Section 14 & Test 6)
+    toast.error('Inventory item from this alert is no longer available.', {
+      icon: '⚠️',
+      duration: 4000,
+      id: 'inspect-missing-toast',
+    });
+    cleanTargetParams();
+  }, [isLoading, rawItems, aggregatedMedicines, searchParams, location.state]);
 
   // Clear Filters Handlers
   const handleClearFilters = () => {
@@ -1152,6 +1420,31 @@ export const AdminInventory = () => {
         )}
       </div>
 
+      {/* Alert Target Inspection Notification Banner (Section 16) */}
+      {highlightFeedback && (
+        <div 
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between p-3.5 sm:p-4 rounded-2xl bg-teal-50/90 border-2 border-teal-500/80 text-teal-900 shadow-md text-xs font-semibold"
+        >
+          <div className="flex items-center gap-2.5">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-teal-600"></span>
+            </span>
+            <Sparkles className="w-4 h-4 text-teal-700 shrink-0" />
+            <span>{highlightFeedback}</span>
+          </div>
+          <button
+            onClick={() => setHighlightFeedback(null)}
+            className="p-1 rounded-lg text-teal-600 hover:text-teal-900 hover:bg-teal-100 transition-colors"
+            title="Dismiss notification"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* ------------------------------------------------------------------ */}
       {/* LEVEL 1: AGGREGATED MEDICINE INVENTORY                             */}
       {/* ------------------------------------------------------------------ */}
@@ -1311,13 +1604,18 @@ export const AdminInventory = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
-                    {filteredMedicines.map((med) => (
-                      <tr
-                        key={med.key}
-                        onClick={() => setSelectedMedicineKey(med.key)}
-                        className="hover:bg-teal-50/30 transition-colors group cursor-pointer"
-                        title="Click to drill into contributing hospitals"
-                      >
+                    {filteredMedicines.map((med) => {
+                      const isTargeted = highlightedMedicineKey === med.key;
+                      return (
+                        <tr
+                          key={med.key}
+                          id={`medicine-row-${med.key}`}
+                          onClick={() => setSelectedMedicineKey(med.key)}
+                          className={`transition-colors group cursor-pointer ${
+                            isTargeted ? 'alert-target-highlight shadow-md' : 'hover:bg-teal-50/30'
+                          }`}
+                          title="Click to drill into contributing hospitals"
+                        >
                         {/* Medicine Name */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3">
@@ -1396,7 +1694,8 @@ export const AdminInventory = () => {
                         </td>
 
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -1516,6 +1815,7 @@ export const AdminInventory = () => {
               {currentMedicineGroup.hospitalContributions.map((hosp) => (
                 <div
                   key={hosp.hospitalId}
+                  id={`hosp-contrib-${hosp.hospitalId}`}
                   onClick={() => setSelectedHospitalId(hosp.hospitalId)}
                   className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group bg-white space-y-3"
                 >
@@ -1682,12 +1982,19 @@ export const AdminInventory = () => {
 
             {/* Batch Cards / Table */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {currentHospitalContribution.batches.map((batch) => (
-                <div
-                  key={batch.id}
-                  onClick={() => setSelectedBatchId(batch.id)}
-                  className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group bg-white space-y-3.5"
-                >
+              {currentHospitalContribution.batches.map((batch) => {
+                const isTargeted = highlightedBatchId === batch.id;
+                return (
+                  <div
+                    key={batch.id}
+                    id={`batch-card-${batch.id}`}
+                    onClick={() => setSelectedBatchId(batch.id)}
+                    className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer group bg-white space-y-3.5 ${
+                      isTargeted
+                        ? 'alert-target-highlight shadow-xl ring-2 ring-primary-500'
+                        : 'border-slate-200/80 hover:border-primary-300 hover:shadow-md'
+                    }`}
+                  >
                   <div className="flex items-start justify-between gap-2">
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -1748,7 +2055,8 @@ export const AdminInventory = () => {
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -2286,12 +2594,19 @@ export const AdminInventory = () => {
             {/* Batch Cards Grid */}
             {currentHospitalMedicine.batches.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {currentHospitalMedicine.batches.map((batch) => (
-                  <div
-                    key={batch.id}
-                    onClick={() => setSelectedBatchId(batch.id)}
-                    className="p-4 sm:p-5 rounded-2xl border border-slate-200/80 hover:border-primary-300 hover:shadow-md transition-all cursor-pointer group bg-white space-y-3.5"
-                  >
+                {currentHospitalMedicine.batches.map((batch) => {
+                  const isTargeted = highlightedBatchId === batch.id;
+                  return (
+                    <div
+                      key={batch.id}
+                      id={`batch-card-${batch.id}`}
+                      onClick={() => setSelectedBatchId(batch.id)}
+                      className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer group bg-white space-y-3.5 ${
+                        isTargeted
+                          ? 'alert-target-highlight shadow-xl ring-2 ring-primary-500'
+                          : 'border-slate-200/80 hover:border-primary-300 hover:shadow-md'
+                      }`}
+                    >
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1 min-w-0">
                         <div className="flex items-center gap-2">
@@ -2352,8 +2667,9 @@ export const AdminInventory = () => {
                       </button>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })}
+            </div>
             ) : (
               <div className="py-12 text-center p-6">
                 <Hash className="w-10 h-10 text-slate-300 mx-auto mb-2" />

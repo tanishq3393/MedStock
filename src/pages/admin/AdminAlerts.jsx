@@ -89,9 +89,15 @@ export const AdminAlerts = () => {
     toast.success('Alert dismissed');
   };
 
-  const handleNavigate = (link) => {
+  const handleNavigate = (link, alert) => {
     if (link) {
-      navigate(link);
+      if (alert && !alert.read) {
+        alertService.markAdminAlertAsRead(alert.id);
+        setAlerts((prev) =>
+          prev.map((a) => (a.id === alert.id ? { ...a, read: true } : a))
+        );
+      }
+      navigate(link, { state: { alertTarget: alert } });
     }
   };
 
@@ -330,7 +336,7 @@ export const AdminAlerts = () => {
                 <div className="flex items-center gap-2 w-full sm:w-auto justify-end pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 shrink-0">
                   {alert.link && (
                     <button
-                      onClick={() => handleNavigate(alert.link)}
+                      onClick={() => handleNavigate(alert.link, alert)}
                       className="px-3 py-1.5 rounded-xl bg-teal-50 hover:bg-teal-100 text-teal-800 text-xs font-bold transition-colors flex items-center gap-1.5"
                     >
                       <span>{alert.actionText || 'Inspect'}</span>

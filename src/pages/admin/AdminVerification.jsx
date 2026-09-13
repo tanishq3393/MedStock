@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams, useLocation } from 'react-router-dom';
 import { 
   FileCheck2, 
   Check, 
@@ -64,6 +64,10 @@ export const AdminVerification = () => {
     dispatch(fetchHospitals());
   }, [dispatch]);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const processedRef = useRef(false);
+
   // Keep activeReviewHospital synchronized with updated Redux state
   useEffect(() => {
     if (activeReviewHospital) {
@@ -73,6 +77,28 @@ export const AdminVerification = () => {
       }
     }
   }, [hospitals]);
+
+  // Deep-link from alerts to exact hospital verification dossier
+  useEffect(() => {
+    const targetHospId = searchParams.get('hospitalId') || location.state?.alertTarget?.hospitalId;
+    if (!targetHospId || hospitals.length === 0 || processedRef.current) return;
+
+    const found = hospitals.find((h) => h.id === targetHospId);
+    if (found) {
+      processedRef.current = true;
+      setActiveTab('all');
+      setActiveReviewHospital(found);
+      toast.success(`Opening verification dossier for ${found.name}`, { icon: '📋' });
+
+      try {
+        const next = new URLSearchParams(searchParams);
+        next.delete('hospitalId');
+        setSearchParams(next, { replace: true });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }, [hospitals, searchParams, location.state]);
 
   // Summary Metrics (Req 18: Prioritize Pending Reviews)
   const pendingCount = hospitals.filter((h) => 

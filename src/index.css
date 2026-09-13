@@ -173,3 +173,55 @@
   color: #0F172A;
   background: #F1F5F9;
 }
+
+/* ==========================================================================
+   Alert Inspect Deep-Link Wave & Ripple Highlight Animation
+   ========================================================================== */
+@keyframes alertInspectWave {
+  0% {
+    box-shadow: 0 0 0 0 rgba(10, 110, 121, 0.7), 0 0 20px rgba(10, 110, 121, 0.4);
+    border-color: #0A6E79;
+    transform: scale(1);
+  }
+  25% {
+    transform: scale(1.015);
+    box-shadow: 0 0 0 8px rgba(10, 110, 121, 0.4), 0 0 25px rgba(10, 110, 121, 0.5);
+  }
+  50% {
+    transform: scale(1);
+    box-shadow: 0 0 0 16px rgba(10, 110, 121, 0), 0 0 30px rgba(10, 110, 121, 0.25);
+  }
+  75% {
+    transform: scale(1.008);
+    box-shadow: 0 0 0 10px rgba(10, 110, 121, 0.2), 0 0 20px rgba(10, 110, 121, 0.3);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(10, 110, 121, 0), 0 0 15px rgba(10, 110, 121, 0.15);
+    border-color: #0A6E79;
+  }
+}
+
+.alert-target-highlight {
+  position: relative;
+  z-index: 20 !important;
+  border-color: #0A6E79 !important;
+  background-color: rgba(240, 253, 250, 0.95) !important;
+  animation: alertInspectWave 1.2s ease-in-out 3;
+  outline: 3px solid #0A6E79 !important;
+  outline-offset: 2px !important;
+  transition: all 0.5s ease-out;
+}
+
+/* Accessible prefers-reduced-motion fallback */
+@media (prefers-reduced-motion: reduce) {
+  .alert-target-highlight {
+    animation: none !important;
+    transform: none !important;
+    outline: 3px solid #0A6E79 !important;
+    outline-offset: 2px !important;
+    border-color: #0A6E79 !important;
+    background-color: #F0FDFA !important;
+    box-shadow: 0 0 0 4px rgba(10, 110, 121, 0.25) !important;
+  }
+}

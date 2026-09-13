@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import { 
   ShoppingBag, 
   Search, 
@@ -96,9 +97,35 @@ export const AdminOrders = () => {
     }
   };
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const processedOrderRef = useRef(false);
+
   useEffect(() => {
     fetchOrders();
   }, []);
+
+  // Deep-link to target order from alert Inspect
+  useEffect(() => {
+    const targetOrderId = searchParams.get('orderId') || location.state?.alertTarget?.orderId;
+    if (!targetOrderId || orders.length === 0 || processedOrderRef.current) return;
+
+    const found = orders.find((o) => o.id === targetOrderId || o.orderNumber === targetOrderId);
+    if (found) {
+      processedOrderRef.current = true;
+      setActiveFilterTab('all');
+      setSelectedOrder(found);
+      toast.success(`Focused on Order #${found.orderNumber || found.id}`, { icon: '📦' });
+
+      try {
+        const next = new URLSearchParams(searchParams);
+        next.delete('orderId');
+        setSearchParams(next, { replace: true });
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  }, [orders, searchParams, location.state]);
 
   // Compute status & category metrics
   const metrics = useMemo(() => {

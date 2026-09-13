@@ -45,6 +45,8 @@ export const alertService = {
 
       if (exp.isExpired || med.disposalStatus === 'EXPIRED') {
         if (!hasDisposal && med.disposalStatus !== 'DISPOSAL REQUESTED' && med.disposalStatus !== 'DISPOSED') {
+          const batchParam = encodeURIComponent(med.batchNo || med.batch || '');
+          const medNameParam = encodeURIComponent(medName);
           generatedAlerts.push({
             id: `alert-exp-${med.id}`,
             group: 'critical',
@@ -52,14 +54,21 @@ export const alertService = {
             category: 'EXPIRED_STOCK',
             title: `Expired Stock Alert: ${medName}`,
             desc: `Batch ${med.batchNo || med.batch || 'N/A'} (${qty} units) has passed its statutory expiry date. Immediate quarantine and bio-waste manifest required.`,
-            link: '/hospital/waste-management',
-            actionText: 'Initiate Disposal',
+            link: `/hospital/inventory?inventoryId=${encodeURIComponent(med.id)}&batchNo=${batchParam}&medicineName=${medNameParam}`,
+            actionText: 'Inspect Inventory',
             timestamp: new Date(now.getTime() - 25 * 60000).toISOString(),
             urgent: true,
             sourceId: med.id,
+            targetType: 'inventory',
+            inventoryId: med.id,
+            hospitalId: hospitalId,
+            batchNo: med.batchNo || med.batch || '',
+            medicineName: medName,
           });
         }
       } else if (exp.isNearExpiry) {
+        const batchParam = encodeURIComponent(med.batchNo || med.batch || '');
+        const medNameParam = encodeURIComponent(medName);
         generatedAlerts.push({
           id: `alert-near-${med.id}`,
           group: 'action',
@@ -67,15 +76,21 @@ export const alertService = {
           category: 'EXPIRING_SOON',
           title: `Expiring Soon: ${medName}`,
           desc: `${qty} units expire in ${exp.daysRemaining} days. Shelf-life concession active to prioritize redistribution to partner hospitals.`,
-          link: '/hospital/inventory',
+          link: `/hospital/inventory?inventoryId=${encodeURIComponent(med.id)}&batchNo=${batchParam}&medicineName=${medNameParam}`,
           actionText: 'View in Inventory',
           timestamp: new Date(now.getTime() - 95 * 60000).toISOString(),
           urgent: exp.daysRemaining <= 30,
           sourceId: med.id,
+          targetType: 'inventory',
+          inventoryId: med.id,
+          hospitalId: hospitalId,
+          batchNo: med.batchNo || med.batch || '',
+          medicineName: medName,
         });
       }
 
       if (exp.isLowStock && !exp.isExpired) {
+        const medNameParam = encodeURIComponent(medName);
         generatedAlerts.push({
           id: `alert-low-${med.id}`,
           group: 'action',
@@ -83,11 +98,16 @@ export const alertService = {
           category: 'LOW_STOCK',
           title: `Low Stock Warning: ${medName}`,
           desc: `Current reserve is ${qty} units (below threshold). Reorder or request replenishment from peer hospitals.`,
-          link: '/hospital/marketplace',
-          actionText: 'Find Stock in Market',
+          link: `/hospital/inventory?inventoryId=${encodeURIComponent(med.id)}&medicineName=${medNameParam}`,
+          actionText: 'Inspect Stock',
           timestamp: new Date(now.getTime() - 140 * 60000).toISOString(),
           urgent: false,
           sourceId: med.id,
+          targetType: 'inventory',
+          inventoryId: med.id,
+          hospitalId: hospitalId,
+          batchNo: med.batchNo || med.batch || '',
+          medicineName: medName,
         });
       }
     });
@@ -387,27 +407,45 @@ export const alertService = {
     // - Expired medicine
     medicines.forEach((med) => {
       const exp = calculateMedicineExpiry(med.expiryDate, med.mfgDate, med.quantity, med.minStockLevel || 20);
+      const batchNo = med.batchNo || med.batchNumber || '';
+      const medName = med.brandName || med.medicineName || 'Pharmaceutical Lot';
+      const hospId = med.hospitalId || '';
+
       if (exp.isExpired) {
         alerts.push({
           id: `admin-crit-exp-${med.id}`,
           category: 'CRITICAL',
           type: 'error',
-          title: `Expired Medicine Batch: ${med.brandName}`,
-          description: `Batch ${med.batchNo || 'N/A'} at ${med.hospitalName || 'Health Facility'} expired on ${med.expiryDate}. Immediate disposal quarantine required.`,
-          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          title: `Expired Medicine Batch: ${medName}`,
+          description: `Batch ${batchNo || 'N/A'} at ${med.hospitalName || 'Health Facility'} expired on ${med.expiryDate}. Immediate disposal quarantine required.`,
+          relatedItem: `${medName} (${med.hospitalName || 'Facility'})`,
           timestamp: new Date(Date.now() - 30 * 60000).toISOString(),
-          link: '/admin/inventory',
+          targetType: 'inventory',
+          inventoryId: med.id,
+          hospitalId: hospId,
+          medicineId: med.masterMedicineId || med.medicineId || med.id,
+          batchNo: batchNo,
+          medicineName: medName,
+          link: `/admin/inventory?inventoryId=${encodeURIComponent(med.id)}&hospitalId=${encodeURIComponent(hospId)}&batchNo=${encodeURIComponent(batchNo)}&medicineName=${encodeURIComponent(medName)}`,
+          actionText: 'Inspect',
         });
       } else if (Number(med.quantity || 0) === 0) {
         alerts.push({
           id: `admin-crit-oos-${med.id}`,
           category: 'CRITICAL',
           type: 'error',
-          title: `Medicine Out of Stock: ${med.brandName}`,
+          title: `Medicine Out of Stock: ${medName}`,
           description: `Zero available units recorded at ${med.hospitalName || 'Health Facility'}. Critical stockout alert.`,
-          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          relatedItem: `${medName} (${med.hospitalName || 'Facility'})`,
           timestamp: new Date(Date.now() - 60 * 60000).toISOString(),
-          link: '/admin/inventory',
+          targetType: 'inventory',
+          inventoryId: med.id,
+          hospitalId: hospId,
+          medicineId: med.masterMedicineId || med.medicineId || med.id,
+          batchNo: batchNo,
+          medicineName: medName,
+          link: `/admin/inventory?inventoryId=${encodeURIComponent(med.id)}&hospitalId=${encodeURIComponent(hospId)}&batchNo=${encodeURIComponent(batchNo)}&medicineName=${encodeURIComponent(medName)}`,
+          actionText: 'Inspect',
         });
       }
     });
@@ -417,16 +455,27 @@ export const alertService = {
     // - Medicine expiring soon (<60d)
     medicines.forEach((med) => {
       const exp = calculateMedicineExpiry(med.expiryDate, med.mfgDate, med.quantity, med.minStockLevel || 20);
+      const batchNo = med.batchNo || med.batchNumber || '';
+      const medName = med.brandName || med.medicineName || 'Pharmaceutical Lot';
+      const hospId = med.hospitalId || '';
+
       if (!exp.isExpired && Number(med.quantity || 0) > 0 && (Number(med.quantity || 0) <= (med.minStockLevel || 20) || exp.isLowStock)) {
         alerts.push({
           id: `admin-warn-low-${med.id}`,
           category: 'WARNING',
           type: 'warning',
-          title: `Low Medicine Stock Reserve: ${med.brandName}`,
+          title: `Low Medicine Stock Reserve: ${medName}`,
           description: `Only ${med.quantity} units remaining (below safety threshold of ${med.minStockLevel || 20}) at ${med.hospitalName || 'Facility'}.`,
-          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          relatedItem: `${medName} (${med.hospitalName || 'Facility'})`,
           timestamp: new Date(Date.now() - 120 * 60000).toISOString(),
-          link: '/admin/inventory',
+          targetType: 'inventory',
+          inventoryId: med.id,
+          hospitalId: hospId,
+          medicineId: med.masterMedicineId || med.medicineId || med.id,
+          batchNo: batchNo,
+          medicineName: medName,
+          link: `/admin/inventory?inventoryId=${encodeURIComponent(med.id)}&hospitalId=${encodeURIComponent(hospId)}&batchNo=${encodeURIComponent(batchNo)}&medicineName=${encodeURIComponent(medName)}`,
+          actionText: 'Inspect',
         });
       }
       if (!exp.isExpired && exp.isNearExpiry) {
@@ -434,11 +483,18 @@ export const alertService = {
           id: `admin-warn-expiring-${med.id}`,
           category: 'WARNING',
           type: 'warning',
-          title: `Medicine Expiring Soon: ${med.brandName}`,
-          description: `Batch ${med.batchNo || 'N/A'} has ${exp.daysRemaining} days remaining before regulatory shelf life expires.`,
-          relatedItem: `${med.brandName} (${med.hospitalName || 'Facility'})`,
+          title: `Medicine Expiring Soon: ${medName}`,
+          description: `Batch ${batchNo || 'N/A'} has ${exp.daysRemaining} days remaining before regulatory shelf life expires.`,
+          relatedItem: `${medName} (${med.hospitalName || 'Facility'})`,
           timestamp: new Date(Date.now() - 180 * 60000).toISOString(),
-          link: '/admin/medicines',
+          targetType: 'inventory',
+          inventoryId: med.id,
+          hospitalId: hospId,
+          medicineId: med.masterMedicineId || med.medicineId || med.id,
+          batchNo: batchNo,
+          medicineName: medName,
+          link: `/admin/inventory?inventoryId=${encodeURIComponent(med.id)}&hospitalId=${encodeURIComponent(hospId)}&batchNo=${encodeURIComponent(batchNo)}&medicineName=${encodeURIComponent(medName)}`,
+          actionText: 'Inspect',
         });
       }
     });
@@ -457,7 +513,10 @@ export const alertService = {
           description: `New hospital applicant registered from ${hosp.city}. Statutory Form 20B/21B documents awaiting review.`,
           relatedItem: `${hosp.name} (${hosp.registrationNo || 'New Registration'})`,
           timestamp: hosp.registeredDate || new Date(Date.now() - 240 * 60000).toISOString(),
-          link: '/admin/hospitals',
+          targetType: 'hospital',
+          hospitalId: hosp.id,
+          link: `/admin/verification?hospitalId=${encodeURIComponent(hosp.id)}`,
+          actionText: 'Inspect Dossier',
         });
       }
     });
@@ -472,7 +531,10 @@ export const alertService = {
           description: `Order from ${req.fromHospitalName} to ${req.toHospitalName} for ${req.quantity} units is awaiting processing.`,
           relatedItem: `Order #${(req.id || '').toUpperCase().replace('REQ-', 'ORD-MED-')}`,
           timestamp: req.requestDate || new Date(Date.now() - 90 * 60000).toISOString(),
-          link: '/admin/orders',
+          targetType: 'order',
+          orderId: req.id,
+          link: `/admin/orders?orderId=${encodeURIComponent(req.id)}`,
+          actionText: 'Inspect Order',
         });
       }
     });
@@ -487,7 +549,10 @@ export const alertService = {
           description: `${fb.rating}★ rating submitted under category "${fb.category || 'General'}": "${(fb.feedbackText || fb.comment || '').slice(0, 60)}..."`,
           relatedItem: fb.hospitalName,
           timestamp: fb.date || new Date(Date.now() - 75 * 60000).toISOString(),
-          link: '/admin/feedback',
+          targetType: 'feedback',
+          feedbackId: fb.id,
+          link: `/admin/feedback?feedbackId=${encodeURIComponent(fb.id)}`,
+          actionText: 'Inspect Feedback',
         });
       }
     });
