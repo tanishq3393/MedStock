@@ -251,132 +251,118 @@ export const HospitalSignupPage = () => {
   // Dedicated Pending Approval Success Screen
   if (registrationSuccess && submittedHospital) {
     return (
-      <div className="min-h-[calc(100vh-8rem)] py-10 px-4 sm:px-6 lg:px-8 flex items-center justify-center">
-        <div className="max-w-2xl w-full space-y-6 animate-fadeIn">
-          {/* Brand Header */}
-          <div className="text-center space-y-1.5">
-            <Link to="/" className="inline-flex items-center gap-2">
-              <div className="w-9 h-9 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
-                <Pill className="w-5 h-5 rotate-45" />
-              </div>
-              <span className="text-2xl font-black text-slate-900 tracking-tight">
-                Smart<span className="text-teal-600">MediShare</span>
-              </span>
-            </Link>
+      <div className="min-h-[calc(100vh-4rem)] py-3 px-4 sm:px-6 flex items-center justify-center">
+        <div className="max-w-xl w-full max-h-[calc(100vh-32px)] flex flex-col bg-white rounded-2xl sm:rounded-3xl border border-slate-200/80 shadow-xl overflow-hidden animate-fadeIn">
+          
+          {/* Header Banner */}
+          <div className="bg-gradient-to-r from-teal-900 via-ocean-900 to-slate-900 px-5 py-4 sm:px-6 sm:py-4 text-white text-center relative shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto mb-2 shadow-sm">
+              <CheckCircle2 className="w-6 h-6 text-emerald-400 stroke-[2.5]" />
+            </div>
+            <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white leading-tight">
+              Hospital Registered Successfully
+            </h1>
+            <p className="text-xs text-slate-300 max-w-md mx-auto mt-0.5 font-medium">
+              Your hospital registration has been submitted successfully.
+            </p>
           </div>
 
-          {/* Dedicated Success / Pending Approval Card */}
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-xl overflow-hidden">
-            {/* Header Banner */}
-            <div className="bg-gradient-to-r from-teal-900 via-ocean-900 to-slate-900 p-6 sm:p-8 text-white text-center relative overflow-hidden">
-              <div className="w-16 h-16 rounded-2xl bg-emerald-500/20 border border-emerald-400/40 text-emerald-400 flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <CheckCircle2 className="w-10 h-10 text-emerald-400 stroke-[2.2]" />
+          <div className="p-4 sm:p-5 space-y-3 overflow-y-auto flex-1">
+            {/* Prominent Admin Approval Required Notice */}
+            <div className="p-3 sm:p-3.5 rounded-xl bg-amber-50/90 border border-amber-300 text-amber-950 space-y-1 shadow-sm">
+              <div className="flex items-center gap-1.5 text-amber-800 font-extrabold text-[10px] uppercase tracking-wider">
+                <Clock className="w-3.5 h-3.5 text-amber-600 animate-pulse" />
+                <span>Admin Approval Required</span>
               </div>
-              <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">
-                Hospital Registered Successfully
-              </h1>
-              <p className="text-sm text-slate-300 max-w-md mx-auto mt-2">
-                Your hospital registration has been submitted successfully.
+              <div className="text-xs sm:text-sm font-bold text-amber-950 leading-snug">
+                Kindly wait for admin approval before accessing the hospital portal.
+              </div>
+              <p className="text-[11px] text-amber-900/90 leading-normal">
+                Our administrators will review your hospital details and approve your account before you can access the hospital portal. Please wait for approval.
               </p>
             </div>
 
-            <div className="p-6 sm:p-8 space-y-6">
-              {/* Prominent Admin Approval Required Notice */}
-              <div className="p-5 rounded-2xl bg-amber-50/90 border-2 border-amber-300 text-amber-950 space-y-2 shadow-sm">
-                <div className="flex items-center gap-2 text-amber-800 font-extrabold text-xs uppercase tracking-wider">
-                  <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
-                  <span>Admin Approval Required</span>
+            {/* Registration Summary Details */}
+            <div className="bg-slate-50 rounded-xl border border-slate-200/80 p-3 sm:p-3.5 space-y-2">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                <div>
+                  <div className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Hospital</div>
+                  <div className="text-slate-900 font-extrabold text-xs truncate mt-0.5">{submittedHospital.name}</div>
                 </div>
-                <div className="text-base font-bold text-amber-950 leading-snug">
-                  Kindly wait for admin approval before accessing the hospital portal.
+                <div>
+                  <div className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Registration ID</div>
+                  <div className="text-teal-700 font-mono font-bold text-xs truncate mt-0.5">{submittedHospital.registrationNo || submittedHospital.id}</div>
                 </div>
-                <p className="text-xs text-amber-900/90 leading-relaxed">
-                  Our administrators will review your hospital details and approve your account before you can access the hospital portal. Please wait for approval.
-                </p>
-              </div>
-
-              {/* Registration Summary Details */}
-              <div className="bg-slate-50 rounded-2xl border border-slate-200/80 p-5 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-                  <div>
-                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Hospital</div>
-                    <div className="text-slate-900 font-extrabold text-sm mt-0.5">{submittedHospital.name}</div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Registration ID</div>
-                    <div className="text-teal-700 font-mono font-bold text-sm mt-0.5">{submittedHospital.registrationNo || submittedHospital.id}</div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Official Email</div>
-                    <div className="text-slate-800 font-medium text-xs mt-0.5">{submittedHospital.email}</div>
-                  </div>
-                  <div>
-                    <div className="text-slate-400 font-bold uppercase tracking-wider text-[10px]">Campus Location</div>
-                    <div className="text-slate-800 font-medium text-xs mt-0.5">{submittedHospital.city}, {submittedHospital.state}</div>
-                  </div>
+                <div>
+                  <div className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Official Email</div>
+                  <div className="text-slate-800 font-medium text-[11px] truncate mt-0.5">{submittedHospital.email}</div>
                 </div>
-
-                <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">Current Status:</span>
-                  <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-950 border border-amber-300">
-                    <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                    PENDING ADMIN APPROVAL
-                  </span>
+                <div>
+                  <div className="text-slate-400 font-bold uppercase tracking-wider text-[9px]">Campus Location</div>
+                  <div className="text-slate-800 font-medium text-[11px] truncate mt-0.5">{submittedHospital.city}, {submittedHospital.state}</div>
                 </div>
               </div>
 
-              {/* Status Timeline */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 p-5 space-y-3.5">
-                <div className="text-xs font-black uppercase tracking-wider text-slate-700">Verification Timeline</div>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3 text-xs">
-                    <div className="w-6 h-6 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 mt-0.5">
-                      <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">Registration Submitted</div>
-                      <div className="text-[11px] text-emerald-700 font-medium">Completed — Statutory Form 20B/21B files uploaded</div>
-                    </div>
-                  </div>
+              <div className="pt-2 border-t border-slate-200 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Current Status:</span>
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black bg-amber-100 text-amber-950 border border-amber-300">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping" />
+                  PENDING ADMIN APPROVAL
+                </span>
+              </div>
+            </div>
 
-                  <div className="flex items-start gap-3 text-xs">
-                    <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="w-2.5 h-2.5 rounded-full bg-amber-600 animate-pulse" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-900">Admin Verification</div>
-                      <div className="text-[11px] text-amber-800 font-medium">Pending — Administrative audit of hospital permits in queue</div>
-                    </div>
+            {/* Status Timeline */}
+            <div className="bg-white rounded-xl border border-slate-200/80 p-3 space-y-2">
+              <div className="text-[10px] font-black uppercase tracking-wider text-slate-600">Verification Lifecycle</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-emerald-50/70 border border-emerald-200/80">
+                  <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Check className="w-3 h-3 stroke-[3]" />
                   </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 text-[11px] truncate">1. Registration</div>
+                    <div className="text-[10px] text-emerald-700 font-medium truncate">Submitted</div>
+                  </div>
+                </div>
 
-                  <div className="flex items-start gap-3 text-xs">
-                    <div className="w-6 h-6 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center shrink-0 mt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-slate-300" />
-                    </div>
-                    <div>
-                      <div className="font-bold text-slate-400">Hospital Portal Access</div>
-                      <div className="text-[11px] text-slate-400 font-medium">Available after administrator approval</div>
-                    </div>
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-amber-50/80 border border-amber-300">
+                  <div className="w-5 h-5 rounded-full bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                    <span className="w-2 h-2 rounded-full bg-amber-600 animate-pulse" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-900 text-[11px] truncate">2. Verification</div>
+                    <div className="text-[10px] text-amber-800 font-bold truncate">Pending Review</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 p-2 rounded-lg bg-slate-50 border border-slate-200">
+                  <div className="w-5 h-5 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center shrink-0">
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="font-bold text-slate-500 text-[11px] truncate">3. Portal Access</div>
+                    <div className="text-[10px] text-slate-400 font-medium truncate">After Approval</div>
                   </div>
                 </div>
               </div>
+            </div>
 
-              {/* Explanatory Message */}
-              <p className="text-xs text-slate-600 text-center leading-relaxed">
-                Your hospital details are now waiting for administrator verification. You will be able to access the hospital portal after your registration is approved.
-              </p>
+            {/* Explanatory Message */}
+            <p className="text-[11px] text-slate-500 text-center leading-normal">
+              Your hospital details are now waiting for administrator verification. You will be able to access the hospital portal after your registration is approved.
+            </p>
 
-              {/* Action */}
-              <div className="pt-2">
-                <button
-                  type="button"
-                  onClick={handleReturnToLogin}
-                  className="w-full py-3.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-sm shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                  <span>Return to Login</span>
-                </button>
-              </div>
+            {/* Action */}
+            <div className="pt-1 shrink-0">
+              <button
+                type="button"
+                onClick={handleReturnToLogin}
+                className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs sm:text-sm shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                <span>Return to Login</span>
+              </button>
             </div>
           </div>
         </div>
