@@ -1,6 +1,6 @@
 import { getStoredItem, setStoredItem, KEYS, getHospitalDocumentChecklist } from './storage.js';
 import { auditService } from './auditService.js';
-import { API_BASE } from '../config/api.js';
+import { API_BASE, notifySessionExpired } from '../config/api.js';
 
 export const authService = {
   // Login method for Hospital or Admin (Supports MedEx Express/Supabase API with offline fallback)
@@ -396,6 +396,10 @@ export const authService = {
             setStoredItem(KEYS.AUTH, updated);
             return updated;
           }
+        } else if (response.status === 401) {
+          notifySessionExpired();
+          await this.logout();
+          return null;
         }
       } catch (e) {
         // Fallback to local session

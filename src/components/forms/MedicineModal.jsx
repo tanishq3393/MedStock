@@ -34,9 +34,11 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
   const [autoSuggestedConcession, setAutoSuggestedConcession] = useState(null);
   const [masterMedicines, setMasterMedicines] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (isOpen) {
+      setIsSubmitting(false);
       setMasterMedicines(getStoredItem(KEYS.MASTER_MEDICINES, []));
     }
   }, [isOpen]);
@@ -152,8 +154,9 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
 
   const expiryEvaluation = formData.expiryDate ? calculateMedicineExpiry(formData.expiryDate, formData.quantity) : null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
 
     const { isValid, errors, sanitizedData } = validateMedicineForm(formData);
     if (!isValid) {
@@ -169,8 +172,15 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
       return;
     }
 
-    onSubmit(sanitizedData);
-    onClose();
+    try {
+      setIsSubmitting(true);
+      await onSubmit(sanitizedData);
+      onClose();
+    } catch (err) {
+      toast.error(err?.message || 'Failed to save medicine record');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -600,9 +610,14 @@ export const MedicineModal = ({ isOpen, onClose, onSubmit, initialData = null, i
           </button>
           <button
             type="submit"
-            className="px-5 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 rounded-xl shadow-md shadow-primary-500/20 transition-all"
+            disabled={isSubmitting}
+            className="px-5 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-75 disabled:cursor-not-allowed rounded-xl shadow-md shadow-primary-500/20 transition-all flex items-center gap-2"
           >
-            {isEdit ? 'Save Changes' : 'Add to Hospital Inventory'}
+            {isSubmitting ? (
+              <span>Saving...</span>
+            ) : (
+              <span>{isEdit ? 'Save Changes' : 'Add to Hospital Inventory'}</span>
+            )}
           </button>
         </div>
 

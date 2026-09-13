@@ -109,6 +109,14 @@ export const HospitalDashboard = () => {
     activeShipmentsCount: 0,
   };
 
+  if (isLoading && !dashboardData && inventory.length === 0) {
+    return (
+      <div className="min-h-[50vh] flex items-center justify-center p-8">
+        <LoadingSpinner size="lg" text="Loading hospital analytics and inventory ledger..." />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-7 pb-10">
       

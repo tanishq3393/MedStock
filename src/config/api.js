@@ -36,4 +36,14 @@ const configuredBaseUrl = (typeof import.meta !== 'undefined' && import.meta.env
 export const API_BASE_URL = normalizeApiBaseUrl(configuredBaseUrl);
 export const API_BASE = API_BASE_URL;
 
+/**
+ * Emits a window custom event to notify listeners (e.g. App component)
+ * that an HTTP 401 Unauthorized or expired session token occurred.
+ */
+export function notifySessionExpired() {
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    window.dispatchEvent(new CustomEvent('medex:session-expired', { detail: { timestamp: Date.now() } }));
+  }
+}
+
 export default API_BASE_URL;

@@ -1,6 +1,8 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { useDispatch } from 'react-redux';
+import { Toaster, toast } from 'react-hot-toast';
+import { logoutUser } from './store/slices/authSlice';
 
 // Layouts (Static for structural stability)
 import MainLayout from './layouts/MainLayout';
@@ -60,6 +62,19 @@ import ErrorBoundary from './components/common/ErrorBoundary';
 import RouteLoadingFallback from './components/common/RouteLoadingFallback';
 
 export const App = () => {
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    const handleSessionExpired = () => {
+      dispatch(logoutUser());
+      toast.error('Session expired or unauthorized. Please sign in again.');
+    };
+    window.addEventListener('medex:session-expired', handleSessionExpired);
+    return () => {
+      window.removeEventListener('medex:session-expired', handleSessionExpired);
+    };
+  }, [dispatch]);
+
   return (
     <>
       <Toaster 
