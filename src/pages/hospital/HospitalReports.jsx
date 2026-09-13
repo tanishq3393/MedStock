@@ -456,7 +456,13 @@ export const HospitalReports = () => {
                 <XAxis dataKey="interval" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={{ stroke: '#e2e8f0' }} />
                 <YAxis tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} />
                 <Tooltip
-                  formatter={(val, name) => [`${val} units`, name === 'received' ? 'Stock Received' : 'Stock Sent']}
+                  formatter={(val, name, item) => {
+                    const isReceived = 
+                      item?.dataKey === 'received' || 
+                      name === 'received' || 
+                      name === 'Stock Received';
+                    return [`${val} units`, isReceived ? 'Stock Received' : 'Stock Sent'];
+                  }}
                   contentStyle={{ backgroundColor: '#ffffff', borderRadius: '12px', border: '1px solid #e2e8f0', fontSize: '12px' }}
                 />
                 <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
