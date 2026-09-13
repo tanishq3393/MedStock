@@ -46,15 +46,19 @@ export const DocumentViewerModal = ({ isOpen, onClose, document: doc, hospitalNa
           </div>
         </div>
 
-        {/* Mock Document Render Area */}
-        <div className="border border-slate-200 rounded-xl p-8 bg-slate-100/50 flex flex-col items-center justify-center min-h-[260px] text-center space-y-3">
-          <div className="w-16 h-16 rounded-2xl bg-white shadow-md border border-slate-200 flex items-center justify-center text-primary-600">
-            <FileText className="w-8 h-8" />
+        {/* Document Render Area (Clearly marked as Demo Prototype Representation) */}
+        <div className="border border-slate-200 rounded-xl p-6 bg-slate-100/60 flex flex-col items-center justify-center min-h-[260px] text-center space-y-3">
+          <div className="w-14 h-14 rounded-2xl bg-white shadow-sm border border-slate-200 flex items-center justify-center text-primary-600">
+            <FileText className="w-7 h-7" />
           </div>
           <div>
-            <h4 className="text-sm font-bold text-slate-800">{doc.type}</h4>
-            <p className="text-xs text-slate-500 max-w-sm mt-1">
-              Digitally signed by Chief Medical Officer & authenticated against State Drug Control Administration records.
+            <div className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 uppercase tracking-wider mb-1.5">
+              Prototype Demo Document
+            </div>
+            <h4 className="text-sm font-bold text-slate-800">{doc.type || doc.documentType}</h4>
+            <p className="text-xs text-slate-600 font-mono mt-0.5">{doc.name || doc.documentName}</p>
+            <p className="text-xs text-slate-500 max-w-md mt-2 leading-relaxed">
+              Demonstration sample representation of the statutory filing submitted during registration. In this frontend prototype, this document is simulated for administrative review workflows.
             </p>
           </div>
           <div className="pt-2">
@@ -62,15 +66,15 @@ export const DocumentViewerModal = ({ isOpen, onClose, document: doc, hospitalNa
               onClick={handleDownload}
               className="inline-flex items-center gap-2 px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 rounded-lg text-xs font-semibold shadow-sm transition-all"
             >
-              <ExternalLink className="w-3.5 h-3.5" />
-              Open in Secure PDF Viewer
+              <ExternalLink className="w-3.5 h-3.5 text-primary-600" />
+              <span>Simulate PDF Viewer</span>
             </button>
           </div>
         </div>
 
         {/* Footer Actions */}
         <div className="flex items-center justify-between pt-2">
-          <span className="text-[11px] text-slate-400">SHA-256 Hash: 7e99b4a1... verified</span>
+          <span className="text-[11px] text-slate-400 font-mono">Sample Document Dossier • Frontend Prototype</span>
           <div className="flex gap-2">
             <button
               type="button"

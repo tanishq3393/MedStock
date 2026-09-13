@@ -45,7 +45,9 @@ export const Sidebar = ({ role = 'hospital' }) => {
   }, [role, location.pathname]);
 
   const pendingIncomingCount = incomingRequests?.filter((r) => r.status === 'pending').length || 0;
-  const pendingHospitalsCount = hospitals?.filter((h) => h.status === 'pending').length || 2;
+  const pendingHospitalsCount = hospitals?.filter((h) => 
+    h.status === 'pending' || h.status === 'pending_approval' || h.status === 'documents_missing' || h.status === 'under_review'
+  ).length || 0;
 
   // Grouped Navigation Sections for Hospital Portal
   const hospitalNavSections = [
@@ -103,8 +105,15 @@ export const Sidebar = ({ role = 'hospital' }) => {
           to: '/admin/hospitals', 
           icon: Building2, 
           label: 'Hospitals',
+          title: 'Approved hospitals in the MediStock network',
+        },
+        { 
+          to: '/admin/verification', 
+          icon: FileCheck2, 
+          label: 'Hospital Verification',
+          title: 'Review and approve new hospital registrations',
           badge: pendingHospitalsCount > 0 ? pendingHospitalsCount : null,
-          badgeColor: 'bg-rose-500'
+          badgeColor: 'bg-amber-500'
         },
         { to: '/admin/medicines', icon: Layers, label: 'Medicines' },
         { to: '/admin/inventory', icon: Boxes, label: 'Inventory' },
@@ -167,6 +176,7 @@ export const Sidebar = ({ role = 'hospital' }) => {
                     <NavLink
                       key={item.to}
                       to={item.to}
+                      title={item.title || item.label}
                       className={({ isActive }) =>
                         `flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-all group relative ${
                           isActive

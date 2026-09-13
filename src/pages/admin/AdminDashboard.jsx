@@ -92,7 +92,7 @@ export const AdminDashboard = () => {
       time: '15 minutes ago',
       status: 'Pending Audit',
       badgeColor: 'bg-amber-100 text-amber-800 border-amber-200',
-      link: '/admin/hospitals?status=pending'
+      link: '/admin/verification'
     },
     {
       id: 'act-2',
@@ -191,7 +191,7 @@ export const AdminDashboard = () => {
         {/* Right Column: Action Buttons */}
         <div className="relative z-10 flex flex-wrap sm:flex-nowrap items-center gap-3 w-full sm:w-auto shrink-0">
           <Link
-            to="/admin/hospitals?status=pending"
+            to="/admin/verification"
             aria-label="Review pending hospital verifications"
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-teal-500 hover:bg-teal-400 active:bg-teal-600 text-slate-950 text-xs font-bold shadow-md shadow-teal-950/40 focus:outline-none focus:ring-2 focus:ring-teal-400 focus:ring-offset-2 focus:ring-offset-slate-900 transition-all cursor-pointer"
           >
@@ -263,7 +263,7 @@ export const AdminDashboard = () => {
 
           {/* Card 3: Pending Verification */}
           <Link 
-            to="/admin/hospitals?status=pending"
+            to="/admin/verification"
             className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md hover:border-amber-300 transition-all group"
           >
             <div className="flex justify-between items-start">

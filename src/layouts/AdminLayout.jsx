@@ -22,6 +22,7 @@ export const AdminLayout = () => {
   const adminMobileItems = [
     { to: '/admin/dashboard', label: 'Dashboard' },
     { to: '/admin/hospitals', label: 'Hospitals' },
+    { to: '/admin/verification', label: 'Hospital Verification' },
     { to: '/admin/medicines', label: 'Medicines' },
     { to: '/admin/inventory', label: 'Inventory' },
     { to: '/admin/orders', label: 'Orders' },
@@ -79,7 +80,7 @@ export const AdminLayout = () => {
             </Link>
 
             <Link
-              to="/admin/hospitals?status=pending"
+              to="/admin/verification"
               className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-primary-600 hover:bg-primary-500 text-white text-xs font-bold shadow-md shadow-primary-600/20 transition-all"
             >
               <FileCheck2 className="w-3.5 h-3.5" />

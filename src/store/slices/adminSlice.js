@@ -73,6 +73,14 @@ export const rejectHospitalDocumentAction = createAsyncThunk('admin/rejectDocume
   }
 });
 
+export const updateDocumentReviewStatusAction = createAsyncThunk('admin/updateDocumentReviewStatus', async ({ hospitalId, documentId, status, note }, { rejectWithValue }) => {
+  try {
+    return await adminService.updateDocumentReviewStatus(hospitalId, documentId, status, note);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 export const fetchHospitalDetails = createAsyncThunk('admin/fetchHospitalDetails', async (hospitalId, { rejectWithValue }) => {
   try {
     return await adminService.getHospitalDetails(hospitalId);
@@ -220,6 +228,12 @@ const adminSlice = createSlice({
         if (state.selectedHospital?.id === updatedHosp.id) state.selectedHospital = updatedHosp;
       })
       .addCase(rejectHospitalDocumentAction.fulfilled, (state, action) => {
+        const updatedHosp = action.payload.hospital;
+        const index = state.hospitals.findIndex((h) => h.id === updatedHosp.id);
+        if (index !== -1) state.hospitals[index] = updatedHosp;
+        if (state.selectedHospital?.id === updatedHosp.id) state.selectedHospital = updatedHosp;
+      })
+      .addCase(updateDocumentReviewStatusAction.fulfilled, (state, action) => {
         const updatedHosp = action.payload.hospital;
         const index = state.hospitals.findIndex((h) => h.id === updatedHosp.id);
         if (index !== -1) state.hospitals[index] = updatedHosp;

@@ -356,6 +356,37 @@ export const adminService = {
     return { hospital, document: docs[docIndex] };
   },
 
+  async updateDocumentReviewStatus(hospitalId, documentId, status, note = '') {
+    await new Promise((r) => setTimeout(r, 150));
+    assertAdminSession();
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const hospIndex = hospitals.findIndex((h) => h.id === hospitalId);
+    if (hospIndex === -1) throw new Error('Hospital not found');
+
+    const hospital = hospitals[hospIndex];
+    const docs = hospital.documents || [];
+    const docIndex = docs.findIndex((d) => d.id === documentId || d.name === documentId || d.documentName === documentId);
+    if (docIndex === -1) throw new Error('Document not found');
+
+    const normalizedStatus = (status || 'submitted').toLowerCase();
+    const isVerified = normalizedStatus === 'accepted' || normalizedStatus === 'verified';
+    docs[docIndex] = {
+      ...docs[docIndex],
+      documentStatus: status,
+      status: status,
+      verified: isVerified,
+      reviewedAt: new Date().toISOString().split('T')[0],
+      reviewNote: note || null,
+      rejectionReason: (normalizedStatus.includes('attention') || normalizedStatus === 'rejected') ? (note || 'Requires attention') : null,
+    };
+
+    hospital.documents = docs;
+    hospitals[hospIndex] = hospital;
+    setStoredItem(KEYS.HOSPITALS, hospitals);
+
+    return { hospital, document: docs[docIndex] };
+  },
+
   async getHospitalDetails(hospitalId) {
     await new Promise((r) => setTimeout(r, 150));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
