@@ -368,7 +368,7 @@ export const AdminOrders = () => {
   return (
     <div className="space-y-6">
       
-      {/* Refined MediStock Header Banner (Section 35) */}
+      {/* Refined MedEx Header Banner (Section 35) */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-6 rounded-2xl bg-gradient-to-r from-ocean-950 via-ocean-900 to-teal-950 text-white shadow-xl relative overflow-hidden">
         <div className="absolute right-0 top-0 w-96 h-full bg-[radial-gradient(ellipse_at_top_right,rgba(10,110,121,0.25),transparent_70%)] pointer-events-none" />
         

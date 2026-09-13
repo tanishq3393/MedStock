@@ -32,6 +32,17 @@ const environment = {
       process.env.ABDM_CLIENT_ID &&
       process.env.ABDM_CLIENT_SECRET
     ),
+  },
+
+  payment: {
+    provider: (process.env.PAYMENT_PROVIDER || 'mock').toLowerCase(),
+    keyId: process.env.PAYMENT_PROVIDER_KEY || process.env.RAZORPAY_KEY_ID || '',
+    keySecret: process.env.PAYMENT_PROVIDER_SECRET || process.env.RAZORPAY_KEY_SECRET || '',
+    webhookSecret: process.env.PAYMENT_WEBHOOK_SECRET || process.env.RAZORPAY_WEBHOOK_SECRET || '',
+    isConfigured: Boolean(
+      (process.env.PAYMENT_PROVIDER_KEY || process.env.RAZORPAY_KEY_ID) &&
+      (process.env.PAYMENT_PROVIDER_SECRET || process.env.RAZORPAY_KEY_SECRET)
+    )
   }
 };
 

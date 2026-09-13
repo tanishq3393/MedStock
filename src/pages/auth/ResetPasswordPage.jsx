@@ -8,7 +8,7 @@ export const ResetPasswordPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'MediStock | Reset Password';
+    document.title = 'MedEx | Reset Password';
   }, []);
 
   const emailParam = searchParams.get('email') || 'pharmacy@hospital.org';
@@ -75,7 +75,7 @@ export const ResetPasswordPage = () => {
               <Pill className="w-5 h-5 rotate-45" />
             </div>
             <span className="text-2xl font-black text-slate-900 tracking-tight">
-              Smart<span className="text-teal-600">MediShare</span>
+              Med<span className="text-teal-600">Ex</span>
             </span>
           </Link>
           <p className="text-xs text-slate-500 font-medium">

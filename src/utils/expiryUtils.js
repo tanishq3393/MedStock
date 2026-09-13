@@ -1,5 +1,5 @@
 /**
- * Centralized Expiry & Request SLA Utilities for MediStock / SmartMediShare
+ * Centralized Expiry & Request SLA Utilities for MedEx
  */
 
 // Configurable thresholds in days

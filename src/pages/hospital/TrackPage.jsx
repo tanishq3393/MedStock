@@ -196,7 +196,7 @@ export const TrackPage = () => {
     vehicleNo: 'MH-04-AZ-4419 (Temp Controlled)',
     temperature: '4.2°C (Compliant 2°C - 8°C)',
     timeline: [
-      { step: 'Order Confirmed', date: '25 Aug • 02:15 PM', completed: true, details: 'Verified by SmartMediShare verification engine.' },
+      { step: 'Order Confirmed', date: '25 Aug • 02:15 PM', completed: true, details: 'Verified by MedEx verification engine.' },
       { step: 'Pickup Scheduled', date: '26 Aug • 09:45 AM', completed: true, details: 'Authorized medical courier dispatched to origin.' },
       { step: 'Picked Up', date: '26 Aug • 03:30 PM', completed: true, details: 'Cryo-insulated cold box sealed at seller pharmacy.' },
       { step: 'In Transit', date: '27 Aug • 11:20 AM', completed: true, details: 'Medicine is currently moving toward destination on NH-48.' },

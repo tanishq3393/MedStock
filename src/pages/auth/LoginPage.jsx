@@ -28,7 +28,7 @@ export const LoginPage = () => {
   const isUnverifiedParam = searchParams.get('unverified') === 'true';
 
   const [activeTab, setActiveTab] = useState('hospital'); // 'hospital' | 'admin'
-  const [email, setEmail] = useState('apollo.mumbai@smartmedishare.org');
+  const [email, setEmail] = useState('apollo.mumbai@medex.org');
   const [password, setPassword] = useState('Hospital@123');
   const [rememberMe, setRememberMe] = useState(true);
   const [showPassword, setShowPassword] = useState(false);
@@ -42,7 +42,7 @@ export const LoginPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'MediStock | Institutional Sign In';
+    document.title = 'MedEx | Institutional Sign In';
   }, []);
 
   const handleTabChange = (tab) => {
@@ -51,10 +51,10 @@ export const LoginPage = () => {
     setPendingApprovalHospital(null);
     setRejectedHospital(null);
     if (tab === 'admin') {
-      setEmail('admin@smartmedishare.org');
+      setEmail('admin@medex.org');
       setPassword('Admin@123');
     } else {
-      setEmail('apollo.mumbai@smartmedishare.org');
+      setEmail('apollo.mumbai@medex.org');
       setPassword('Hospital@123');
     }
   };
@@ -64,15 +64,15 @@ export const LoginPage = () => {
     setRejectedHospital(null);
     if (roleType === 'admin') {
       setActiveTab('admin');
-      setEmail('admin@smartmedishare.org');
+      setEmail('admin@medex.org');
       setPassword('Admin@123');
     } else if (roleType === 'apollo') {
       setActiveTab('hospital');
-      setEmail('apollo.mumbai@smartmedishare.org');
+      setEmail('apollo.mumbai@medex.org');
       setPassword('Hospital@123');
     } else if (roleType === 'fortis') {
       setActiveTab('hospital');
-      setEmail('fortis.gurgaon@smartmedishare.org');
+      setEmail('fortis.gurgaon@medex.org');
       setPassword('Hospital@123');
     }
     toast.success(`Loaded demo credentials for ${roleType.toUpperCase()}`);
@@ -88,7 +88,7 @@ export const LoginPage = () => {
     try {
       const resultAction = await dispatch(loginUser({ email, password, role: activeTab }));
       if (loginUser.fulfilled.match(resultAction)) {
-        toast.success(`Welcome to SmartMediShare, ${resultAction.payload.user.name}`);
+        toast.success(`Welcome to MedEx, ${resultAction.payload.user.name}`);
         const redirectPath = activeTab === 'admin' ? '/admin/dashboard' : '/hospital/dashboard';
         navigate(redirectPath, { replace: true });
       } else {
@@ -123,7 +123,7 @@ export const LoginPage = () => {
                 <Pill className="w-5 h-5 rotate-45" />
               </div>
               <span className="text-2xl font-black text-slate-900 tracking-tight">
-                Smart<span className="text-teal-600">MediShare</span>
+                Med<span className="text-teal-600">Ex</span>
               </span>
             </Link>
           </div>
@@ -201,7 +201,7 @@ export const LoginPage = () => {
                 <Pill className="w-5 h-5 rotate-45" />
               </div>
               <span className="text-2xl font-black text-slate-900 tracking-tight">
-                Smart<span className="text-teal-600">MediShare</span>
+                Med<span className="text-teal-600">Ex</span>
               </span>
             </Link>
           </div>
@@ -256,7 +256,7 @@ export const LoginPage = () => {
               <Pill className="w-5 h-5 rotate-45" />
             </div>
             <span className="text-2xl font-black text-slate-900 tracking-tight">
-              Smart<span className="text-teal-600">MediShare</span>
+              Med<span className="text-teal-600">Ex</span>
             </span>
           </Link>
           <p className="text-xs text-slate-500 font-medium">

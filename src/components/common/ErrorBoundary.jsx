@@ -3,7 +3,7 @@ import { ShieldAlert, RefreshCw, Home, HelpCircle } from 'lucide-react';
 
 /**
  * Reusable Production-Grade React Error Boundary
- * MediStock / SmartMediShare Healthcare Logistics
+ * MedEx Healthcare Logistics
  * 
  * Prevents the application from crashing to a blank white screen.
  * Displays a professional healthcare UI recovery card, provides a retry/reset action,
@@ -29,12 +29,12 @@ export class ErrorBoundary extends Component {
 
   componentDidCatch(error, errorInfo) {
     // Ensure actual error and stack trace are prominently visible in console for developers
-    console.error('[MediStock Error Boundary caught render exception]:', error);
+    console.error('[MedEx Error Boundary caught render exception]:', error);
     if (errorInfo?.componentStack) {
-      console.error('[MediStock Component Stack]:', errorInfo.componentStack);
+      console.error('[MedEx Component Stack]:', errorInfo.componentStack);
     }
     if (import.meta.env?.DEV) {
-      console.warn('[MediStock Error Boundary Debug Info]:', {
+      console.warn('[MedEx Error Boundary Debug Info]:', {
         name: error?.name,
         message: error?.message,
         stack: error?.stack,

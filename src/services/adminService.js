@@ -8,6 +8,17 @@ const assertAdminSession = () => {
   if (session?.user?.role !== 'admin') throw new Error('Admin authorization is required for this action');
 };
 
+const API_BASE = 'http://localhost:5000/api';
+
+const getAuthHeaders = () => {
+  const session = getStoredItem(KEYS.AUTH, null);
+  const token = session?.token || 'mock_jwt_token_admin';
+  return {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  };
+};
+
 export const adminService = {
   // ==========================================
   // 1. DASHBOARD & SUPERVISORY ANALYTICS
@@ -54,8 +65,8 @@ export const adminService = {
       cancelled: requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled').length,
     };
 
-    const verifiedHospitalsCount = hospitals.filter((h) => h.status === 'verified').length;
-    const pendingHospitalsCount = hospitals.filter((h) => h.status === 'pending' || h.status === 'under_review').length;
+    const verifiedHospitalsCount = hospitals.filter((h) => h.status === 'verified' || h.status === 'approved' || h.status === 'APPROVED').length;
+    const pendingHospitalsCount = hospitals.filter((h) => h.status === 'pending' || h.status === 'under_review' || h.status === 'PENDING_APPROVAL').length;
 
     // 8 Required Summary Cards
     const summaryCards = {
@@ -140,15 +151,74 @@ export const adminService = {
   // 2. HOSPITAL MANAGEMENT & VERIFICATION (ABDM Integration-Ready Architecture)
   // ==========================================
   async getHospitals(filterStatus = null) {
+    // 1. Try real API
+    try {
+      let endpoint = `${API_BASE}/admin/hospitals`;
+      if (filterStatus === 'pending' || filterStatus === 'under_review') {
+        endpoint = `${API_BASE}/admin/hospitals/pending`;
+      }
+
+      const response = await fetch(endpoint, {
+        headers: getAuthHeaders(),
+      });
+
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        const list = Array.isArray(json.data) ? json.data : (json.data.hospitals || []);
+        if (list.length > 0) {
+          // Merge into local cache
+          const localHospitals = getStoredItem(KEYS.HOSPITALS, []);
+          const merged = [...localHospitals];
+          list.forEach((item) => {
+            const idx = merged.findIndex((h) => h.id === item.id);
+            if (idx !== -1) merged[idx] = { ...merged[idx], ...item };
+            else merged.unshift(item);
+          });
+          setStoredItem(KEYS.HOSPITALS, merged);
+          return list;
+        }
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
     await new Promise((r) => setTimeout(r, 200));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     if (!filterStatus || filterStatus === 'all') return hospitals;
-    return hospitals.filter((h) => h.status === filterStatus);
+    return hospitals.filter((h) => {
+      const s = (h.status || '').toLowerCase();
+      const f = filterStatus.toLowerCase();
+      if (f === 'verified' || f === 'approved') return s === 'verified' || s === 'approved';
+      if (f === 'pending') return s === 'pending' || s === 'pending_approval';
+      return s === f;
+    });
   },
 
   async verifyHospital(hospitalId) {
-    await new Promise((r) => setTimeout(r, 300));
     assertAdminSession();
+
+    // 1. Call real API
+    try {
+      const response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}/approve`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success) {
+        const hospital = json.data.hospital || json.data;
+        const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+        const idx = hospitals.findIndex((h) => h.id === hospitalId);
+        if (idx !== -1) {
+          hospitals[idx] = { ...hospitals[idx], status: 'approved', verifiedDate: new Date().toISOString().split('T')[0] };
+          setStoredItem(KEYS.HOSPITALS, hospitals);
+        }
+        return hospital;
+      }
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 300));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const index = hospitals.findIndex((h) => h.id === hospitalId);
     if (index === -1) throw new Error('Hospital not found');
@@ -177,8 +247,31 @@ export const adminService = {
   },
 
   async rejectHospital(hospitalId, reason) {
-    await new Promise((r) => setTimeout(r, 300));
     assertAdminSession();
+
+    // 1. Call real API
+    try {
+      const response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}/reject`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ reason }),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success) {
+        const hospital = json.data.hospital || json.data;
+        const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+        const idx = hospitals.findIndex((h) => h.id === hospitalId);
+        if (idx !== -1) {
+          hospitals[idx] = { ...hospitals[idx], status: 'rejected', rejectionReason: reason };
+          setStoredItem(KEYS.HOSPITALS, hospitals);
+        }
+        return hospital;
+      }
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 300));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     const index = hospitals.findIndex((h) => h.id === hospitalId);
     if (index === -1) throw new Error('Hospital not found');
@@ -388,6 +481,18 @@ export const adminService = {
   },
 
   async getHospitalDetails(hospitalId) {
+    try {
+      const response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}/verification`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
     await new Promise((r) => setTimeout(r, 150));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     return hospitals.find((h) => h.id === hospitalId) || hospitals[0] || null;
@@ -412,14 +517,45 @@ export const adminService = {
   // 3. MASTER MEDICINES CATALOGUE OVERSIGHT
   // ==========================================
   async getMedicineData() {
+    try {
+      const response = await fetch(`${API_BASE}/medicines?limit=200`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data?.items) {
+        return json.data.items;
+      }
+    } catch (e) {
+      // fallback
+    }
+
     await new Promise((r) => setTimeout(r, 150));
     return getStoredItem(KEYS.MASTER_MEDICINES, []);
   },
 
   async addMedicineToHospital(medicineData) {
+    assertAdminSession();
+
+    // 1. Call real API
+    try {
+      const response = await fetch(`${API_BASE}/medicines`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(medicineData),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+        masterMeds.unshift(json.data);
+        setStoredItem(KEYS.MASTER_MEDICINES, masterMeds);
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+
     // Admin creates medicine in the Master Catalogue ONLY
     await new Promise((r) => setTimeout(r, 200));
-    assertAdminSession();
 
     if (!medicineData.medicineName && !medicineData.brandName) {
       throw new Error('Medicine name is required for master catalogue registration');
@@ -475,8 +611,30 @@ export const adminService = {
   },
 
   async updateMedicineData(id, updatedData) {
-    await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
+
+    // 1. Call real API
+    try {
+      const response = await fetch(`${API_BASE}/medicines/${id}`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify(updatedData),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+        const idx = masterMeds.findIndex((m) => m.id === id);
+        if (idx !== -1) {
+          masterMeds[idx] = json.data;
+          setStoredItem(KEYS.MASTER_MEDICINES, masterMeds);
+        }
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 200));
     const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
     const index = masterMeds.findIndex((m) => m.id === id);
     if (index === -1) throw new Error('Master medicine record not found');
@@ -519,8 +677,26 @@ export const adminService = {
   },
 
   async deleteMedicineData(id) {
-    await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
+
+    // 1. Call real API
+    try {
+      const response = await fetch(`${API_BASE}/medicines/${id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success) {
+        const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
+        const filtered = masterMeds.filter((m) => m.id !== id);
+        setStoredItem(KEYS.MASTER_MEDICINES, filtered);
+        return true;
+      }
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 200));
     const masterMeds = getStoredItem(KEYS.MASTER_MEDICINES, []);
     const target = masterMeds.find((m) => m.id === id);
     const filtered = masterMeds.filter((m) => m.id !== id);
@@ -538,6 +714,116 @@ export const adminService = {
     }
 
     return true;
+  },
+
+  // ==========================================
+  // ADMIN INVENTORY DUAL HIERARCHIES
+  // ==========================================
+  async getAdminInventoryByMedicine(params = {}) {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const response = await fetch(`${API_BASE}/admin/inventory/by-medicine?${q}`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return [];
+  },
+
+  async getMedicineContributors(medicineId) {
+    try {
+      const response = await fetch(`${API_BASE}/admin/inventory/by-medicine/${medicineId}/contributors`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return [];
+  },
+
+  async getMedicineHospitalBatches(medicineId, hospitalId) {
+    try {
+      const response = await fetch(`${API_BASE}/admin/inventory/by-medicine/${medicineId}/hospitals/${hospitalId}/batches`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return [];
+  },
+
+  async getAdminInventoryByHospital(params = {}) {
+    try {
+      const q = new URLSearchParams(params).toString();
+      const response = await fetch(`${API_BASE}/admin/inventory/by-hospital?${q}`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return [];
+  },
+
+  async getHospitalMedicines(hospitalId) {
+    try {
+      const response = await fetch(`${API_BASE}/admin/inventory/by-hospital/${hospitalId}/medicines`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return [];
+  },
+
+  async getHospitalMedicineBatches(hospitalId, medicineId) {
+    try {
+      const response = await fetch(`${API_BASE}/admin/inventory/by-hospital/${hospitalId}/medicines/${medicineId}/batches`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return [];
+  },
+
+  async getBatchDetail(batchId) {
+    try {
+      const response = await fetch(`${API_BASE}/admin/inventory/batches/${batchId}`, {
+        headers: getAuthHeaders(),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      // fallback
+    }
+    return null;
   },
 
   // ==========================================
@@ -1344,7 +1630,7 @@ export const adminService = {
         city: 'Mumbai',
         state: 'Maharashtra',
         phone: '+91 98201 54321',
-        email: 'apollo@smartmedishare.org',
+        email: 'apollo@medex.org',
         registrationNo: 'MH-GOV-8821',
       };
       const toHosp = hospitals.find((h) => h.id === req.toHospitalId) || {
@@ -1353,7 +1639,7 @@ export const adminService = {
         city: 'Gurgaon',
         state: 'Haryana',
         phone: '+91 98112 33445',
-        email: 'fortis@smartmedishare.org',
+        email: 'fortis@medex.org',
         registrationNo: 'HR-MED-4412',
       };
       const med = medicines.find((m) => m.id === req.medicineId);
@@ -1491,7 +1777,7 @@ export const adminService = {
           status: 'Completed',
           timestamp: complDateStr,
           note: `Pharmacy inventory balances synchronized. Escrow released to ${toHosp.name}. Requisition lifecycle completed.`,
-          actor: 'MediStock Settlement Engine',
+          actor: 'MedEx Settlement Engine',
         });
       }
 
@@ -1924,7 +2210,7 @@ export const adminService = {
     return getStoredItem(KEYS.SETTINGS, {
       profile: {
         name: 'Super Administrator',
-        email: 'admin@smartmedishare.org',
+        email: 'admin@medex.org',
         phone: '+91 11 2345 6789',
         department: 'National Healthcare Logistics Oversight',
         avatar: '',

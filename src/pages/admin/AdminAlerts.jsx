@@ -29,11 +29,11 @@ export const AdminAlerts = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [unreadOnly, setUnreadOnly] = useState(false);
 
-  const fetchAlerts = () => {
+  const fetchAlerts = async () => {
     try {
       setLoading(true);
-      const data = alertService.getAdminAlerts();
-      setAlerts(data);
+      const data = await alertService.getAdminAlerts();
+      setAlerts(data || []);
     } catch (err) {
       console.error('Failed to load admin alerts:', err);
       toast.error('Failed to load alerts');
@@ -44,6 +44,19 @@ export const AdminAlerts = () => {
 
   useEffect(() => {
     fetchAlerts();
+
+    const handleRealtime = () => {
+      fetchAlerts();
+    };
+    window.addEventListener('medex-alert-event', handleRealtime);
+    const unsubscribe = alertService.subscribeToAlerts(() => {
+      fetchAlerts();
+    });
+
+    return () => {
+      window.removeEventListener('medex-alert-event', handleRealtime);
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, []);
 
   const counts = useMemo(() => {
@@ -61,9 +74,10 @@ export const AdminAlerts = () => {
     return alerts.filter((a) => {
       const matchesTab = activeTab === 'ALL' || a.category === activeTab;
       const matchesUnread = !unreadOnly || !a.read;
+      const descText = (a.description || a.desc || a.message || '').toLowerCase();
       const matchesSearch = 
         a.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        a.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        descText.includes(searchTerm.toLowerCase()) ||
         (a.relatedItem && a.relatedItem.toLowerCase().includes(searchTerm.toLowerCase()));
       return matchesTab && matchesUnread && matchesSearch;
     });
@@ -318,7 +332,7 @@ export const AdminAlerts = () => {
                     </h4>
 
                     <p className="text-xs text-slate-600 max-w-2xl">
-                      {alert.description}
+                      {alert.description || alert.desc || alert.message}
                     </p>
 
                     {alert.relatedItem && (

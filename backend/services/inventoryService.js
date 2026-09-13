@@ -11,6 +11,25 @@ const {
 } = require('../utils/inventoryUtils');
 const logger = require('../utils/logger');
 
+class LotMutex {
+  constructor() {
+    this.locks = new Map();
+  }
+  async acquire(key) {
+    while (this.locks.has(key)) {
+      await this.locks.get(key);
+    }
+    let resolveLock;
+    const promise = new Promise((res) => { resolveLock = res; });
+    this.locks.set(key, promise);
+    return () => {
+      this.locks.delete(key);
+      resolveLock();
+    };
+  }
+}
+const lotMutex = new LotMutex();
+
 // Authoritative Development / Offline Inventory Store (Synchronized with backend/seed.sql)
 const devInventory = [
   {
@@ -1544,6 +1563,427 @@ const inventoryService = {
     }
 
     return lot;
+  },
+
+  /**
+   * Thread-safe atomic stock reservation
+   * Ensures two hospitals cannot reserve the same units simultaneously
+   */
+  async reserveStock(lotId, quantity) {
+    const qty = Number(quantity);
+    if (!qty || qty <= 0) {
+      const err = new Error('Requested reservation quantity must be greater than zero.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const unlock = await lotMutex.acquire(lotId);
+    try {
+      if (isConfigured && supabaseAdmin) {
+        try {
+          const { data, error } = await supabaseAdmin.rpc('reserve_stock_for_request', {
+            p_lot_id: lotId,
+            p_quantity: qty,
+          });
+          if (!error && data?.success) {
+            return data;
+          }
+          if (error && error.message.includes('Insufficient available stock')) {
+            const err = new Error(error.message);
+            err.statusCode = 409;
+            throw err;
+          }
+        } catch (dbErr) {
+          if (dbErr.statusCode) throw dbErr;
+        }
+      }
+
+      const lot = devInventory.find(
+        (l) => l.id === lotId || l.batchNumber === lotId || l.batchNo === lotId
+      );
+
+      if (!lot) {
+        const err = new Error(`Inventory lot '${lotId}' not found.`);
+        err.statusCode = 404;
+        throw err;
+      }
+
+      const rawExp = lot.expiry_date || lot.expiryDate;
+      if (rawExp && new Date(rawExp) <= new Date()) {
+        const err = new Error(`Cannot request expired lot (expired on ${rawExp}).`);
+        err.statusCode = 400;
+        throw err;
+      }
+
+      const available = Number(lot.available_quantity !== undefined ? lot.available_quantity : (lot.availableQuantity !== undefined ? lot.availableQuantity : lot.quantity));
+      if (available < qty) {
+        const err = new Error(`Insufficient available stock: Only ${available} units available, but ${qty} requested.`);
+        err.statusCode = 409;
+        err.code = 'INSUFFICIENT_STOCK';
+        throw err;
+      }
+
+      const curReserved = Number(lot.reserved_quantity || lot.reservedQuantity || 0);
+      const newReserved = curReserved + qty;
+      const newAvailable = available - qty;
+
+      lot.available_quantity = newAvailable;
+      lot.availableQuantity = newAvailable;
+      lot.reserved_quantity = newReserved;
+      lot.reservedQuantity = newReserved;
+      lot.status = calculateLotStatus({
+        expiryDate: rawExp,
+        availableQuantity: newAvailable,
+        minimumStock: lot.minimumStock || 20,
+      });
+
+      return {
+        success: true,
+        lotId: lot.id,
+        availableQuantity: newAvailable,
+        reservedQuantity: newReserved,
+        totalQuantity: Number(lot.quantity || lot.totalQuantity || 0),
+        unitPrice: Number(lot.concessionRate || lot.unitPrice || 100),
+        medicineId: lot.medicineId,
+        medicineName: lot.medicineName,
+        genericName: lot.genericName,
+        batchNumber: lot.batchNumber || lot.batchNo,
+        hospitalId: lot.hospitalId,
+        hospitalName: lot.hospitalName,
+      };
+    } finally {
+      unlock();
+    }
+  },
+
+  /**
+   * Thread-safe atomic stock release
+   * Restores available stock and decrements reserved stock
+   */
+  async releaseReservation(lotId, quantity) {
+    const qty = Number(quantity);
+    if (!qty || qty <= 0) return { success: true };
+
+    const unlock = await lotMutex.acquire(lotId);
+    try {
+      if (isConfigured && supabaseAdmin) {
+        try {
+          const { data, error } = await supabaseAdmin.rpc('release_reserved_stock', {
+            p_lot_id: lotId,
+            p_quantity: qty,
+          });
+          if (!error && data?.success) {
+            return data;
+          }
+        } catch (dbErr) {
+          // Fall through to memory
+        }
+      }
+
+      const lot = devInventory.find(
+        (l) => l.id === lotId || l.batchNumber === lotId || l.batchNo === lotId
+      );
+
+      if (!lot) return { success: false, message: 'Lot not found' };
+
+      const totalQty = Number(lot.quantity || lot.totalQuantity || 0);
+      const curReserved = Number(lot.reserved_quantity || lot.reservedQuantity || 0);
+      const curAvailable = Number(lot.available_quantity !== undefined ? lot.available_quantity : (lot.availableQuantity !== undefined ? lot.availableQuantity : totalQty));
+
+      const newReserved = Math.max(0, curReserved - qty);
+      const newAvailable = Math.min(totalQty, curAvailable + qty);
+
+      lot.available_quantity = newAvailable;
+      lot.availableQuantity = newAvailable;
+      lot.reserved_quantity = newReserved;
+      lot.reservedQuantity = newReserved;
+      lot.status = calculateLotStatus({
+        expiryDate: lot.expiry_date || lot.expiryDate,
+        availableQuantity: newAvailable,
+        minimumStock: lot.minimumStock || 20,
+      });
+
+      return {
+        success: true,
+        lotId: lot.id,
+        availableQuantity: newAvailable,
+        reservedQuantity: newReserved,
+      };
+    } finally {
+      unlock();
+    }
+  },
+
+  /**
+   * Permanently deducts delivered stock from both total and reserved quantity
+   */
+  async commitStockDeduction(lotId, quantity) {
+    const qty = Number(quantity);
+    const unlock = await lotMutex.acquire(lotId);
+    try {
+      const lot = devInventory.find((l) => l.id === lotId || l.batchNumber === lotId || l.batchNo === lotId);
+      if (!lot) return { success: false };
+
+      const totalQty = Number(lot.quantity || lot.totalQuantity || 0);
+      const curReserved = Number(lot.reserved_quantity || lot.reservedQuantity || 0);
+
+      const newTotal = Math.max(0, totalQty - qty);
+      const newReserved = Math.max(0, curReserved - qty);
+
+      lot.quantity = newTotal;
+      lot.totalQuantity = newTotal;
+      lot.reserved_quantity = newReserved;
+      lot.reservedQuantity = newReserved;
+
+      return { success: true, lotId: lot.id, totalQuantity: newTotal, reservedQuantity: newReserved };
+    } finally {
+      unlock();
+    }
+  },
+
+  /**
+   * Retrieves active, verified, non-expired marketplace listings
+   */
+  async getMarketplace({
+    search,
+    category,
+    dosageForm,
+    strength,
+    route,
+    composition,
+    sellerHospitalId,
+    minPrice,
+    maxPrice,
+    minStock,
+    inStockOnly = true,
+    minDaysToExpiry,
+    notExpired = true,
+    sortBy = 'relevance',
+    page = 1,
+    limit = 50,
+    currentHospitalId = null,
+    isAdmin = false,
+  } = {}) {
+    let lots = devInventory.map((l) => this.normalizeLotRecord(l));
+
+    const now = new Date();
+
+    // 1. Exclude expired lots
+    if (notExpired) {
+      lots = lots.filter((l) => {
+        const exp = new Date(l.expiryDate);
+        return !isNaN(exp) && exp > now;
+      });
+    }
+
+    // 2. Exclude non-active and zero stock
+    if (inStockOnly) {
+      lots = lots.filter((l) => Number(l.availableQuantity) > 0 && l.status !== 'depleted' && l.status !== 'quarantined');
+    }
+
+    // 3. Exclude caller's own inventory unless admin
+    if (!isAdmin && currentHospitalId) {
+      lots = lots.filter((l) => l.hospitalId !== currentHospitalId);
+    }
+
+    // 4. Multi-parameter filtering
+    if (search && search.trim()) {
+      const q = search.trim().toLowerCase();
+      lots = lots.filter((l) =>
+        (l.medicineName || '').toLowerCase().includes(q) ||
+        (l.genericName || '').toLowerCase().includes(q) ||
+        (l.brandName || '').toLowerCase().includes(q) ||
+        (l.composition || '').toLowerCase().includes(q) ||
+        (l.category || '').toLowerCase().includes(q) ||
+        (l.strength || '').toLowerCase().includes(q) ||
+        (l.hospitalName || '').toLowerCase().includes(q) ||
+        (l.hospitalCity || '').toLowerCase().includes(q)
+      );
+    }
+
+    if (category && category !== 'all') {
+      lots = lots.filter((l) => (l.category || '').toLowerCase().includes(category.toLowerCase()));
+    }
+
+    if (dosageForm && dosageForm !== 'all') {
+      lots = lots.filter((l) => (l.dosageForm || '').toLowerCase().includes(dosageForm.toLowerCase()));
+    }
+
+    if (strength) {
+      lots = lots.filter((l) => (l.strength || '').toLowerCase().includes(strength.toLowerCase()));
+    }
+
+    if (sellerHospitalId && sellerHospitalId !== 'all') {
+      lots = lots.filter((l) => l.hospitalId === sellerHospitalId);
+    }
+
+    if (minPrice !== undefined && minPrice !== null && minPrice !== '') {
+      lots = lots.filter((l) => l.unitPrice >= Number(minPrice));
+    }
+
+    if (maxPrice !== undefined && maxPrice !== null && maxPrice !== '') {
+      lots = lots.filter((l) => l.unitPrice <= Number(maxPrice));
+    }
+
+    if (minStock !== undefined && minStock !== null && minStock !== '') {
+      lots = lots.filter((l) => l.availableQuantity >= Number(minStock));
+    }
+
+    if (minDaysToExpiry) {
+      lots = lots.filter((l) => (l.daysUntilExpiry || 0) >= Number(minDaysToExpiry));
+    }
+
+    // 5. Sorting
+    switch (sortBy) {
+      case 'price_asc':
+        lots.sort((a, b) => a.unitPrice - b.unitPrice);
+        break;
+      case 'price_desc':
+        lots.sort((a, b) => b.unitPrice - a.unitPrice);
+        break;
+      case 'stock':
+      case 'stock_desc':
+        lots.sort((a, b) => b.availableQuantity - a.availableQuantity);
+        break;
+      case 'stock_asc':
+        lots.sort((a, b) => a.availableQuantity - b.availableQuantity);
+        break;
+      case 'expiry':
+      case 'expiry_asc':
+        lots.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+        break;
+      case 'expiry_desc':
+        lots.sort((a, b) => new Date(b.expiryDate) - new Date(a.expiryDate));
+        break;
+      default:
+        break;
+    }
+
+    const total = lots.length;
+    const pageNum = Math.max(1, Number(page));
+    const limitNum = Math.max(1, Number(limit));
+    const offset = (pageNum - 1) * limitNum;
+    const paginated = lots.slice(offset, offset + limitNum);
+
+    // Sanitize public seller fields
+    const sanitized = paginated.map((l) => ({
+      id: l.id,
+      medicineId: l.medicineId,
+      medicineName: l.medicineName,
+      brandName: l.brandName,
+      genericName: l.genericName,
+      composition: l.composition,
+      strength: l.strength,
+      power: l.strength,
+      dosageForm: l.dosageForm,
+      route: l.route || 'Oral',
+      category: l.category,
+      manufacturer: l.manufacturer,
+      packaging: l.packaging || l.packing,
+      packSize: l.packing || l.packSize,
+      batchNumber: l.batchNumber,
+      batchNo: l.batchNo,
+      manufacturingDate: l.manufacturingDate,
+      mfgDate: l.mfgDate,
+      expiryDate: l.expiryDate,
+      daysUntilExpiry: l.daysUntilExpiry,
+      quantity: l.availableQuantity,
+      availableQuantity: l.availableQuantity,
+      unitPrice: l.unitPrice,
+      unitOriginalPrice: l.mrp || l.unitPrice,
+      concessionPercent: l.concessionPercent,
+      concessionRate: l.concessionRate,
+      status: l.status,
+      purchaseBillUrl: l.purchaseBillUrl,
+      billStoragePath: l.billStoragePath,
+      seller: {
+        id: l.hospitalId,
+        hospitalId: l.hospitalId,
+        name: l.hospitalName,
+        hospitalName: l.hospitalName,
+        city: l.hospitalCity,
+        state: l.hospitalState,
+      },
+      hospitalId: l.hospitalId,
+      hospitalName: l.hospitalName,
+      location: `${l.hospitalCity}, ${l.hospitalState}`,
+      distanceKm: 12,
+    }));
+
+    return {
+      items: sanitized,
+      listings: sanitized,
+      total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(total / limitNum),
+    };
+  },
+
+  /**
+   * Detail endpoint for a single marketplace lot
+   */
+  async getMarketplaceItem(lotId) {
+    const lot = await this.getBatchDetail(lotId);
+    return {
+      id: lot.id,
+      medicineId: lot.medicineId,
+      name: lot.medicineName,
+      medicineName: lot.medicineName,
+      brandName: lot.brandName,
+      genericName: lot.genericName,
+      composition: lot.composition,
+      strength: lot.strength,
+      power: lot.strength,
+      dosageForm: lot.dosageForm,
+      route: lot.route || 'Oral',
+      category: lot.category,
+      manufacturer: lot.manufacturer,
+      packaging: lot.packaging || lot.packing,
+      packing: lot.packing,
+      packSize: lot.packing,
+      batchNumber: lot.batchNumber,
+      batchNo: lot.batchNo,
+      quantity: lot.availableQuantity,
+      availableQuantity: lot.availableQuantity,
+      reservedQuantity: lot.reservedQuantity,
+      unitPrice: lot.unitPrice,
+      mrp: lot.mrp,
+      concessionRate: lot.concessionRate,
+      concessionPercent: lot.concessionPercent,
+      manufacturingDate: lot.manufacturingDate,
+      mfgDate: lot.mfgDate,
+      expiryDate: lot.expiryDate,
+      daysUntilExpiry: lot.daysUntilExpiry,
+      status: lot.status,
+      purchaseBillUrl: lot.purchaseBillUrl,
+      billStoragePath: lot.billStoragePath,
+      seller: {
+        id: lot.hospitalId,
+        hospitalId: lot.hospitalId,
+        name: lot.hospitalName,
+        hospitalName: lot.hospitalName,
+        city: lot.hospitalCity,
+        state: lot.hospitalState,
+      },
+      hospitalId: lot.hospitalId,
+      hospitalName: lot.hospitalName,
+      location: `${lot.hospitalCity}, ${lot.hospitalState}`,
+      distanceKm: 12,
+    };
+  },
+
+  /**
+   * Eligible inventory lots for alternatives calculation
+   */
+  async getMarketplaceInventory({ currentHospitalId = null } = {}) {
+    return devInventory
+      .filter((l) => {
+        if (currentHospitalId && (l.hospital_id === currentHospitalId || l.hospitalId === currentHospitalId)) return false;
+        const exp = new Date(l.expiry_date || l.expiryDate);
+        return exp > new Date() && (l.available_quantity > 0 || l.availableQuantity > 0);
+      })
+      .map((l) => this.normalizeLotRecord(l));
   },
 
   normalizeLotRecord(l) {

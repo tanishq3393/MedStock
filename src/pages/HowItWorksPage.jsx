@@ -21,7 +21,7 @@ import {
 
 export const HowItWorksPage = () => {
   useEffect(() => {
-    document.title = 'MediStock | How It Works';
+    document.title = 'MedEx | How It Works';
   }, []);
 
   const steps = [
@@ -123,7 +123,7 @@ export const HowItWorksPage = () => {
           </div>
 
           <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-            How MediStock Works
+            How MedEx Works
           </h1>
 
           <p className="text-sm sm:text-base text-slate-300 max-w-2xl mx-auto leading-relaxed">

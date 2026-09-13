@@ -4,7 +4,7 @@ import { ShieldCheck, Info, FileText, ChevronRight, Lock, Eye, Sparkles } from '
 
 export const PrivacyPolicyPage = () => {
   useEffect(() => {
-    document.title = 'MediStock | Privacy Policy';
+    document.title = 'MedEx | Privacy Policy';
   }, []);
 
   const [activeSection, setActiveSection] = useState('sec-1');
@@ -65,7 +65,7 @@ export const PrivacyPolicyPage = () => {
               Notice Concerning Demo Prototype Architecture
             </h3>
             <p className="text-blue-900 leading-relaxed">
-              During the current demo implementation, MediStock operates primarily using frontend state and local storage simulation. Actual production data handling, remote server encryption, and statutory audit logging will depend on the final backend and cloud infrastructure deployed by the implementing entity.
+              During the current demo implementation, MedEx operates primarily using frontend state and local storage simulation. Actual production data handling, remote server encryption, and statutory audit logging will depend on the final backend and cloud infrastructure deployed by the implementing entity.
             </p>
           </div>
         </div>
@@ -104,10 +104,10 @@ export const PrivacyPolicyPage = () => {
                 1. Introduction
               </h2>
               <p>
-                This Privacy Policy outlines how the MediStock / SmartMediShare platform ("we", "us", or "our") processes institutional data. This policy is written to provide plain-language clarity regarding how information submitted through the interface is managed.
+                This Privacy Policy outlines how the MedEx platform ("we", "us", or "our") processes institutional data. This policy is written to provide plain-language clarity regarding how information submitted through the interface is managed.
               </p>
               <p>
-                MediStock is designed exclusively for business-to-business (B2B) interactions between verified hospitals, medical clinics, and state regulatory authorities. It is not intended for individual consumers or retail patient drug sales.
+                MedEx is designed exclusively for business-to-business (B2B) interactions between verified hospitals, medical clinics, and state regulatory authorities. It is not intended for individual consumers or retail patient drug sales.
               </p>
             </section>
 
@@ -243,7 +243,7 @@ export const PrivacyPolicyPage = () => {
                 13. Children's Privacy
               </h2>
               <p>
-                MediStock is strictly an institutional B2B enterprise platform and does not offer services to or collect data from individuals under the age of 18.
+                MedEx is strictly an institutional B2B enterprise platform and does not offer services to or collect data from individuals under the age of 18.
               </p>
             </section>
 

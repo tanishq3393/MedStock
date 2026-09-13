@@ -11,6 +11,7 @@ import {
   DollarSign
 } from 'lucide-react';
 import { getCancellationPolicy, calculateRefundAmounts } from '../../utils/cancellationPolicy';
+import { hospitalService } from '../../services/hospitalService';
 
 const REASON_OPTIONS = [
   { value: 'No longer required', label: 'No longer required for active inpatient care' },
@@ -25,10 +26,26 @@ export const CancelRequestModal = ({ isOpen, onClose, request, onConfirmCancel }
   const [selectedReason, setSelectedReason] = useState(REASON_OPTIONS[0].value);
   const [customNote, setCustomNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [serverPolicy, setServerPolicy] = useState(null);
+
+  React.useEffect(() => {
+    let isMounted = true;
+    if (request?.id) {
+      hospitalService.getRequestCancellationPolicy(request.id)
+        .then((res) => {
+          if (isMounted && res) {
+            setServerPolicy(res);
+          }
+        })
+        .catch(() => {});
+    }
+    return () => { isMounted = false; };
+  }, [request?.id]);
 
   const policy = useMemo(() => {
+    if (serverPolicy) return serverPolicy;
     return getCancellationPolicy(request);
-  }, [request]);
+  }, [request, serverPolicy]);
 
   const amounts = useMemo(() => {
     return calculateRefundAmounts(request, policy);

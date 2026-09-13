@@ -44,7 +44,7 @@ export const ReceiptModal = ({ isOpen, onClose, payment }) => {
                 <Pill className="w-6 h-6 rotate-45" />
               </div>
               <div>
-                <h3 className="text-base font-extrabold text-secondary-700">SmartMediShare Platform</h3>
+                <h3 className="text-base font-extrabold text-secondary-700">MedEx Platform</h3>
                 <p className="text-[11px] text-slate-500">Official Inter-Hospital Transfer Invoice</p>
               </div>
             </div>
@@ -120,7 +120,7 @@ export const ReceiptModal = ({ isOpen, onClose, payment }) => {
           <div className="flex items-center justify-between text-[11px] text-slate-500 pt-2 border-t border-slate-100">
             <div className="flex items-center gap-1.5 text-emerald-700 font-medium">
               <ShieldCheck className="w-4 h-4" />
-              <span>Digitally verified via SmartMediShare Escrow Protocol</span>
+              <span>Digitally verified via MedEx Escrow Protocol</span>
             </div>
             <span>E.&O.E.</span>
           </div>

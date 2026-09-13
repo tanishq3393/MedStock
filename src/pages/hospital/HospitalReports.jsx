@@ -209,7 +209,7 @@ export const HospitalReports = () => {
       const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
 
       const headerMeta = [
-        ['MEDISTOCK / SMARTMEDISHARE HOSPITAL OPERATIONAL AUDIT REPORT'],
+        ['MEDEX HOSPITAL OPERATIONAL AUDIT REPORT'],
         ['Hospital Name', hospitalName],
         ['Hospital Registration', hospitalReg],
         ['Report Period', dateFilter === 'CUSTOM' ? `${customStart || 'Start'} to ${customEnd || 'End'}` : `Past ${dateFilter}`],
@@ -254,7 +254,7 @@ export const HospitalReports = () => {
       const encodedUri = encodeURI(csvContent);
       const link = document.createElement('a');
       link.setAttribute('href', encodedUri);
-      link.setAttribute('download', `MediStock_Report_${hospitalReg}_${dateFilter}_${new Date().toISOString().split('T')[0]}.csv`);
+      link.setAttribute('download', `MedEx_Report_${hospitalReg}_${dateFilter}_${new Date().toISOString().split('T')[0]}.csv`);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);

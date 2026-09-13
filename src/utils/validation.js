@@ -1,6 +1,6 @@
 /**
  * Centralized Input Validation & Sanitization Engine
- * MediStock / SmartMediShare Platform
+ * MedEx Platform
  * 
  * Provides defensive validation for all forms, medicine data, requisitions,
  * and user-supplied strings.

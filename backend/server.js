@@ -26,7 +26,12 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({
+  limit: '10mb',
+  verify: (req, res, buf) => {
+    req.rawBody = buf;
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Request logger for development
@@ -59,6 +64,11 @@ app.get('/api/health', async (req, res) => {
       configured: abdmConfig.isConfigured,
       status: abdmConfig.isConfigured ? 'configured' : 'placeholder_ready',
     },
+    payment: {
+      provider: environment.payment.provider,
+      configured: environment.payment.isConfigured,
+      mode: environment.payment.provider === 'razorpay' ? 'production_gateway' : 'mock_development_adapter'
+    }
   });
 });
 

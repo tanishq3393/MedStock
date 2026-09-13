@@ -1,20 +1,71 @@
 import { getStoredItem, setStoredItem, KEYS, getHospitalDocumentChecklist } from './storage.js';
 import { auditService } from './auditService.js';
 
+const API_BASE = 'http://localhost:5000/api';
+
 export const authService = {
-  // Login method for Hospital or Admin (DEMO PROTOTYPE ONLY)
+  // Login method for Hospital or Admin (Supports MedEx Express/Supabase API with offline fallback)
   async login({ email, password, role }) {
+    // 1. Attempt authentication via MedEx Express / Supabase API
+    try {
+      const response = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, role }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data?.success && data?.data) {
+        const { user, token } = data.data;
+        setStoredItem(KEYS.AUTH, { user, token });
+        return { user, token };
+      }
+
+      // If backend returned a structured business rejection
+      if (data?.error) {
+        if (data.error.code === 'PENDING_ADMIN_APPROVAL') {
+          const err = new Error(data.error.message || 'Your hospital registration is pending admin approval.');
+          err.code = 'PENDING_ADMIN_APPROVAL';
+          err.hospital = data.error.hospital;
+          throw err;
+        }
+        if (data.error.code === 'REGISTRATION_REJECTED') {
+          const err = new Error(data.error.message || 'Hospital registration was rejected.');
+          err.code = 'REGISTRATION_REJECTED';
+          err.rejectionReason = data.error.rejectionReason;
+          err.hospital = data.error.hospital;
+          throw err;
+        }
+        if (data.error.code === 'HOSPITAL_SUSPENDED') {
+          const err = new Error(data.error.message || 'Hospital privileges are suspended.');
+          err.code = 'HOSPITAL_SUSPENDED';
+          throw err;
+        }
+        throw new Error(data.error.message || 'Login failed');
+      }
+    } catch (networkOrApiErr) {
+      if (['PENDING_ADMIN_APPROVAL', 'REGISTRATION_REJECTED', 'HOSPITAL_SUSPENDED'].includes(networkOrApiErr.code)) {
+        throw networkOrApiErr;
+      }
+      if (networkOrApiErr.message && !networkOrApiErr.message.includes('fetch') && !networkOrApiErr.message.includes('NetworkError') && !networkOrApiErr.message.includes('Failed to fetch')) {
+        throw networkOrApiErr;
+      }
+      // Otherwise proceed to development storage verification
+    }
+
     await new Promise((r) => setTimeout(r, 450)); // Realistic API delay
 
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
     let authResult = null;
 
     if (role === 'admin') {
-      if (email === 'admin@smartmedishare.org' && password === 'Admin@123') {
+      const emailLower = (email || '').toLowerCase().trim();
+      if ((emailLower === 'admin@medex.org' || emailLower === 'admin@smartmedishare.org') && password === 'Admin@123') {
         const user = {
           id: 'admin-01',
           name: 'Super Administrator',
-          email: 'admin@smartmedishare.org',
+          email: 'admin@medex.org',
           role: 'admin',
           department: 'National Healthcare Logistics Oversight',
           phone: '+91 11 2345 6789',
@@ -22,7 +73,7 @@ export const authService = {
         const token = 'mock_jwt_token_admin_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
-      } else if (email.includes('admin') || (password && password.length >= 6)) {
+      } else if (emailLower.includes('admin') || (password && password.length >= 6)) {
         const user = {
           id: 'admin-demo',
           name: 'Platform Ops Admin',
@@ -35,11 +86,17 @@ export const authService = {
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
       } else {
-        throw new Error('Invalid Admin credentials. Use admin@smartmedishare.org / Admin@123');
+        throw new Error('Invalid Admin credentials. Use admin@medex.org / Admin@123');
       }
     } else {
       // Hospital role
-      const matched = hospitals.find((h) => h.email.toLowerCase() === email.toLowerCase());
+      const emailLower = (email || '').toLowerCase().trim();
+      const matched = hospitals.find((h) => {
+        const hEmail = (h.email || '').toLowerCase().trim();
+        return hEmail === emailLower ||
+               hEmail.replace('@smartmedishare.org', '@medex.org') === emailLower ||
+               hEmail.replace('@medex.org', '@smartmedishare.org') === emailLower;
+      });
       if (matched) {
         // Enforce approval status check
         if (matched.status === 'pending' || matched.status === 'pending_approval') {
@@ -93,12 +150,12 @@ export const authService = {
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
-      } else if (email === 'apollo.mumbai@smartmedishare.org' || email.includes('apollo')) {
+      } else if (emailLower === 'apollo.mumbai@medex.org' || emailLower === 'apollo.mumbai@smartmedishare.org' || emailLower.includes('apollo')) {
         // Default quick login fallback (Apollo Hospital - verified)
         const defaultHosp = hospitals.find((h) => h.id === 'hosp-1' || h.name?.includes('Apollo')) || hospitals[0] || {
           id: 'hosp-1',
           name: 'Apollo Hospital',
-          email: 'apollo.mumbai@smartmedishare.org',
+          email: 'apollo.mumbai@medex.org',
           city: 'Mumbai',
           status: 'verified',
         };
@@ -117,11 +174,11 @@ export const authService = {
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
-      } else if (email.includes('fortis')) {
+      } else if (emailLower.includes('fortis') || emailLower === 'fortis.gurgaon@medex.org' || emailLower === 'fortis.gurgaon@smartmedishare.org') {
         const fortisHosp = hospitals.find((h) => h.id === 'hosp-2' || h.name?.includes('Fortis')) || {
           id: 'hosp-2',
           name: 'Fortis Memorial Research Institute',
-          email: 'fortis.gurgaon@smartmedishare.org',
+          email: 'fortis.gurgaon@medex.org',
           city: 'Gurgaon',
           status: 'verified',
         };
@@ -163,6 +220,45 @@ export const authService = {
   },
 
   async signupHospital(formData) {
+    // 1. Attempt registration via real MedEx Express backend API
+    try {
+      const response = await fetch(`${API_BASE}/hospitals/register`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (response.ok && data?.success && data?.data) {
+        const hospitalPayload = data.data.hospital;
+        // Keep in local storage cache for offline components
+        const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+        const existingIdx = hospitals.findIndex((h) => h.id === hospitalPayload.id || h.email === hospitalPayload.email);
+        if (existingIdx !== -1) {
+          hospitals[existingIdx] = hospitalPayload;
+        } else {
+          hospitals.unshift(hospitalPayload);
+        }
+        setStoredItem(KEYS.HOSPITALS, hospitals);
+
+        return {
+          hospital: hospitalPayload,
+          status: data.data.status || 'PENDING_APPROVAL',
+          message: data.data.message || 'Hospital Registered Successfully. Your registration is pending admin approval.',
+        };
+      }
+
+      if (data?.error) {
+        throw new Error(data.error.message || 'Registration failed');
+      }
+    } catch (apiErr) {
+      if (apiErr.message && !apiErr.message.includes('fetch') && !apiErr.message.includes('NetworkError') && !apiErr.message.includes('Failed to fetch')) {
+        throw apiErr;
+      }
+      // Otherwise proceed to development storage verification
+    }
+
     await new Promise((r) => setTimeout(r, 400));
     const hospitals = getStoredItem(KEYS.HOSPITALS, []);
 
@@ -288,7 +384,25 @@ export const authService = {
   },
 
   async getCurrentSession() {
-    return this.validateSession();
+    const session = this.validateSession();
+    if (session?.token) {
+      try {
+        const response = await fetch(`${API_BASE}/auth/me`, {
+          headers: { Authorization: `Bearer ${session.token}` },
+        });
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.data?.user) {
+            const updated = { ...session, user: { ...session.user, ...data.data.user } };
+            setStoredItem(KEYS.AUTH, updated);
+            return updated;
+          }
+        }
+      } catch (e) {
+        // Fallback to local session
+      }
+    }
+    return session;
   },
 
   validateSession() {
@@ -305,6 +419,19 @@ export const authService = {
 
   async logout() {
     const session = getStoredItem(KEYS.AUTH, null);
+    if (session?.token) {
+      try {
+        await fetch(`${API_BASE}/auth/logout`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${session.token}`,
+          },
+        });
+      } catch (e) {
+        // Ignore network failure during logout
+      }
+    }
     if (session?.user) {
       auditService.logEvent({
         action: 'AUTH_LOGOUT',

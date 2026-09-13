@@ -1,7 +1,7 @@
 import { getStoredItem, setStoredItem, KEYS } from './storage.js';
 
 /**
- * Standardized Audit Trail Service for MediStock / SmartMediShare
+ * Standardized Audit Trail Service for MedEx
  * Captures all critical operations: inventory, requests, competing rejections,
  * payments, logistics milestones, waste disposals, and administrative decisions.
  */

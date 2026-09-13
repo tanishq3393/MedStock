@@ -8,7 +8,7 @@ export const NotFoundPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'MediStock | Page Not Found';
+    document.title = 'MedEx | Page Not Found';
   }, []);
 
   // Intelligently route dashboard based on current role
@@ -28,7 +28,7 @@ export const NotFoundPage = () => {
     <div className="min-h-[calc(100vh-10rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
       <div className="max-w-lg w-full text-center space-y-6">
         
-        {/* MediStock Visual Identity */}
+        {/* MedEx Visual Identity */}
         <div className="flex justify-center">
           <div className="relative">
             <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-primary-600 to-secondary-900 flex items-center justify-center text-white shadow-xl shadow-primary-600/20">
@@ -84,7 +84,7 @@ export const NotFoundPage = () => {
 
         {/* Context Information */}
         <div className="p-4 rounded-2xl bg-slate-100/70 border border-slate-200 text-[11px] text-slate-500 max-w-sm mx-auto font-mono">
-          <span>MediStock Route Sentinel: URL not recognized by router.</span>
+          <span>MedEx Route Sentinel: URL not recognized by router.</span>
         </div>
 
       </div>

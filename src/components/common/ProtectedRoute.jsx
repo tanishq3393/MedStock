@@ -10,7 +10,7 @@ import toast from 'react-hot-toast';
 
 /**
  * Route-Level Authorization & Protection Sentinel
- * MediStock / SmartMediShare Platform
+ * MedEx Platform
  * 
  * Enforces strict Role-Based Access Control (RBAC):
  * - Blocks unauthenticated guests, redirecting to /login with target state
@@ -54,11 +54,12 @@ export const ProtectedRoute = ({ children, allowedRole }) => {
     }
   }
 
-  // 3. Operational Approval Check: Block pending hospital from dashboard / operations
+  // 3. Operational Approval Check: Block pending or rejected hospital from dashboard / operations
   if (role === 'hospital' || allowedRole === 'hospital') {
     const liveHospital = getLiveHospitalRecord(user.id || user.hospitalId || user.email);
-    const effectiveStatus = liveHospital?.status || user.status;
-    if (effectiveStatus === 'pending' || effectiveStatus === 'pending_approval') {
+    const effectiveStatus = (liveHospital?.status || user.status || '').toLowerCase();
+
+    if (effectiveStatus === 'pending' || effectiveStatus === 'pending_approval' || effectiveStatus === 'under_review') {
       return (
         <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-slate-50">
           <div className="max-w-md w-full bg-white p-6 sm:p-8 rounded-3xl border border-amber-300 shadow-xl space-y-6 text-center animate-fadeIn">
@@ -101,6 +102,49 @@ export const ProtectedRoute = ({ children, allowedRole }) => {
                 dispatch(logoutUser());
               }}
               className="w-full py-3.5 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
+            >
+              <ArrowLeft className="w-4 h-4" />
+              <span>Return to Login</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    if (effectiveStatus === 'rejected') {
+      const rejectionReason = liveHospital?.rejectionReason || user.rejectionReason || 'Statutory documentation incomplete or compliance requirements not met.';
+      return (
+        <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8 bg-slate-50">
+          <div className="max-w-md w-full bg-white p-6 sm:p-8 rounded-3xl border border-rose-300 shadow-xl space-y-6 text-center animate-fadeIn">
+            <div className="w-16 h-16 rounded-2xl bg-rose-100 text-rose-600 flex items-center justify-center mx-auto border border-rose-200 shadow-sm">
+              <ShieldAlert className="w-9 h-9 stroke-[2.2]" />
+            </div>
+
+            <div className="space-y-2">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-rose-100 text-rose-950 border border-rose-300">
+                REGISTRATION REJECTED
+              </div>
+              <h1 className="text-2xl font-black text-slate-900 tracking-tight">
+                Application Requires Attention
+              </h1>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto">
+                Your hospital registration was reviewed and could not be approved by platform administration.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-rose-50/90 border border-rose-200 text-left text-xs text-rose-950 space-y-2">
+              <div className="text-rose-900 font-bold text-[10px] uppercase tracking-wider">Reason for Rejection:</div>
+              <div className="text-xs text-rose-950 font-medium leading-relaxed bg-white/70 p-2.5 rounded-xl border border-rose-200/80">
+                {rejectionReason}
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                dispatch(logoutUser());
+              }}
+              className="w-full py-3.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-md transition-all flex items-center justify-center gap-2"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>Return to Login</span>

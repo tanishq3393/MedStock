@@ -1,6 +1,6 @@
 /**
  * Centralized Defensive Formatting & Data Normalization Helpers
- * MediStock / SmartMediShare Platform
+ * MedEx Platform
  * 
  * Ensures the application NEVER crashes on undefined, null, NaN, or malformed data.
  */

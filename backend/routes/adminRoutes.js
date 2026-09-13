@@ -37,4 +37,8 @@ router.get('/inventory/by-hospital/:hospitalId/medicines/:medicineId/batches', a
 // 5. Admin Batch Inspection with exact verified purchase bill
 router.get('/inventory/batches/:batchId', adminController.getBatchDetail);
 
+// 6. Admin Refunds Monitoring
+const refundController = require('../controllers/refundController');
+router.get('/refunds', refundController.getAdminRefunds);
+
 module.exports = router;

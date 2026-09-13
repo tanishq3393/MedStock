@@ -54,7 +54,7 @@ export const AdminSignupPage = () => {
               <ShieldAlert className="w-5 h-5 text-teal-400" />
             </div>
             <span className="text-2xl font-black text-slate-900 tracking-tight">
-              Smart<span className="text-teal-600">MediShare</span>
+              Med<span className="text-teal-600">Ex</span>
             </span>
           </Link>
           <h2 className="text-xl font-black text-slate-900">Regulatory Administrator Registration</h2>

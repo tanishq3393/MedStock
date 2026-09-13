@@ -600,6 +600,96 @@ const hospitalService = {
     });
 
     return devHospitals[idx];
+  },
+
+  /**
+   * Retrieves a hospital profile by ID (from Supabase or in-memory seed)
+   */
+  async getHospitalById(hospitalId) {
+    if (!hospitalId) return null;
+
+    if (isConfigured && supabaseAdmin) {
+      try {
+        const { data, error } = await supabaseAdmin
+          .from('hospitals')
+          .select('*')
+          .eq('id', hospitalId)
+          .single();
+        if (!error && data) {
+          return {
+            id: data.id,
+            name: data.name,
+            registrationNo: data.registration_no,
+            authorizedPerson: data.authorized_person,
+            email: data.email,
+            phone: data.phone,
+            address: data.address,
+            city: data.city,
+            state: data.state,
+            pincode: data.pincode,
+            status: data.status,
+            latitude: data.latitude,
+            longitude: data.longitude,
+          };
+        }
+      } catch (err) {
+        // fallback
+      }
+    }
+
+    const devHospitals = authService.getDevHospitals();
+    const matched = devHospitals.find(
+      (h) => h.id === hospitalId ||
+             (hospitalId === '11111111-1111-1111-1111-111111111111' && (h.id === 'hosp-1' || h.name.includes('Apollo'))) ||
+             (hospitalId === '22222222-2222-2222-2222-222222222222' && (h.name.includes('Fortis')))
+    );
+
+    if (matched) {
+      return {
+        id: hospitalId,
+        name: matched.name,
+        registrationNo: matched.registrationNo || matched.registration_no,
+        authorizedPerson: matched.authorizedPerson,
+        email: matched.email,
+        phone: matched.phone,
+        address: matched.address,
+        city: matched.city,
+        state: matched.state,
+        pincode: matched.pincode,
+        status: matched.status,
+      };
+    }
+
+    if (hospitalId === '11111111-1111-1111-1111-111111111111') {
+      return {
+        id: '11111111-1111-1111-1111-111111111111',
+        name: 'Apollo Hospital & Multi-Specialty Centre',
+        registrationNo: 'REG-DL-2023-0891',
+        email: 'apollo.mumbai@medex.org',
+        city: 'New Delhi',
+        state: 'Delhi',
+        status: 'verified',
+      };
+    }
+    if (hospitalId === '22222222-2222-2222-2222-222222222222') {
+      return {
+        id: '22222222-2222-2222-2222-222222222222',
+        name: 'Fortis Memorial Research Institute',
+        registrationNo: 'REG-HR-2023-4412',
+        email: 'fortis.gurugram@medex.org',
+        city: 'Gurugram',
+        state: 'Haryana',
+        status: 'verified',
+      };
+    }
+
+    return {
+      id: hospitalId,
+      name: 'Authorized Hospital Partner',
+      city: 'Metro',
+      state: 'India',
+      status: 'verified',
+    };
   }
 };
 

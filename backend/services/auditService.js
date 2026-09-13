@@ -63,7 +63,7 @@ const auditService = {
   /**
    * Fetches audit logs with optional filtering
    */
-  async getAuditTrail({ hospitalId = null, entityType = null, search = null, limit = 50 }) {
+  async getAuditTrail({ hospitalId = null, entityType = null, entityId = null, search = null, limit = 50 }) {
     if (isConfigured) {
       try {
         const client = supabaseAdmin || supabaseAnon;
@@ -74,6 +74,9 @@ const auditService = {
         }
         if (entityType && entityType !== 'all') {
           query = query.eq('entity_type', entityType);
+        }
+        if (entityId) {
+          query = query.eq('entity_id', String(entityId));
         }
         if (search) {
           query = query.ilike('summary', `%${search}%`);
@@ -92,6 +95,9 @@ const auditService = {
     }
     if (entityType && entityType !== 'all') {
       logs = logs.filter((l) => l.entity_type === entityType);
+    }
+    if (entityId) {
+      logs = logs.filter((l) => String(l.entity_id) === String(entityId));
     }
     if (search) {
       const q = search.toLowerCase();

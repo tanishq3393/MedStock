@@ -1,6 +1,6 @@
 /**
  * Medicine Alternative Service (Composition-Based Alternatives)
- * MediStock / SmartMediShare Marketplace
+ * MedEx Marketplace
  * 
  * Provides deterministic, clinical-grade rule-based composition matching.
  * Compares active pharmaceutical ingredients, strengths, dosage formulations, and administration routes.
@@ -488,6 +488,20 @@ export const findAlternativesForSearchQuery = (query, marketplaceInventory = [],
   return results;
 };
 
+export const fetchAlternatives = async (medicineId, options = {}) => {
+  try {
+    const q = new URLSearchParams(options).toString();
+    const res = await fetch(`http://localhost:5000/api/medicines/${medicineId}/alternatives?${q}`);
+    const json = await res.json().catch(() => null);
+    if (res.ok && json?.success && json?.data) {
+      return json.data;
+    }
+  } catch (err) {
+    // fallback to local calculation
+  }
+  return null;
+};
+
 export const CLINICAL_SAFETY_DISCLAIMER = 
   "Composition match does not automatically mean clinical interchangeability. Verify the medicine, dosage form, route, and suitability with an authorized healthcare professional before substitution.";
 
@@ -497,6 +511,7 @@ export const medicineAlternativeService = {
   isExactCompositionMatch,
   findAlternatives,
   findAlternativesForSearchQuery,
+  fetchAlternatives,
   CLINICAL_SAFETY_DISCLAIMER,
 };
 

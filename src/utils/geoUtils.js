@@ -1,5 +1,5 @@
 /**
- * Centralized Geospatial Mapping & Route Utility for MediStock India Live Tracking
+ * Centralized Geospatial Mapping & Route Utility for MedEx India Live Tracking
  * Provides standard geographic coordinates for hospitals, logistics hubs, and highway corridors.
  */
 

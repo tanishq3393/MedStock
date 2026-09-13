@@ -115,7 +115,7 @@ export const LandingPage = () => {
 
             {/* Subtext */}
             <p className="text-base sm:text-lg font-medium text-slate-600 leading-relaxed max-w-2xl mx-auto">
-              SmartMediShare interconnects verified hospital pharmacies across urban clusters to exchange surplus, near-expiry life-saving drugs before they expire—protected by CDSCO compliance and Razorpay escrow.
+              MedEx interconnects verified hospital pharmacies across urban clusters to exchange surplus, near-expiry life-saving drugs before they expire—protected by CDSCO compliance and Razorpay escrow.
             </p>
 
             {/* Action Buttons */}
@@ -284,7 +284,7 @@ export const LandingPage = () => {
               Zero Drug Wastage Protocol
             </span>
             <h2 className="text-2xl sm:text-3xl font-black leading-tight text-white">
-              How SmartMediShare Executes Inter-Hospital Redistribution in 3 Fast Steps
+              How MedEx Executes Inter-Hospital Redistribution in 3 Fast Steps
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-2 text-xs">

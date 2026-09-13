@@ -32,7 +32,7 @@ import {
   normalizeMedicineType,
   parseAndNormalizeDate,
   detectSensitiveHeaders,
-  MEDISTOCK_FIELDS,
+  MEDEX_FIELDS,
   downloadSampleCsvFile
 } from '../../utils/csvParser';
 import { calculateMedicineExpiry } from '../../utils/expiryUtils';
@@ -209,7 +209,7 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
   // Check required fields mapped
   const missingRequiredFields = useMemo(() => {
     const mappedValues = Object.values(columnMappings);
-    const requiredFields = MEDISTOCK_FIELDS.filter((f) => f.required);
+    const requiredFields = MEDEX_FIELDS.filter((f) => f.required);
     return requiredFields.filter((f) => !mappedValues.includes(f.key));
   }, [columnMappings]);
 
@@ -584,7 +584,7 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                   </span>
                 </h2>
                 <p className="text-xs text-slate-500 font-medium">
-                  Easily ingest medicine stock into MediStock without manual entry.
+                  Easily ingest medicine stock into MedEx without manual entry.
                 </p>
               </div>
             </div>
@@ -804,7 +804,7 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
                 <div>
                   <h3 className="text-base font-bold text-slate-900">
-                    Map CSV Columns to MediStock Fields
+                    Map CSV Columns to MedEx Fields
                   </h3>
                   <p className="text-xs text-slate-500 font-medium">
                     We automatically suggested mappings based on your headers. Please verify each column.
@@ -833,7 +833,7 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                   <div>
                     <span className="font-bold block">Non-Inventory Fields Detected</span>
                     This file contains columns that appear to be patient or confidential data ({sensitiveColumnsDetected.join(', ')}). 
-                    To protect privacy, these columns will be excluded and will not be imported into MediStock.
+                    To protect privacy, these columns will be excluded and will not be imported into MedEx.
                   </div>
                 </div>
               )}
@@ -856,13 +856,13 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                     <tr>
                       <th className="py-3 px-4 w-5/12">Your CSV Column</th>
                       <th className="py-3 px-2 w-1/12 text-center text-slate-400">➔</th>
-                      <th className="py-3 px-4 w-6/12">MediStock Field</th>
+                      <th className="py-3 px-4 w-6/12">MedEx Field</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 bg-white">
                     {csvHeaders.map((header) => {
                       const currentField = columnMappings[header] || '';
-                      const fieldDef = MEDISTOCK_FIELDS.find((f) => f.key === currentField);
+                      const fieldDef = MEDEX_FIELDS.find((f) => f.key === currentField);
                       const sampleVal = csvRawRows[0]?.[header] || '';
 
                       return (
@@ -893,14 +893,14 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                               >
                                 <option value="">-- Ignore this column --</option>
                                 <optgroup label="Required Fields">
-                                  {MEDISTOCK_FIELDS.filter((f) => f.required).map((f) => (
+                                  {MEDEX_FIELDS.filter((f) => f.required).map((f) => (
                                     <option key={f.key} value={f.key}>
                                       {f.label} *
                                     </option>
                                   ))}
                                 </optgroup>
                                 <optgroup label="Optional Fields">
-                                  {MEDISTOCK_FIELDS.filter((f) => !f.required).map((f) => (
+                                  {MEDEX_FIELDS.filter((f) => !f.required).map((f) => (
                                     <option key={f.key} value={f.key}>
                                       {f.label}
                                     </option>
@@ -1390,7 +1390,7 @@ export const CSVImportModal = ({ isOpen, onClose, onImportSuccess }) => {
                   Inventory Imported Successfully!
                 </h3>
                 <p className="text-xs text-slate-500 font-medium max-w-md mx-auto">
-                  Your medicine stock has been successfully ingested into MediStock.
+                  Your medicine stock has been successfully ingested into MedEx.
                   Expiry statuses, low-stock warnings, and peer concessions have been calculated.
                 </p>
               </div>

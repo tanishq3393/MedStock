@@ -1,6 +1,6 @@
 /**
  * Centralized Role-Based Access Control (RBAC) & Permissions Utility
- * MediStock / SmartMediShare Healthcare Logistics Platform
+ * MedEx Healthcare Logistics Platform
  * 
  * IMPORTANT: In this frontend demonstration prototype, permissions are enforced
  * in client state to prevent unauthorized UI navigation and state manipulation.

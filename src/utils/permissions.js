@@ -1,7 +1,7 @@
 import { useSelector } from 'react-redux';
 
 /**
- * Centralized Role-Based Access Control (RBAC) definitions for the MediStock frontend prototype.
+ * Centralized Role-Based Access Control (RBAC) definitions for the MedEx frontend prototype.
  * NOTE: This provides frontend authorization UX only. Backend authorization would still be required in production.
  */
 export const ROLES = {

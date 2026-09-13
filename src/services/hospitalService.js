@@ -34,6 +34,35 @@ const resolveHospitalId = (hospitalId) => {
 };
 
 export const hospitalService = {
+  /**
+   * Retrieves current authenticated hospital profile via GET /api/hospitals/me
+   */
+  async getCurrentHospital() {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch('http://localhost:5000/api/hospitals/me', {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          return json.data;
+        }
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
+    const session = getStoredItem(KEYS.AUTH, null);
+    const hospitalId = session?.user?.hospitalId || session?.user?.id;
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    return hospitals.find((h) => h.id === hospitalId) || session?.user || null;
+  },
+
   // ==========================================
   // 1. DASHBOARD ANALYTICS (Fully Derived)
   // ==========================================
@@ -97,6 +126,38 @@ export const hospitalService = {
   // 2. INVENTORY MANAGEMENT (Isolated CRUD)
   // ==========================================
   async getInventory(hospitalIdParam) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        let url = 'http://localhost:5000/api/inventory?limit=200';
+        if (hospitalIdParam && session?.user?.role === 'admin') {
+          url += `&hospitalId=${encodeURIComponent(hospitalIdParam)}`;
+        }
+        const response = await fetch(url, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          const items = Array.isArray(json.data) ? json.data : (json.data.items || []);
+          if (items.length > 0) {
+            return items.map((m) => ({
+              ...m,
+              brandName: m.medicineName || m.brandName,
+              power: m.strength || m.power || m.dosage,
+              unitOriginalPrice: m.mrp || m.unitPrice,
+              unitFinalPrice: m.concessionRate || m.unitPrice,
+            }));
+          }
+        }
+      }
+    } catch (e) {
+      // offline / mock fallback
+    }
+
     await new Promise((r) => setTimeout(r, 200));
     const hospitalId = resolveHospitalId(hospitalIdParam);
     if (!hospitalId) return [];
@@ -213,8 +274,37 @@ export const hospitalService = {
   },
 
   async addMedicine(medicineData) {
-    await new Promise((r) => setTimeout(r, 250));
     assertHospitalActive(medicineData.hospitalId);
+
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch('http://localhost:5000/api/inventory', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(medicineData),
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          const medicines = getStoredItem(KEYS.MEDICINES, []);
+          medicines.unshift(json.data);
+          setStoredItem(KEYS.MEDICINES, medicines);
+          return json.data;
+        } else if (response.status === 409 || response.status === 403 || response.status === 422) {
+          throw new Error(json?.message || 'Inventory intake rejected');
+        }
+      }
+    } catch (apiErr) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) {
+        throw apiErr;
+      }
+    }
+
+    await new Promise((r) => setTimeout(r, 250));
 
     const qty = Number(medicineData.quantity);
     const unitPrice = Number(medicineData.unitOriginalPrice || medicineData.mrp || 100);
@@ -481,6 +571,33 @@ export const hospitalService = {
   },
 
   async updateMedicine(id, updatedData) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`http://localhost:5000/api/inventory/${id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(updatedData),
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          const medicines = getStoredItem(KEYS.MEDICINES, []);
+          const idx = medicines.findIndex((m) => m.id === id);
+          if (idx !== -1) {
+            medicines[idx] = { ...medicines[idx], ...json.data };
+            setStoredItem(KEYS.MEDICINES, medicines);
+          }
+          return json.data;
+        }
+      }
+    } catch (apiErr) {
+      // fallback
+    }
+
     await new Promise((r) => setTimeout(r, 200));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const index = medicines.findIndex((m) => m.id === id);
@@ -669,6 +786,29 @@ export const hospitalService = {
   },
 
   async deleteMedicine(id) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`http://localhost:5000/api/inventory/${id}`, {
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success) {
+          const medicines = getStoredItem(KEYS.MEDICINES, []);
+          const filtered = medicines.filter((m) => m.id !== id);
+          setStoredItem(KEYS.MEDICINES, filtered);
+          return true;
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+
     await new Promise((r) => setTimeout(r, 200));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
     const medicine = medicines.find((m) => m.id === id);
@@ -690,6 +830,55 @@ export const hospitalService = {
     });
 
     return true;
+  },
+
+  async adjustStock(id, { quantityChange, reason }) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`http://localhost:5000/api/inventory/${id}/adjust`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ quantityChange, reason }),
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          return json.data;
+        } else if (response.status === 400 || response.status === 422 || response.status === 403) {
+          throw new Error(json?.message || 'Stock adjustment rejected');
+        }
+      }
+    } catch (apiErr) {
+      if (apiErr.message && !apiErr.message.includes('fetch')) throw apiErr;
+    }
+    return this.updateMedicine(id, { quantityChange, reason });
+  },
+
+  async getStockHistory(id) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`http://localhost:5000/api/inventory/${id}/history`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          return json.data;
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+    const history = getStoredItem(KEYS.STOCK_HISTORY, []);
+    return history.filter((h) => h.medicineId === id);
   },
 
   async importInventoryBatch(hospitalIdParam, { itemsToCreate = [], itemsToUpdate = [], skippedCount = 0, stats = {} }) {
@@ -803,6 +992,31 @@ export const hospitalService = {
   // 3. MARKETPLACE (Only valid active listings)
   // ==========================================
   async getMarketplace(currentHospitalId, filters = {}) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const queryParams = new URLSearchParams();
+        if (filters.search) queryParams.set('search', filters.search);
+        if (filters.dosageForm && filters.dosageForm !== 'all') queryParams.set('dosageForm', filters.dosageForm);
+        const response = await fetch(`http://localhost:5000/api/marketplace?${queryParams.toString()}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          const items = json.data.items || json.data.listings || json.data;
+          if (Array.isArray(items) && items.length > 0) {
+            return items;
+          }
+        }
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
     await new Promise((r) => setTimeout(r, 200));
     const medicines = getStoredItem(KEYS.MEDICINES, []);
 
@@ -868,6 +1082,43 @@ export const hospitalService = {
   // 4. REQUESTS & 48-HOUR SLA & FIRST ACCEPTANCE WINS
   // ==========================================
   async createRequest(reqData) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch('http://localhost:5000/api/requests', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            inventoryLotId: reqData.inventoryLotId || reqData.lotId || reqData.medicineId,
+            medicineId: reqData.medicineId,
+            quantity: Number(reqData.quantity),
+            priority: reqData.priority || 'standard',
+            deliveryAddress: reqData.deliveryAddress || '',
+            notes: reqData.notes || '',
+          }),
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          const created = json.data;
+          const requests = getStoredItem(KEYS.REQUESTS, []);
+          requests.unshift(created);
+          setStoredItem(KEYS.REQUESTS, requests);
+          return created;
+        } else if (!response.ok && json?.error?.message) {
+          throw new Error(json.error.message);
+        }
+      }
+    } catch (e) {
+      if (e.message && !e.message.includes('fetch') && !e.message.includes('Failed to fetch')) {
+        throw e;
+      }
+      // offline fallback
+    }
+
     await new Promise((r) => setTimeout(r, 300));
     assertHospitalActive(reqData.fromHospitalId);
 
@@ -1142,10 +1393,71 @@ export const hospitalService = {
   },
 
   /**
+   * Retrieves authoritative cancellation policy from backend or computes locally
+   */
+  async getRequestCancellationPolicy(requestId) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`http://localhost:5000/api/requests/${requestId}/cancellation-policy`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          return json.data;
+        }
+      }
+    } catch (e) {
+      // offline fallback
+    }
+
+    const requests = getStoredItem(KEYS.REQUESTS, []);
+    const targetReq = requests.find((r) => r.id === requestId);
+    if (!targetReq) return null;
+    return getCancellationPolicy(targetReq);
+  },
+
+  /**
    * Cancels an active requisition with tiered refund policy rules.
    * Safely restores seller-reserved stock if accepted/packed prior to dispatch.
    */
   async cancelRequest({ requestId, reason = 'No longer required', note = '', hospitalId }) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`http://localhost:5000/api/requests/${requestId}/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ reason, notes: note }),
+        });
+        const json = await response.json().catch(() => null);
+        if (response.ok && json?.success && json?.data) {
+          const requests = getStoredItem(KEYS.REQUESTS, []);
+          const reqIndex = requests.findIndex((r) => r.id === requestId);
+          if (reqIndex !== -1) {
+            requests[reqIndex] = { ...requests[reqIndex], ...json.data.request, status: 'cancelled' };
+            setStoredItem(KEYS.REQUESTS, requests);
+          }
+          return json.data;
+        } else if (!response.ok && json?.error?.message) {
+          throw new Error(json.error.message);
+        }
+      }
+    } catch (e) {
+      if (e.message && !e.message.includes('fetch') && !e.message.includes('Failed to fetch')) {
+        throw e;
+      }
+      // offline fallback
+    }
+
     await new Promise((r) => setTimeout(r, 250));
     const requests = getStoredItem(KEYS.REQUESTS, []);
     const reqIndex = requests.findIndex((r) => r.id === requestId);
@@ -1289,6 +1601,52 @@ export const hospitalService = {
   // ==========================================
   async processPayment({ requestId, paymentMethod = 'Demo B2B Escrow Transfer' }) {
     await new Promise((r) => setTimeout(r, 600));
+
+    // 1. Attempt authoritative backend payment flow if authenticated
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    let backendPayment = null;
+
+    if (token) {
+      try {
+        const createRes = await fetch('http://localhost:5000/api/payments/create', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ requestId }),
+        });
+        const createData = await createRes.json();
+
+        if (createRes.ok && createData?.success && createData?.data) {
+          const order = createData.data;
+          const providerPaymentId = 'pay_' + Math.random().toString(36).substring(2, 12);
+          const providerSignature = `mock_sig_${order.providerOrderId}_${providerPaymentId}`;
+
+          const verifyRes = await fetch('http://localhost:5000/api/payments/verify', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              paymentId: order.paymentId,
+              providerOrderId: order.providerOrderId,
+              providerPaymentId,
+              providerSignature,
+            }),
+          });
+          const verifyData = await verifyRes.json();
+          if (verifyRes.ok && verifyData?.success && verifyData?.data?.payment) {
+            backendPayment = verifyData.data.payment;
+          }
+        }
+      } catch (apiErr) {
+        // Fall through to local simulation fallback
+      }
+    }
+
     const requests = getStoredItem(KEYS.REQUESTS, []);
     const payments = getStoredItem(KEYS.PAYMENTS, []);
     const trackingList = getStoredItem(KEYS.TRACKING, []);
@@ -1303,8 +1661,8 @@ export const hospitalService = {
       throw new Error(`Cannot pay for requisition in "${req.status}" status. Requisition must be accepted first.`);
     }
 
-    const paymentId = 'pay_demo_' + Math.random().toString(36).substring(2, 11);
-    const orderId = 'order_demo_' + Math.random().toString(36).substring(2, 10);
+    const paymentId = backendPayment?.id || ('pay_demo_' + Math.random().toString(36).substring(2, 11));
+    const orderId = backendPayment?.providerOrderId || backendPayment?.provider_order_id || ('order_demo_' + Math.random().toString(36).substring(2, 10));
 
     // Update Request: Accepted -> Payment Successful -> Paid (Lifecycle Stage 3)
     req.status = 'paid';
@@ -1327,7 +1685,7 @@ export const hospitalService = {
 
     // Record Payment
     const newPayment = {
-      id: 'pay-' + Date.now(),
+      id: paymentId,
       transactionId: req.transactionId,
       requestId: req.id,
       medicineName: req.medicineName,
@@ -1402,6 +1760,28 @@ export const hospitalService = {
 
   async failPayment({ requestId, reason = 'Card declined / Sandbox simulation failure' }) {
     await new Promise((r) => setTimeout(r, 400));
+
+    // Attempt backend registration
+    const session = getStoredItem(KEYS.AUTH, null);
+    const token = session?.token;
+    if (token) {
+      try {
+        await fetch('http://localhost:5000/api/payments/fail', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            paymentId: requestId,
+            reason,
+          }),
+        });
+      } catch (e) {
+        // Fallback to local store
+      }
+    }
+
     const requests = getStoredItem(KEYS.REQUESTS, []);
     const index = requests.findIndex((r) => r.id === requestId);
     if (index === -1) throw new Error('Requisition not found');

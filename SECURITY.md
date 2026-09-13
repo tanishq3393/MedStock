@@ -1,7 +1,7 @@
-# SmartMediShare / MediStock Security Architecture & Hardening Guide
+# MedEx Security Architecture & Hardening Guide
 
 > **IMPORTANT DISCLAIMER**  
-> **SmartMediShare / MediStock is currently a frontend-first React/Vite prototype.**  
+> **MedEx is currently a frontend-first React/Vite prototype.**  
 > All authentication sessions, role-based checks, audit logs, and transaction records currently run within client-side memory and browser `localStorage`.  
 > **THIS DEMONSTRATION ENVIRONMENT IS NOT PRODUCTION READY, DOES NOT CLAIM HIPAA OR DISHA COMPLIANCE, DOES NOT PROCESS REAL BANKING TRANSACTIONS, AND CONTAINS STRICTLY SYNTHETIC DEMONSTRATION DATA (NO REAL PATIENT OR HEALTHCARE CLINICAL INFORMATION).**  
 >  
@@ -222,7 +222,7 @@ Because this is a frontend prototype communicating with local state, CSRF is not
 When serving the built application in production, configure the web server or CDN (Nginx, Caddy, Cloudflare) with the following strict CSP:
 
 ```http
-Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://images.unsplash.com; connect-src 'self' https://api.smartmedishare.in; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
+Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://images.unsplash.com; connect-src 'self' https://api.medex.in; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'; upgrade-insecure-requests;
 ```
 
 ### Policy Breakdown
@@ -337,7 +337,7 @@ npm audit
 
 ### Current Status & Accepted Deviations:
 - **`esbuild <= 0.24.2`** (via `vite`): Development-only web server vulnerability. Does not affect production static builds. Remediation planned with Vite 6/7 upgrade during next release cycle.
-- **`react-router-dom <= 6.28.0`**: Advisories relate to open redirect / SSR constructor injection. SmartMediShare is a purely client-rendered SPA without SSR, making these vectors non-exploitable in this setup.
+- **`react-router-dom <= 6.28.0`**: Advisories relate to open redirect / SSR constructor injection. MedEx is a purely client-rendered SPA without SSR, making these vectors non-exploitable in this setup.
 
 ### Automated Monitoring
 - Integrate GitHub Dependabot or Snyk into the CI/CD pipeline to automatically block pull requests introducing CVEs with CVSS score $\ge 7.0$.
@@ -346,7 +346,7 @@ npm audit
 
 ## 16. Production Deployment Checklist
 
-Before moving SmartMediShare from prototype to production:
+Before moving MedEx from prototype to production:
 
 - [ ] **Backend Service:** Replace client-side mock services with an authenticated REST/GraphQL API.
 - [ ] **HTTPS:** Enforce TLS 1.3 with automated certificate renewal (Let's Encrypt / Cloudflare).
@@ -363,8 +363,8 @@ Before moving SmartMediShare from prototype to production:
 
 ## 17. Responsible Vulnerability Disclosure Policy
 
-If you discover a security vulnerability in SmartMediShare, please report it responsibly:
+If you discover a security vulnerability in MedEx, please report it responsibly:
 
-- **Email:** `security@smartmedishare.demo`
+- **Email:** `security@medex.demo`
 - **Response SLA:** Initial acknowledgment within 24 business hours; triaged fix timeline within 72 hours.
 - **Safe Harbor:** We will not pursue legal action against security researchers who conduct testing in good faith, do not access other users' data, and allow reasonable time for remediation before public disclosure.

@@ -168,7 +168,7 @@ export const AdminHospitals = () => {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Approved Hospitals Directory</h1>
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-normal leading-relaxed">
-            Hospitals verified and accredited in the MediStock network. View submitted registration dossiers, active medicine listings, and trading activity.
+            Hospitals verified and accredited in the MedEx network. View submitted registration dossiers, active medicine listings, and trading activity.
           </p>
         </div>
 

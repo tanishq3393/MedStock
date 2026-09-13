@@ -8,14 +8,14 @@ export const Footer = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 lg:py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-10">
           
-          {/* Brand Col: MEDISTOCK */}
+          {/* Brand Col: MedEx */}
           <div className="lg:col-span-2 space-y-4">
             <Link to="/" className="flex items-center gap-3 group">
               <div className="w-9 h-9 rounded-xl bg-primary-600 flex items-center justify-center text-white shadow-md shadow-primary-600/20 group-hover:scale-105 transition-transform">
                 <Pill className="w-5 h-5 rotate-45 text-cyan-300" />
               </div>
               <span className="text-xl font-extrabold text-white tracking-tight">
-                Smart<span className="text-primary-400">MediShare</span>
+                Med<span className="text-primary-400">Ex</span>
               </span>
             </Link>
             
@@ -125,7 +125,7 @@ export const Footer = () => {
 
         {/* Bottom Bar */}
         <div className="mt-12 pt-8 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-[11px] text-slate-500 font-mono">
-          <p>© {new Date().getFullYear()} MediStock / SmartMediShare. Frontend Prototype Edition.</p>
+          <p>© {new Date().getFullYear()} MedEx. Frontend Prototype Edition.</p>
           <div className="flex flex-wrap items-center gap-5">
             <Link to="/about" className="hover:text-slate-300 transition-colors">
               About

@@ -7,5 +7,7 @@ const router = express.Router();
 router.use(authenticateUser);
 
 router.get('/', marketplaceController.getMarketplace);
+router.get('/:id', marketplaceController.getMarketplaceItem);
+router.get('/:id/alternatives', marketplaceController.getMarketplaceAlternatives);
 
 module.exports = router;

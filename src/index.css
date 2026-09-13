@@ -108,7 +108,7 @@
 }
 
 /* ==========================================================================
-   Leaflet Map Custom SaaS Styling for MediStock India Live Tracking
+   Leaflet Map Custom SaaS Styling for MedEx India Live Tracking
    ========================================================================== */
 .leaflet-container {
   font-family: inherit !important;
@@ -213,9 +213,22 @@
   transition: all 0.5s ease-out;
 }
 
+.alert-pulse-target {
+  position: relative;
+  z-index: 20 !important;
+  border-color: #0A6E79 !important;
+  background-color: rgba(240, 253, 250, 0.95) !important;
+  animation: alertInspectWave 0.85s ease-in-out 3;
+  outline: 3px solid #0A6E79 !important;
+  outline-offset: 2px !important;
+  box-shadow: 0 0 0 4px rgba(10, 110, 121, 0.25);
+  transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 /* Accessible prefers-reduced-motion fallback */
 @media (prefers-reduced-motion: reduce) {
-  .alert-target-highlight {
+  .alert-target-highlight,
+  .alert-pulse-target {
     animation: none !important;
     transform: none !important;
     outline: 3px solid #0A6E79 !important;

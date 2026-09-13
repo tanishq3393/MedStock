@@ -39,10 +39,10 @@ export const Navbar = () => {
   const [editFormData, setEditFormData] = useState({});
   const [alerts, setAlerts] = useState([]);
 
-  const refreshAlerts = () => {
+  const refreshAlerts = async () => {
     if (user?.id) {
-      const activeAlerts = alertService.getHospitalAlerts(user.id);
-      setAlerts(activeAlerts);
+      const activeAlerts = await alertService.getHospitalAlerts(user.id);
+      setAlerts(activeAlerts || []);
     } else {
       setAlerts([]);
     }
@@ -50,6 +50,20 @@ export const Navbar = () => {
 
   useEffect(() => {
     refreshAlerts();
+
+    const handleRealtimeAlert = () => {
+      refreshAlerts();
+    };
+
+    window.addEventListener('medex-alert-event', handleRealtimeAlert);
+    const unsubscribe = alertService.subscribeToAlerts(() => {
+      refreshAlerts();
+    });
+
+    return () => {
+      window.removeEventListener('medex-alert-event', handleRealtimeAlert);
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
   }, [user?.id, notificationOpen]);
 
   const handleDismissAlert = (e, alertId) => {
@@ -131,7 +145,7 @@ export const Navbar = () => {
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xl font-extrabold tracking-tight text-secondary-900">
-                  Smart<span className="text-primary-600">MediShare</span>
+                  Med<span className="text-primary-600">Ex</span>
                 </span>
                 <span className="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-primary-50 text-primary-700 border border-primary-200">
                   <ShieldCheck className="w-3 h-3 text-primary-600" />
@@ -269,7 +283,7 @@ export const Navbar = () => {
                               </div>
                             </div>
                             <p className="text-[11px] text-slate-600 leading-relaxed">
-                              {n.message}
+                              {n.desc || n.message}
                             </p>
                           </div>
                         ))

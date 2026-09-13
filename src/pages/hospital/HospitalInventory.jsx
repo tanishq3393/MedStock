@@ -96,7 +96,7 @@ export const HospitalInventory = () => {
   useEffect(() => {
     if (isLoading || !inventory || inventory.length === 0) return;
 
-    const targetInvId = searchParams.get('inventoryId') || searchParams.get('lotId') || location.state?.alertTarget?.inventoryId;
+    const targetInvId = searchParams.get('inventoryLotId') || searchParams.get('inventoryId') || searchParams.get('lotId') || location.state?.alertTarget?.inventoryLotId || location.state?.alertTarget?.inventoryId;
     const targetBatchNo = searchParams.get('batchNo') || searchParams.get('batchId') || location.state?.alertTarget?.batchNo || location.state?.alertTarget?.batchId;
     const targetMedName = searchParams.get('medicineName') || location.state?.alertTarget?.medicineName;
 
@@ -109,6 +109,7 @@ export const HospitalInventory = () => {
     const cleanParams = () => {
       try {
         const next = new URLSearchParams(searchParams);
+        next.delete('inventoryLotId');
         next.delete('inventoryId');
         next.delete('lotId');
         next.delete('batchNo');
@@ -187,7 +188,7 @@ export const HospitalInventory = () => {
       };
     }
 
-    toast.error('Inventory item from this alert is no longer available.', {
+    toast.error('The referenced inventory lot could not be found.', {
       icon: '⚠️',
       duration: 4000,
       id: 'hosp-missing-toast',
@@ -848,7 +849,7 @@ export const HospitalInventory = () => {
                         id={`hosp-med-row-${med.id}`}
                         className={`transition-colors cursor-pointer ${
                           highlightedId === med.id
-                            ? 'alert-target-highlight shadow-lg ring-2 ring-primary-500'
+                            ? 'alert-target-highlight alert-pulse-target shadow-lg ring-2 ring-primary-500'
                             : 'hover:bg-slate-50/90'
                         } ${
                           isDisposed ? 'opacity-60 bg-slate-50/50' : ''
@@ -970,7 +971,7 @@ export const HospitalInventory = () => {
                     onClick={() => setSelectedMedicineForDetails(med)}
                     className={`p-4 rounded-2xl bg-white border space-y-3 cursor-pointer transition-all ${
                       highlightedId === med.id
-                        ? 'alert-target-highlight shadow-lg ring-2 ring-primary-500'
+                        ? 'alert-target-highlight alert-pulse-target shadow-lg ring-2 ring-primary-500'
                         : 'border-slate-200 hover:border-slate-300'
                     } ${
                       isDisposed ? 'opacity-65' : ''
@@ -1217,7 +1218,7 @@ export const HospitalInventory = () => {
                     <div className="text-sm font-black text-primary-700 font-mono">
                       ₹{Number(selectedMedicineForDetails.concessionRate || selectedMedicineForDetails.unitFinalPrice || Math.round((selectedMedicineForDetails.unitOriginalPrice || 0) * (1 - (selectedMedicineForDetails.concessionPercent || 15) / 100))).toFixed(2)}
                     </div>
-                    <span className="text-[9px] text-primary-500">MediStock Rate</span>
+                    <span className="text-[9px] text-primary-500">MedEx Rate</span>
                   </div>
                   <div>
                     <span className="text-[10px] text-slate-400 block font-medium">Acquisition / Cost Rate</span>

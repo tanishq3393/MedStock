@@ -3,17 +3,18 @@ import { Link } from 'react-router-dom';
 import { Cookie, ShieldCheck, Check, RotateCcw, Save, Info, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-const STORAGE_KEY = 'medistock_storage_preferences';
+const STORAGE_KEY = 'medex_storage_preferences';
+const LEGACY_STORAGE_KEY = 'medistock_storage_preferences';
 
 export const CookiePreferencesPage = () => {
   useEffect(() => {
-    document.title = 'MediStock | Cookie Preferences';
+    document.title = 'MedEx | Cookie Preferences';
   }, []);
 
   // Preferences state
   const [preferences, setPreferences] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
+      const saved = localStorage.getItem(STORAGE_KEY) || localStorage.getItem(LEGACY_STORAGE_KEY);
       if (saved) {
         return JSON.parse(saved);
       }
@@ -98,7 +99,7 @@ export const CookiePreferencesPage = () => {
               Plain-Language Technical Disclosure
             </h3>
             <p className="text-blue-900 leading-relaxed">
-              MediStock currently operates as a client-side web application and utilizes browser <code className="bg-white/80 px-1 py-0.5 rounded font-mono font-bold">localStorage</code> for session persistence. We do not embed commercial advertising networks or third-party marketing trackers.
+              MedEx currently operates as a client-side web application and utilizes browser <code className="bg-white/80 px-1 py-0.5 rounded font-mono font-bold">localStorage</code> for session persistence. We do not embed commercial advertising networks or third-party marketing trackers.
             </p>
           </div>
         </div>

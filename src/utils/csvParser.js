@@ -1,12 +1,12 @@
 /**
- * CSV Parser and Normalization Utilities for MediStock / SmartMediShare
+ * CSV Parser and Normalization Utilities for MedEx
  * RFC 4180 Compliant parser without external dependencies.
  * Handles quoted values, commas inside quotes, multi-line quoted strings,
  * escaped double-quotes (""), trimmed whitespace, and BOM removal.
  */
 
-// MediStock Standard Fields Definition
-export const MEDISTOCK_FIELDS = [
+// MedEx Standard Fields Definition
+export const MEDEX_FIELDS = [
   { key: 'brandName', label: 'Medicine Name', required: true, description: 'Brand or commercial name of the drug' },
   { key: 'category', label: 'Medicine Type', required: true, description: 'Dosage formulation (Tablet, Capsule, Injection, etc.)' },
   { key: 'batchNo', label: 'Batch Number', required: true, description: 'Manufacturer lot or batch number' },
@@ -20,9 +20,10 @@ export const MEDISTOCK_FIELDS = [
   { key: 'unit', label: 'Unit of Measure', required: false, description: 'e.g. Tablets, Vials, Strips, Bottles' },
   { key: 'notes', label: 'Description / Notes', required: false, description: 'Storage conditions or clinical notes' },
 ];
+export const MEDISTOCK_FIELDS = MEDEX_FIELDS;
 
 /**
- * Standardizes medicine formulation types into recognized MediStock categories
+ * Standardizes medicine formulation types into recognized MedEx categories
  */
 export const normalizeMedicineType = (val) => {
   if (!val || typeof val !== 'string') return 'Unknown';
@@ -173,7 +174,7 @@ export const detectSensitiveHeaders = (headers = []) => {
 };
 
 /**
- * Suggests best MediStock field matches for CSV headers
+ * Suggests best MedEx field matches for CSV headers
  */
 export const guessColumnMappings = (csvHeaders = []) => {
   const mappings = {};
@@ -452,7 +453,7 @@ export const downloadSampleCsvFile = () => {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.setAttribute('href', url);
-  link.setAttribute('download', `MediStock_Hospital_Inventory_Sample_${new Date().toISOString().split('T')[0]}.csv`);
+  link.setAttribute('download', `MedEx_Hospital_Inventory_Sample_${new Date().toISOString().split('T')[0]}.csv`);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

@@ -536,7 +536,7 @@ export const initializeStorage = () => {
     localStorage.setItem(KEYS.SETTINGS, JSON.stringify({
       profile: {
         name: 'Super Administrator',
-        email: 'admin@smartmedishare.org',
+        email: 'admin@medex.org',
         phone: '+91 11 2345 6789',
         department: 'National Healthcare Logistics Oversight',
         avatar: '',

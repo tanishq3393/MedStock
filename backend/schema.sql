@@ -407,10 +407,15 @@ CREATE TABLE IF NOT EXISTS payments (
   provider VARCHAR(100) NOT NULL DEFAULT 'Razorpay Mock Escrow',
   provider_transaction_id VARCHAR(100),
   provider_order_id VARCHAR(100),
+  provider_payment_id VARCHAR(100),
+  provider_signature VARCHAR(255),
   razorpay_payment_id VARCHAR(100),
   razorpay_order_id VARCHAR(100),
-  payment_status VARCHAR(50) NOT NULL DEFAULT 'paid'
-    CHECK (payment_status IN ('pending', 'escrow_locked', 'paid', 'released_to_seller', 'refunded', 'failed')),
+  razorpay_signature VARCHAR(255),
+  status VARCHAR(50) NOT NULL DEFAULT 'PENDING'
+    CHECK (status IN ('CREATED', 'PENDING', 'AUTHORIZED', 'PAID', 'FAILED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'created', 'pending', 'authorized', 'paid', 'failed', 'cancelled', 'refunded', 'partially_refunded', 'escrow_locked', 'released_to_seller')),
+  payment_status VARCHAR(50) NOT NULL DEFAULT 'pending'
+    CHECK (payment_status IN ('CREATED', 'PENDING', 'AUTHORIZED', 'PAID', 'FAILED', 'CANCELLED', 'REFUNDED', 'PARTIALLY_REFUNDED', 'created', 'pending', 'authorized', 'paid', 'failed', 'cancelled', 'refunded', 'partially_refunded', 'escrow_locked', 'released_to_seller')),
   payment_method VARCHAR(100) NOT NULL DEFAULT 'Demo B2B Escrow Transfer',
   buyer_hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
   buyer_hospital_name VARCHAR(255) NOT NULL,
@@ -429,6 +434,28 @@ CREATE INDEX IF NOT EXISTS idx_payments_buyer ON payments(buyer_hospital_id);
 CREATE INDEX IF NOT EXISTS idx_payments_seller ON payments(seller_hospital_id);
 CREATE INDEX IF NOT EXISTS idx_payments_txn ON payments(transaction_id);
 CREATE INDEX IF NOT EXISTS idx_payments_request ON payments(request_id);
+CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
+CREATE INDEX IF NOT EXISTS idx_payments_prov_order ON payments(provider_order_id);
+
+-- ====================================================================
+-- ENTITY 9B: WEBHOOK EVENTS (Idempotency & Event Processing Ledger)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  provider VARCHAR(100) NOT NULL DEFAULT 'razorpay',
+  event_id VARCHAR(255) UNIQUE NOT NULL,
+  event_type VARCHAR(100) NOT NULL,
+  payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
+  provider_payment_id VARCHAR(100),
+  provider_order_id VARCHAR(100),
+  payload JSONB,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processing_result VARCHAR(50) NOT NULL DEFAULT 'SUCCESS',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_webhook_events_event_id ON webhook_events(event_id);
+CREATE INDEX IF NOT EXISTS idx_webhook_events_payment ON webhook_events(payment_id);
 
 -- ====================================================================
 -- ENTITY 10: REFUNDS
@@ -449,17 +476,17 @@ CREATE TABLE IF NOT EXISTS refunds (
   seller_hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE RESTRICT,
   total_order_amount NUMERIC(12, 2) NOT NULL CHECK (total_order_amount >= 0),
   cancellation_stage VARCHAR(50) NOT NULL
-    CHECK (cancellation_stage IN ('WITHIN_24H', 'AFTER_24H_BEFORE_DISPATCH', 'DISPATCHED')),
+    CHECK (cancellation_stage IN ('WITHIN_24H', 'AFTER_24H_BEFORE_DISPATCH', 'DISPATCHED', 'WINDOW_A', 'WINDOW_B', 'WINDOW_C', 'PREPARING')),
   penalty_percentage NUMERIC(5, 2) NOT NULL CHECK (penalty_percentage >= 0 AND penalty_percentage <= 100),
   penalty_amount NUMERIC(12, 2) NOT NULL DEFAULT 0 CHECK (penalty_amount >= 0),
   refund_percentage NUMERIC(5, 2) NOT NULL CHECK (refund_percentage >= 0 AND refund_percentage <= 100),
   refund_amount NUMERIC(12, 2) NOT NULL CHECK (refund_amount >= 0),
   reason TEXT NOT NULL,
-  status VARCHAR(50) NOT NULL DEFAULT 'processed'
-    CHECK (status IN ('pending', 'processed', 'failed')),
+  status VARCHAR(50) NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'processing', 'completed', 'processed', 'failed', 'not_required', 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED', 'NOT_REQUIRED')),
   provider_refund_reference VARCHAR(100),
   razorpay_refund_id VARCHAR(100),
-  processed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  processed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT chk_refund_math CHECK (ROUND(penalty_amount + refund_amount, 2) = ROUND(total_order_amount, 2))
 );
@@ -550,18 +577,20 @@ CREATE INDEX IF NOT EXISTS idx_tracking_receiver ON tracking_events(receiver_hos
 -- ====================================================================
 CREATE TABLE IF NOT EXISTS alerts (
   id VARCHAR(100) PRIMARY KEY,
-  hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
-  group_type VARCHAR(50) NOT NULL CHECK (group_type IN ('critical', 'action', 'info')),
-  severity VARCHAR(50) NOT NULL CHECK (severity IN ('CRITICAL', 'WARNING', 'ACTION', 'INFO')),
-  category VARCHAR(100) NOT NULL,
-  alert_type VARCHAR(100),
+  hospital_id UUID REFERENCES hospitals(id) ON DELETE CASCADE,
+  recipient_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  group_type VARCHAR(50) NOT NULL DEFAULT 'info' CHECK (group_type IN ('critical', 'action', 'info')),
+  severity VARCHAR(50) NOT NULL DEFAULT 'INFO' CHECK (severity IN ('CRITICAL', 'WARNING', 'ACTION', 'INFO', 'critical', 'warning', 'action', 'info')),
+  category VARCHAR(100) NOT NULL DEFAULT 'SYSTEM',
+  alert_type VARCHAR(100) NOT NULL DEFAULT 'INFO',
   title VARCHAR(255) NOT NULL,
-  description TEXT NOT NULL,
+  message TEXT NOT NULL,
+  description TEXT,
   link TEXT,
   action_text VARCHAR(100),
   urgent BOOLEAN NOT NULL DEFAULT false,
   source_id VARCHAR(100),
-  target_type VARCHAR(100) CHECK (target_type IN ('inventory', 'request', 'transfer', 'verification', 'system')),
+  target_type VARCHAR(100) CHECK (target_type IN ('inventory', 'request', 'transfer', 'payment', 'refund', 'verification', 'system')),
   inventory_id UUID REFERENCES inventory_lots(id) ON DELETE SET NULL,
   inventory_lot_id UUID REFERENCES inventory_lots(id) ON DELETE SET NULL,
   lot_id UUID REFERENCES inventory_lots(id) ON DELETE SET NULL,
@@ -570,15 +599,22 @@ CREATE TABLE IF NOT EXISTS alerts (
   medicine_id UUID REFERENCES medicines(id) ON DELETE SET NULL,
   request_id UUID REFERENCES requests(id) ON DELETE SET NULL,
   transfer_id UUID REFERENCES transfers(id) ON DELETE SET NULL,
+  payment_id UUID REFERENCES payments(id) ON DELETE SET NULL,
+  refund_id UUID REFERENCES refunds(id) ON DELETE SET NULL,
+  dedup_key VARCHAR(255) UNIQUE,
   is_read BOOLEAN NOT NULL DEFAULT false,
+  read_at TIMESTAMPTZ,
   is_dismissed BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_alerts_hospital ON alerts(hospital_id);
+CREATE INDEX IF NOT EXISTS idx_alerts_recipient ON alerts(recipient_user_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_category ON alerts(category);
+CREATE INDEX IF NOT EXISTS idx_alerts_type ON alerts(alert_type);
 CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(is_read);
+CREATE INDEX IF NOT EXISTS idx_alerts_dedup ON alerts(dedup_key);
 CREATE INDEX IF NOT EXISTS idx_alerts_inventory_lot_id ON alerts(inventory_lot_id);
 CREATE INDEX IF NOT EXISTS idx_alerts_batch_no ON alerts(batch_no);
 
@@ -599,8 +635,10 @@ CREATE TABLE IF NOT EXISTS notifications (
   related_entity_id VARCHAR(100),
   link TEXT,
   is_read BOOLEAN NOT NULL DEFAULT false,
+  read_at TIMESTAMPTZ,
   metadata JSONB NOT NULL DEFAULT '{}'::JSONB,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_user_id);

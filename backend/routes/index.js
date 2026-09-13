@@ -10,7 +10,10 @@ const medicineRoutes = require('./medicineRoutes');
 const inventoryRoutes = require('./inventoryRoutes');
 const marketplaceRoutes = require('./marketplaceRoutes');
 const requestRoutes = require('./requestRoutes');
+const refundRoutes = require('./refundRoutes');
+const paymentRoutes = require('./paymentRoutes');
 const alertRoutes = require('./alertRoutes');
+const notificationRoutes = require('./notificationRoutes');
 const auditRoutes = require('./auditRoutes');
 
 const router = express.Router();
@@ -25,7 +28,10 @@ router.use('/medicines', medicineRoutes);
 router.use('/inventory', inventoryRoutes);
 router.use('/marketplace', marketplaceRoutes);
 router.use('/requests', requestRoutes);
+router.use('/refunds', refundRoutes);
+router.use('/payments', paymentRoutes);
 router.use('/alerts', alertRoutes);
+router.use('/notifications', notificationRoutes);
 router.use('/audit', auditRoutes);
 
 module.exports = router;

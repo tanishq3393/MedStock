@@ -56,7 +56,7 @@ export const HospitalSignupPage = () => {
     name: 'Max Healthcare Institute Ltd',
     registrationNo: 'MH-MUM-2023-9081',
     authorizedPerson: 'Dr. Sunil Kashyap (Chief Pharmacist)',
-    email: 'max.pharmacy@smartmedishare.org',
+    email: 'max.pharmacy@medex.org',
     phone: '+91 98200 44556',
     // Step 2
     address: 'Sector 19, Palm Beach Galleria Road',
@@ -381,7 +381,7 @@ export const HospitalSignupPage = () => {
               <Pill className="w-5 h-5 rotate-45" />
             </div>
             <span className="text-2xl font-black text-slate-900 tracking-tight">
-              Smart<span className="text-teal-600">MediShare</span>
+              Med<span className="text-teal-600">Ex</span>
             </span>
           </Link>
           <h2 className="text-xl font-black text-slate-900">Hospital Institutional Onboarding</h2>

@@ -201,7 +201,7 @@ export const AdminHospitalDetails = () => {
         <Building2 className="w-10 h-10 mx-auto text-slate-400 mb-2" />
         <h3 className="font-bold text-slate-800">No approved hospital selected</h3>
         <p className="text-xs text-slate-500 mt-1">
-          This directory lists approved hospitals in the MediStock network. New registrations awaiting verification are managed in Hospital Verification.
+          This directory lists approved hospitals in the MedEx network. New registrations awaiting verification are managed in Hospital Verification.
         </p>
         <button
           onClick={() => navigate('/admin/hospitals')}
@@ -274,7 +274,7 @@ export const AdminHospitalDetails = () => {
           </h1>
 
           <p className="text-xs text-emerald-800 font-medium">
-            Accredited network facility with verified statutory documentation and active trading access on MediStock.
+            Accredited network facility with verified statutory documentation and active trading access on MedEx.
           </p>
         </div>
 
@@ -711,7 +711,7 @@ export const AdminHospitalDetails = () => {
               <div className="py-8 text-center bg-slate-50 rounded-xl text-slate-500 text-xs">
                 <Boxes className="w-6 h-6 mx-auto text-slate-400 mb-1" />
                 <p className="font-bold">0 medicine listings</p>
-                <p className="text-[11px] text-slate-400">This hospital has not listed any medicines in the MediStock marketplace yet.</p>
+                <p className="text-[11px] text-slate-400">This hospital has not listed any medicines in the MedEx marketplace yet.</p>
               </div>
             )}
           </div>
@@ -730,7 +730,7 @@ export const AdminHospitalDetails = () => {
                 <div>
                   <h3 className="font-bold text-slate-900 text-sm">SECTION D — TRADING ACTIVITY</h3>
                   <p className="text-[11px] text-slate-400">
-                    Trade Volume Distribution: Purchases / Received versus Sales / Sent transactions through MediStock
+                    Trade Volume Distribution: Purchases / Received versus Sales / Sent transactions through MedEx
                   </p>
                 </div>
               </div>

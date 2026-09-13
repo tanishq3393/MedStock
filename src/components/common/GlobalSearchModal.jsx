@@ -194,7 +194,7 @@ export const GlobalSearchModal = ({ isOpen, onClose }) => {
           {query.trim().length === 0 ? (
             <div className="py-10 text-center space-y-2 text-slate-400">
               <Search className="w-10 h-10 mx-auto opacity-30" />
-              <p className="text-xs font-bold text-slate-700">Type to search across the entire MediStock network</p>
+              <p className="text-xs font-bold text-slate-700">Type to search across the entire MedEx network</p>
               <p className="text-[11px] text-slate-400">
                 Supports exact salt matching, batch numbers, hospitals, and transaction IDs.
               </p>

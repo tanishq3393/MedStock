@@ -137,7 +137,7 @@ export const Medicine3DPreview = ({ medicine }) => {
           }}
           className="absolute inset-y-0 right-0 w-8 bg-gradient-to-r from-slate-200 to-slate-300 border-l border-slate-300 flex flex-col justify-between py-3 px-1 text-[8px] font-mono text-slate-500 rounded-r-lg"
         >
-          <span className="rotate-90 origin-left tracking-wider">SMARTMEDISHARE</span>
+          <span className="rotate-90 origin-left tracking-wider">MEDEX</span>
           <QrCode className="w-5 h-5 mx-auto text-slate-600" />
         </div>
       </div>

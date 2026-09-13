@@ -4,14 +4,14 @@ import { FileText, AlertCircle, ShieldAlert, CheckCircle2, ChevronRight, Info } 
 
 export const TermsPage = () => {
   useEffect(() => {
-    document.title = 'MediStock | Terms & Conditions';
+    document.title = 'MedEx | Terms & Conditions';
   }, []);
 
   const [activeSection, setActiveSection] = useState('term-1');
 
   const sections = [
     { id: 'term-1', title: '1. Acceptance of Terms' },
-    { id: 'term-2', title: '2. Description of MediStock' },
+    { id: 'term-2', title: '2. Description of MedEx' },
     { id: 'term-3', title: '3. Hospital Eligibility' },
     { id: 'term-4', title: '4. Account Responsibilities' },
     { id: 'term-5', title: '5. Hospital Verification' },
@@ -68,7 +68,7 @@ export const TermsPage = () => {
               Statutory Clarification & Compliance Disclaimer
             </h3>
             <p className="text-amber-900 leading-relaxed">
-              MediStock is a digital coordination and inventory exchange interface. MediStock does not itself manufacture, retail, or hold title to pharmaceutical products. Actual production operation must comply with applicable pharmaceutical regulations, including the Drugs and Cosmetics Act 1940, CDSCO rules, and Pharmacy Practice Regulations.
+              MedEx is a digital coordination and inventory exchange interface. MedEx does not itself manufacture, retail, or hold title to pharmaceutical products. Actual production operation must comply with applicable pharmaceutical regulations, including the Drugs and Cosmetics Act 1940, CDSCO rules, and Pharmacy Practice Regulations.
             </p>
           </div>
         </div>
@@ -107,17 +107,17 @@ export const TermsPage = () => {
                 1. Acceptance of Terms
               </h2>
               <p>
-                By accessing, registering, or executing transactions on MediStock (SmartMediShare), participating healthcare institutions agree to be bound by these Terms and Conditions. If an institution does not agree to these terms, it must not utilize the platform.
+                By accessing, registering, or executing transactions on MedEx, participating healthcare institutions agree to be bound by these Terms and Conditions. If an institution does not agree to these terms, it must not utilize the platform.
               </p>
             </section>
 
             {/* 2 */}
             <section id="term-2" className="space-y-3">
               <h2 className="text-base font-extrabold text-slate-900 border-b border-slate-100 pb-2">
-                2. Description of MediStock
+                2. Description of MedEx
               </h2>
               <p>
-                MediStock provides digital software tools enabling verified hospitals to list near-expiry or surplus pharmaceutical inventories for inter-institutional redistribution, track simulated cold-chain delivery corridors, and manage statutory bio-medical destruction records.
+                MedEx provides digital software tools enabling verified hospitals to list near-expiry or surplus pharmaceutical inventories for inter-institutional redistribution, track simulated cold-chain delivery corridors, and manage statutory bio-medical destruction records.
               </p>
             </section>
 
@@ -222,7 +222,7 @@ export const TermsPage = () => {
                 12. Waste Disposal Protocols
               </h2>
               <p>
-                Pharmaceuticals that reach terminal expiry must be transferred to authorized bio-medical waste treatment operators in accordance with State Pollution Control Board guidelines. MediStock provides logging manifests for destruction compliance.
+                Pharmaceuticals that reach terminal expiry must be transferred to authorized bio-medical waste treatment operators in accordance with State Pollution Control Board guidelines. MedEx provides logging manifests for destruction compliance.
               </p>
             </section>
 
@@ -242,7 +242,7 @@ export const TermsPage = () => {
                 14. Intellectual Property
               </h2>
               <p>
-                The software interface, branding, routing algorithms, and workflow architectures of MediStock / SmartMediShare are proprietary property.
+                The software interface, branding, routing algorithms, and workflow architectures of MedEx are proprietary property.
               </p>
             </section>
 

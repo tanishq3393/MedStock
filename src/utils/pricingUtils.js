@@ -1,5 +1,5 @@
 /**
- * Centralized Pricing & Concession Utilities for MediStock / SmartMediShare
+ * Centralized Pricing & Concession Utilities for MedEx
  * Enforces dynamic concessions based on remaining shelf life, transparent itemized fees,
  * and strict non-negative boundary conditions.
  */
@@ -85,7 +85,7 @@ export const calculateOrderPricing = ({
   const concessionInfo = calculateShelfLifeConcession(expiryDate, concessionPercent);
   const discountPct = concessionInfo.concessionPercent;
 
-  // Concession Rate (Offered MediStock Rate, Never negative)
+  // Concession Rate (Offered MedEx Rate, Never negative)
   const unitDiscount = (originalUnit * discountPct) / 100;
   const concessionRate = Math.max(0, Math.round((originalUnit - unitDiscount) * 100) / 100);
   const unitSellingPrice = concessionRate; // Preserved for backwards compatibility

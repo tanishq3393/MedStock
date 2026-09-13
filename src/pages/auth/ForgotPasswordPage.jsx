@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 
 export const ForgotPasswordPage = () => {
   useEffect(() => {
-    document.title = 'MediStock | Forgot Password';
+    document.title = 'MedEx | Forgot Password';
   }, []);
 
   const [email, setEmail] = useState('');
@@ -54,7 +54,7 @@ export const ForgotPasswordPage = () => {
               <Pill className="w-5 h-5 rotate-45" />
             </div>
             <span className="text-2xl font-black text-slate-900 tracking-tight">
-              Smart<span className="text-teal-600">MediShare</span>
+              Med<span className="text-teal-600">Ex</span>
             </span>
           </Link>
           <p className="text-xs text-slate-500 font-medium">

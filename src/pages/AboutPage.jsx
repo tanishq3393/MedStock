@@ -20,7 +20,7 @@ import {
 
 export const AboutPage = () => {
   useEffect(() => {
-    document.title = 'MediStock | About Us';
+    document.title = 'MedEx | About Us';
   }, []);
 
   return (
@@ -40,7 +40,7 @@ export const AboutPage = () => {
           </h1>
 
           <p className="text-base sm:text-lg text-slate-300 max-w-2xl mx-auto leading-relaxed font-normal">
-            MediStock (SmartMediShare) is a digital platform that enables verified hospitals to exchange surplus and near-expiry medicines directly with other healthcare institutions before they go to waste.
+            MedEx is a digital platform that enables verified hospitals to exchange surplus and near-expiry medicines directly with other healthcare institutions before they go to waste.
           </p>
 
           <div className="flex flex-wrap items-center justify-center gap-3 pt-4">
@@ -121,7 +121,7 @@ export const AboutPage = () => {
           </div>
 
           <p className="text-sm text-slate-600 max-w-3xl leading-relaxed">
-            MediStock connects hospital pharmacies directly into a collaborative network. Instead of letting usable medicine expire, hospitals list batches at transparent concession rates so neighboring facilities can acquire needed units quickly and affordably.
+            MedEx connects hospital pharmacies directly into a collaborative network. Instead of letting usable medicine expire, hospitals list batches at transparent concession rates so neighboring facilities can acquire needed units quickly and affordably.
           </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -175,14 +175,14 @@ export const AboutPage = () => {
           </div>
         </section>
 
-        {/* Section: How MediStock Helps Hospitals */}
+        {/* Section: How MedEx Helps Hospitals */}
         <section className="bg-slate-50 p-8 sm:p-10 rounded-3xl border border-slate-200/90 space-y-6">
           <div className="max-w-2xl">
             <span className="text-xs font-bold font-mono text-primary-600 uppercase tracking-wider">
               Operational Impact
             </span>
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 tracking-tight mt-1">
-              How MediStock Helps Hospitals
+              How MedEx Helps Hospitals
             </h2>
           </div>
 
@@ -238,7 +238,7 @@ export const AboutPage = () => {
             Our Vision
           </h2>
           <p className="text-sm text-slate-600 leading-relaxed font-normal">
-            We envision a zero-waste healthcare ecosystem where no viable medicine expires unutilized while patients in need wait for treatment. By turning surplus pharmaceutical inventories into shared community resources, MediStock bridges supply gaps between hospitals and supports clinical care across India.
+            We envision a zero-waste healthcare ecosystem where no viable medicine expires unutilized while patients in need wait for treatment. By turning surplus pharmaceutical inventories into shared community resources, MedEx bridges supply gaps between hospitals and supports clinical care across India.
           </p>
 
           <div className="pt-4 flex flex-wrap justify-center gap-3">

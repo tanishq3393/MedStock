@@ -21,7 +21,7 @@ export const EmailVerificationPage = () => {
   const navigate = useNavigate();
 
   useEffect(() => {
-    document.title = 'MediStock | Verify Email';
+    document.title = 'MedEx | Verify Email';
   }, []);
 
   const emailParam = searchParams.get('email') || 'pharmacy@hospital.org';
@@ -67,7 +67,7 @@ export const EmailVerificationPage = () => {
               <Pill className="w-5 h-5 rotate-45" />
             </div>
             <span className="text-2xl font-black text-slate-900 tracking-tight">
-              Smart<span className="text-teal-600">MediShare</span>
+              Med<span className="text-teal-600">Ex</span>
             </span>
           </Link>
           <p className="text-xs text-slate-500 font-medium">

@@ -634,7 +634,7 @@ export const AdminInventory = () => {
     // Wait until inventory has finished loading and rawItems are populated
     if (isLoading || !rawItems || rawItems.length === 0) return;
 
-    const targetInvId = searchParams.get('inventoryId') || searchParams.get('lotId') || location.state?.alertTarget?.inventoryId;
+    const targetInvId = searchParams.get('inventoryLotId') || searchParams.get('inventoryId') || searchParams.get('lotId') || location.state?.alertTarget?.inventoryLotId || location.state?.alertTarget?.inventoryId;
     const targetBatchNo = searchParams.get('batchNo') || searchParams.get('batchId') || location.state?.alertTarget?.batchNo || location.state?.alertTarget?.batchId;
     const targetHospId = searchParams.get('hospitalId') || location.state?.alertTarget?.hospitalId;
     const targetMedName = searchParams.get('medicineName') || location.state?.alertTarget?.medicineName;
@@ -657,6 +657,7 @@ export const AdminInventory = () => {
     const cleanTargetParams = () => {
       try {
         const nextParams = new URLSearchParams(searchParams);
+        nextParams.delete('inventoryLotId');
         nextParams.delete('inventoryId');
         nextParams.delete('lotId');
         nextParams.delete('batchNo');
@@ -876,7 +877,7 @@ export const AdminInventory = () => {
     }
 
     // 3. TARGET NOT FOUND (Section 14 & Test 6)
-    toast.error('Inventory item from this alert is no longer available.', {
+    toast.error('The referenced inventory lot could not be found.', {
       icon: '⚠️',
       duration: 4000,
       id: 'inspect-missing-toast',
@@ -1139,7 +1140,7 @@ export const AdminInventory = () => {
           </div>
           <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white">Central Inventory Directory</h1>
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl font-normal leading-relaxed">
-            Consolidated overview of pharmaceutical formulations across the MediStock network. Drill down from unique medicines to hospital contributors, batch lots, and purchase bills.
+            Consolidated overview of pharmaceutical formulations across the MedEx network. Drill down from unique medicines to hospital contributors, batch lots, and purchase bills.
           </p>
         </div>
 
@@ -1991,7 +1992,7 @@ export const AdminInventory = () => {
                     onClick={() => setSelectedBatchId(batch.id)}
                     className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer group bg-white space-y-3.5 ${
                       isTargeted
-                        ? 'alert-target-highlight shadow-xl ring-2 ring-primary-500'
+                        ? 'alert-target-highlight alert-pulse-target shadow-xl ring-2 ring-primary-500'
                         : 'border-slate-200/80 hover:border-primary-300 hover:shadow-md'
                     }`}
                   >
@@ -2034,7 +2035,7 @@ export const AdminInventory = () => {
                       <span className="font-mono font-bold text-slate-900">₹{Number(batch.mrp || 100).toFixed(2)}</span>
                     </div>
                     <div>
-                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">MediStock Rate</span>
+                      <span className="text-[10px] text-slate-400 uppercase font-semibold block">MedEx Rate</span>
                       <span className="font-mono font-bold text-primary-700">₹{Number(batch.concessionRate || 95).toFixed(2)}</span>
                     </div>
                   </div>
@@ -2603,7 +2604,7 @@ export const AdminInventory = () => {
                       onClick={() => setSelectedBatchId(batch.id)}
                       className={`p-4 sm:p-5 rounded-2xl border transition-all cursor-pointer group bg-white space-y-3.5 ${
                         isTargeted
-                          ? 'alert-target-highlight shadow-xl ring-2 ring-primary-500'
+                          ? 'alert-target-highlight alert-pulse-target shadow-xl ring-2 ring-primary-500'
                           : 'border-slate-200/80 hover:border-primary-300 hover:shadow-md'
                       }`}
                     >
@@ -2646,7 +2647,7 @@ export const AdminInventory = () => {
                         <span className="font-mono font-bold text-slate-900">₹{Number(batch.mrp || 100).toFixed(2)}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">MediStock Rate</span>
+                        <span className="text-[10px] text-slate-400 uppercase font-semibold block">MedEx Rate</span>
                         <span className="font-mono font-bold text-primary-700">₹{Number(batch.concessionRate || 95).toFixed(2)}</span>
                       </div>
                     </div>
@@ -2727,7 +2728,7 @@ export const AdminInventory = () => {
                 <p className="font-mono font-bold text-slate-800 text-sm mt-0.5">{currentBatchLot.expiryDate}</p>
               </div>
               <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
-                <span className="text-[10px] font-bold text-slate-400 uppercase">MediStock Rate</span>
+                <span className="text-[10px] font-bold text-slate-400 uppercase">MedEx Rate</span>
                 <p className="font-mono font-bold text-primary-800 text-sm mt-0.5">₹{Number(currentBatchLot.concessionRate || 95).toFixed(2)}</p>
               </div>
             </div>
@@ -2824,7 +2825,7 @@ export const AdminInventory = () => {
                     <span className="font-mono font-bold text-slate-900">₹{Number(currentBatchLot.mrp || 100).toFixed(2)}</span>
                   </div>
                   <div>
-                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">MediStock Concession Rate</span>
+                    <span className="text-slate-400 block text-[10px] uppercase font-semibold">MedEx Concession Rate</span>
                     <span className="font-mono font-bold text-primary-700">₹{Number(currentBatchLot.concessionRate || 95).toFixed(2)}</span>
                   </div>
                   <div>

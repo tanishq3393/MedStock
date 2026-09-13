@@ -8,14 +8,16 @@ const logger = require('../utils/logger');
  */
 const authenticateUser = async (req, res, next) => {
   try {
+    let token = null;
     const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      return errorResponse(res, 'Authentication token is required.', 401, 'UNAUTHORIZED');
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      token = authHeader.split(' ')[1];
+    } else if (req.query?.token) {
+      token = req.query.token;
     }
 
-    const token = authHeader.split(' ')[1];
     if (!token || token.trim() === '') {
-      return errorResponse(res, 'Invalid authorization format.', 401, 'UNAUTHORIZED');
+      return errorResponse(res, 'Authentication token is required.', 401, 'UNAUTHORIZED');
     }
 
     // 1. Supabase Auth Verification (Production / Connected mode)
@@ -173,7 +175,28 @@ const authenticateUser = async (req, res, next) => {
       return next();
     }
 
-    if (token.includes('hosp') || token.includes('hospital')) {
+    if (token.includes('fortis') || token.includes('22222222-2222-2222-2222-222222222222')) {
+      req.user = {
+        id: '22222222-2222-2222-2222-222222222222',
+        email: 'fortis.gurugram@medex.org',
+        role: 'hospital',
+        hospitalId: '22222222-2222-2222-2222-222222222222',
+        name: 'Fortis Memorial Research Institute',
+      };
+      req.hospital = {
+        id: '22222222-2222-2222-2222-222222222222',
+        name: 'Fortis Memorial Research Institute',
+        registrationNo: 'REG-HR-2023-4412',
+        status: 'APPROVED',
+        city: 'Gurugram',
+        state: 'Haryana',
+        email: 'supply@fortis-demo.org',
+      };
+      req.user.hospital = req.hospital;
+      return next();
+    }
+
+    if (token.includes('hosp') || token.includes('hospital') || token.includes('apollo') || token.includes('11111111')) {
       req.user = {
         id: '11111111-1111-1111-1111-111111111111',
         email: 'apollo.mumbai@medex.org',

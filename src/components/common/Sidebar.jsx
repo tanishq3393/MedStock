@@ -105,7 +105,7 @@ export const Sidebar = ({ role = 'hospital' }) => {
           to: '/admin/hospitals', 
           icon: Building2, 
           label: 'Hospitals',
-          title: 'Approved hospitals in the MediStock network',
+          title: 'Approved hospitals in the MedEx network',
         },
         { 
           to: '/admin/verification', 

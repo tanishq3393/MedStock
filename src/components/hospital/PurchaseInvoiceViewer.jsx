@@ -346,7 +346,7 @@ export const PurchaseInvoiceViewer = ({ medicine }) => {
                     Doc Ref: {invoice.invoiceNumber}-STK-2026
                   </div>
                   <div className="text-[9px] text-slate-400 mt-0.5">
-                    SmartMediShare Inter-Hospital Provenance Archive
+                    MedEx Inter-Hospital Provenance Archive
                   </div>
                 </div>
               </div>

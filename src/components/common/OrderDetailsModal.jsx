@@ -82,7 +82,7 @@ export const OrderDetailsModal = ({
         status: 'Paid',
         timestamp: order.paidDate ? new Date(order.paidDate).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Escrow Secured',
         note: `Settlement of ₹${(order.settlementAmount || order.totalAmount || 0).toLocaleString()} held in platform escrow. Ref: ${order.paymentReference || order.paymentId || 'PAY-ESCROW'}`,
-        actor: 'MediStock Escrow Engine',
+        actor: 'MedEx Escrow Engine',
       });
     } else if (isPaymentFailed) {
       history.push({
@@ -134,7 +134,7 @@ export const OrderDetailsModal = ({
         status: 'Completed',
         timestamp: order.completedAt ? new Date(order.completedAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Ledger Finalized',
         note: 'Dock intake signed off. Inventory synchronized and escrow released to seller.',
-        actor: 'MediStock Settlement Engine',
+        actor: 'MedEx Settlement Engine',
       });
     }
 
@@ -367,7 +367,7 @@ export const OrderDetailsModal = ({
               <span className="font-mono font-bold text-slate-900 text-sm">{order.quantity} {order.unit || 'units'}</span>
             </div>
             <div>
-              <span className="text-[10px] uppercase font-mono text-slate-400 block">Concession Rate (MediStock)</span>
+              <span className="text-[10px] uppercase font-mono text-slate-400 block">Concession Rate (MedEx)</span>
               <span className="font-mono font-bold text-emerald-700 text-sm">
                 ₹{order.concessionRate || order.pricingBreakdown?.unitFinalPrice || order.unitPrice || order.unitSellingPrice || 95}
               </span>
