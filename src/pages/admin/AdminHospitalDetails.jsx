@@ -767,7 +767,7 @@ export const AdminHospitalDetails = () => {
                     {salesPercent > 0 && (
                       <div
                         style={{ width: `${salesPercent}%` }}
-                        className="h-full bg-blue-600 transition-all flex items-center justify-center text-[10px] font-mono font-extrabold text-white px-1"
+                        className="h-full bg-rose-600 transition-all flex items-center justify-center text-[10px] font-mono font-extrabold text-white px-1"
                         title={`Sales: ${salesPercent}% (${salesCount} orders)`}
                       >
                         {salesPercent >= 15 ? `${salesPercent}%` : ''}
@@ -780,7 +780,7 @@ export const AdminHospitalDetails = () => {
                     <div className="flex items-center gap-2">
                       <span className="w-3 h-3 rounded-full bg-teal-600 shrink-0" />
                       <div className="text-xs">
-                        <span className="font-bold text-slate-800">Purchases / Received: </span>
+                        <span className="font-bold text-slate-800">Purchases: </span>
                         <strong className="text-teal-700 font-mono">{purchasePercent}%</strong>
                         <span className="text-slate-500 text-[11px] ml-1.5">
                           ({purchasesCount} {purchasesCount === 1 ? 'transaction' : 'transactions'}{purchasedUnits > 0 ? ` • ${purchasedUnits.toLocaleString('en-IN')} units` : ''})
@@ -789,10 +789,10 @@ export const AdminHospitalDetails = () => {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <span className="w-3 h-3 rounded-full bg-blue-600 shrink-0" />
+                      <span className="w-3 h-3 rounded-full bg-rose-600 shrink-0" />
                       <div className="text-xs">
-                        <span className="font-bold text-slate-800">Sales / Sent: </span>
-                        <strong className="text-blue-700 font-mono">{salesPercent}%</strong>
+                        <span className="font-bold text-slate-800">Sales: </span>
+                        <strong className="text-rose-700 font-mono">{salesPercent}%</strong>
                         <span className="text-slate-500 text-[11px] ml-1.5">
                           ({salesCount} {salesCount === 1 ? 'transaction' : 'transactions'}{soldUnits > 0 ? ` • ${soldUnits.toLocaleString('en-IN')} units` : ''})
                         </span>
@@ -801,8 +801,9 @@ export const AdminHospitalDetails = () => {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-4 text-slate-400 text-xs font-medium">
-                  No purchase or sales trades recorded for this facility yet.
+                <div className="text-center py-4 text-slate-400 text-xs font-medium space-y-2">
+                  <div className="w-full max-w-xs mx-auto h-2 rounded-full bg-slate-200/90 overflow-hidden" />
+                  <p>No Trading Activity — 0 transactions recorded</p>
                 </div>
               )}
             </div>

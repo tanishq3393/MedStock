@@ -57,14 +57,20 @@ export const AdminHospitals = () => {
 
       const purchases = requests.filter((r) => r.fromHospitalId === hosp.id);
       const sales = requests.filter((r) => r.toHospitalId === hosp.id);
-      const totalTrades = purchases.length + sales.length;
+      const purchasesCount = purchases.length;
+      const salesCount = sales.length;
+      const totalTrades = purchasesCount + salesCount;
+      const purchasePercent = totalTrades > 0 ? Math.round((purchasesCount / totalTrades) * 100) : 0;
+      const salesPercent = totalTrades > 0 ? (100 - purchasePercent) : 0;
 
       map[hosp.id] = {
         listingsCount,
         totalUnits,
-        purchasesCount: purchases.length,
-        salesCount: sales.length,
+        purchasesCount,
+        salesCount,
         totalTrades,
+        purchasePercent,
+        salesPercent,
       };
     });
     return map;
@@ -345,7 +351,7 @@ export const AdminHospitals = () => {
                   <th className="py-3.5 px-3">Approval Date</th>
                   <th className="py-3.5 px-3 text-center">Status</th>
                   <th className="py-3.5 px-3 text-center">Medicines Listed</th>
-                  <th className="py-3.5 px-3 text-center">Trading Activity</th>
+                  <th className="py-3.5 px-3 text-center min-w-[200px]">Trading Activity</th>
                   <th className="py-3.5 px-4 text-center">Action</th>
                 </tr>
               </thead>
@@ -358,6 +364,8 @@ export const AdminHospitals = () => {
                       purchasesCount: 0,
                       salesCount: 0,
                       totalTrades: 0,
+                      purchasePercent: 0,
+                      salesPercent: 0,
                     };
 
                     return (
@@ -427,15 +435,67 @@ export const AdminHospitals = () => {
                         </td>
 
                         {/* Trading Activity */}
-                        <td className="py-3.5 px-3 text-center whitespace-nowrap">
-                          <div className="inline-flex items-center gap-2 text-xs font-mono">
-                            <span className="text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 font-bold" title="Purchases / Received">
-                              P: {stats.purchasesCount}
-                            </span>
-                            <span className="text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 font-bold" title="Sales / Sent">
-                              S: {stats.salesCount}
-                            </span>
-                          </div>
+                        <td className="py-3 px-3 text-center">
+                          {stats.totalTrades === 0 ? (
+                            <div
+                              className="w-full min-w-[170px] max-w-[210px] mx-auto py-1 px-1 text-left select-none"
+                              title="Trading Activity&#10;Purchases: 0 transactions (0%)&#10;Sales: 0 transactions (0%)&#10;Total: 0 transactions"
+                            >
+                              {/* Neutral empty-state bar */}
+                              <div className="w-full h-2 rounded-full bg-slate-200/90 mb-1.5" />
+                              <div className="flex items-center justify-between text-[11px] leading-tight text-slate-500">
+                                <span className="font-semibold text-slate-500">No Trading Activity</span>
+                                <span className="text-[10px] text-slate-400 font-mono">0 transactions</span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div
+                              className="w-full min-w-[170px] max-w-[210px] mx-auto py-1 px-1 text-left select-none"
+                              title={`Trading Activity\nPurchases: ${stats.purchasesCount} transactions (${stats.purchasePercent}%)\nSales: ${stats.salesCount} transactions (${stats.salesPercent}%)\nTotal: ${stats.totalTrades} transactions`}
+                            >
+                              {/* Horizontal proportional distribution bar */}
+                              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex shadow-inner mb-1.5">
+                                {stats.purchasePercent > 0 && (
+                                  <div
+                                    style={{ width: `${stats.purchasePercent}%` }}
+                                    className="h-full bg-teal-500 transition-all duration-300"
+                                  />
+                                )}
+                                {stats.salesPercent > 0 && (
+                                  <div
+                                    style={{ width: `${stats.salesPercent}%` }}
+                                    className="h-full bg-rose-500 transition-all duration-300"
+                                  />
+                                )}
+                              </div>
+
+                              {/* Percentage distribution with direction indicators */}
+                              <div className="flex items-center justify-between text-[11px] font-bold font-mono leading-tight mb-0.5">
+                                <span className="text-teal-700 flex items-center gap-0.5">
+                                  <span className="text-[10px]">↗</span> {stats.purchasePercent}%
+                                </span>
+                                <span className="text-rose-700 flex items-center gap-0.5">
+                                  {stats.salesPercent}% <span className="text-[10px]">↘</span>
+                                </span>
+                              </div>
+
+                              {/* Accessible text labels and transaction counts */}
+                              <div className="flex items-center justify-between text-[10px] text-slate-600 leading-tight">
+                                <div className="flex flex-col">
+                                  <span className="font-semibold text-slate-700">Purchases</span>
+                                  <span className="text-[9px] text-slate-400 font-mono">
+                                    {stats.purchasesCount} {stats.purchasesCount === 1 ? 'trade' : 'trades'}
+                                  </span>
+                                </div>
+                                <div className="flex flex-col items-end">
+                                  <span className="font-semibold text-slate-700">Sales</span>
+                                  <span className="text-[9px] text-slate-400 font-mono">
+                                    {stats.salesCount} {stats.salesCount === 1 ? 'trade' : 'trades'}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </td>
 
                         {/* Action: View Details (NO Approve/Reject buttons!) */}
@@ -478,6 +538,8 @@ export const AdminHospitals = () => {
               purchasesCount: 0,
               salesCount: 0,
               totalTrades: 0,
+              purchasePercent: 0,
+              salesPercent: 0,
             };
 
             return (
@@ -526,11 +588,37 @@ export const AdminHospitals = () => {
                         {stats.totalUnits > 0 && ` (${stats.totalUnits.toLocaleString('en-IN')} units)`}
                       </span>
                     </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-slate-500 font-medium">Trade Activity:</span>
-                      <span className="font-mono font-bold text-teal-700">
-                        {stats.purchasesCount} Purchases • {stats.salesCount} Sales
-                      </span>
+                    <div className="space-y-1 pt-1">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-slate-500 font-medium">Trading Activity:</span>
+                        {stats.totalTrades > 0 ? (
+                          <span className="font-mono font-bold text-[11px]">
+                            <span className="text-teal-700">{stats.purchasePercent}% Purchases</span>
+                            <span className="text-slate-300 mx-1">•</span>
+                            <span className="text-rose-700">{stats.salesPercent}% Sales</span>
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 text-[11px] font-medium">No Trading Activity</span>
+                        )}
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden flex shadow-inner">
+                        {stats.totalTrades > 0 ? (
+                          <>
+                            {stats.purchasePercent > 0 && (
+                              <div style={{ width: `${stats.purchasePercent}%` }} className="h-full bg-teal-500" />
+                            )}
+                            {stats.salesPercent > 0 && (
+                              <div style={{ width: `${stats.salesPercent}%` }} className="h-full bg-rose-500" />
+                            )}
+                          </>
+                        ) : (
+                          <div className="h-full w-full bg-slate-200/90" />
+                        )}
+                      </div>
+                      <div className="flex justify-between text-[10px] text-slate-400 font-mono">
+                        <span>{stats.purchasesCount} {stats.purchasesCount === 1 ? 'trade' : 'trades'}</span>
+                        <span>{stats.salesCount} {stats.salesCount === 1 ? 'trade' : 'trades'}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
