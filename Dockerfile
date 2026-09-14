@@ -6,7 +6,7 @@
 # ==============================================================================
 
 # --- Stage 1: Frontend Builder ---
-FROM node:20-alpine AS frontend-builder
+FROM node:22-alpine AS frontend-builder
 WORKDIR /app
 
 # Install dependencies deterministically
@@ -23,7 +23,7 @@ ENV NODE_ENV=production
 RUN npm run build
 
 # --- Stage 2: Backend Dependencies ---
-FROM node:20-alpine AS backend-deps
+FROM node:22-alpine AS backend-deps
 WORKDIR /app/backend
 
 # Install backend production dependencies only
@@ -31,7 +31,7 @@ COPY backend/package.json backend/package-lock.json ./
 RUN npm ci --omit=dev --prefer-offline --no-audit
 
 # --- Stage 3: Minimal Production Runtime ---
-FROM node:20-alpine AS runner
+FROM node:22-alpine AS runner
 WORKDIR /app
 
 # Install curl for Docker healthcheck probe
