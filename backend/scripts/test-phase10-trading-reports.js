@@ -23,8 +23,28 @@
 
 const assert = require('assert');
 const axios = require('axios');
+const app = require('../server');
 
-const BASE_URL = 'http://localhost:5000/api';
+const PORT = process.env.PORT || 5000;
+const BASE_URL = `http://localhost:${PORT}/api`;
+
+async function startServerIfNeeded() {
+  try {
+    const res = await axios.get(`${BASE_URL}/health`, { timeout: 1500 });
+    if (res.status === 200) {
+      return null;
+    }
+  } catch (e) {
+    // Server not running, start in-process
+  }
+
+  return new Promise((resolve) => {
+    const server = app.listen(PORT, () => {
+      resolve(server);
+    });
+  });
+}
+
 
 // Tokens recognized by backend dev/test auth middleware
 const TOKENS = {
@@ -62,6 +82,11 @@ async function runAllTests() {
   console.log('================================================================');
   console.log('  MEDEX PHASE 10: TRADING + REPORTS + ANALYTICS VERIFICATION    ');
   console.log('================================================================\n');
+
+  const serverInstance = await startServerIfNeeded();
+
+  try {
+
 
   // 1. Trade list API
   await runTestCase('1. Trade list API (GET /api/trades) returns authorized trades', async () => {
@@ -369,6 +394,11 @@ async function runAllTests() {
     assert(typeof tradesCount === 'number');
     assert(typeof medStats.averagePrice === 'number');
   });
+  } finally {
+    if (serverInstance) {
+      serverInstance.close();
+    }
+  }
 
   console.log('\n================================================================');
   console.log(` RESULTS: ${passedTests} passed, ${failedTests} failed out of ${totalTests} total tests`);

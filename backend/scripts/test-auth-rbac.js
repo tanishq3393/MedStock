@@ -4,8 +4,27 @@
  */
 
 const axios = require('axios');
+const app = require('../server');
 
-const BASE_URL = 'http://localhost:5000/api';
+const PORT = process.env.PORT || 5000;
+const BASE_URL = `http://localhost:${PORT}/api`;
+
+async function startServerIfNeeded() {
+  try {
+    const res = await axios.get(`${BASE_URL}/health`, { timeout: 1500 });
+    if (res.status === 200) {
+      return null;
+    }
+  } catch (e) {
+    // Server not running, start in-process
+  }
+
+  return new Promise((resolve) => {
+    const server = app.listen(PORT, () => {
+      resolve(server);
+    });
+  });
+}
 
 const TOKENS = {
   ADMIN: 'mock_jwt_token_admin_test_session',
@@ -19,8 +38,12 @@ async function runTests() {
   console.log('MedEx AUTHENTICATION & ROLE-BASED ACCESS CONTROL TESTS');
   console.log('====================================================\n');
 
+  const serverInstance = await startServerIfNeeded();
+
   let passed = 0;
   let failed = 0;
+
+  try {
 
   async function testCase(name, fn) {
     try {
@@ -161,6 +184,12 @@ async function runTests() {
     }
     throw new Error(`Unexpected login payload: ${JSON.stringify(res.data)}`);
   });
+
+  } finally {
+    if (serverInstance) {
+      serverInstance.close();
+    }
+  }
 
   console.log('\n====================================================');
   console.log(`TEST RESULTS: ${passed} PASSED, ${failed} FAILED`);
