@@ -72,8 +72,23 @@ app.get('/api/health', async (req, res) => {
   });
 });
 
-// Root welcome route
+// 3. Mount MedEx REST API routes
+const apiRoutes = require('./routes');
+app.use('/api', apiRoutes);
+
+// 4. Serve compiled production frontend if dist directory is present
+const distPath = path.resolve(__dirname, '../dist');
+const hasDist = fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'));
+
+if (hasDist) {
+  app.use(express.static(distPath));
+}
+
+// Root welcome route (serves frontend index.html if dist exists, or API metadata if backend-only)
 app.get('/', (req, res) => {
+  if (hasDist) {
+    return res.sendFile(path.join(distPath, 'index.html'));
+  }
   res.status(200).json({
     product: 'MedEx',
     message: 'MedEx Inter-Hospital Healthcare Logistics REST API is active.',
@@ -82,14 +97,8 @@ app.get('/', (req, res) => {
   });
 });
 
-// 3. Mount MedEx REST API routes
-const apiRoutes = require('./routes');
-app.use('/api', apiRoutes);
-
-// Optional: Serve compiled production frontend if dist directory is present
-const distPath = path.resolve(__dirname, '../dist');
-if (fs.existsSync(distPath) && fs.existsSync(path.join(distPath, 'index.html'))) {
-  app.use(express.static(distPath));
+if (hasDist) {
+  // SPA Fallback: Any unmatched non-API GET request serves the frontend application
   app.use((req, res, next) => {
     if (req.method === 'GET' && !req.path.startsWith('/api')) {
       return res.sendFile(path.join(distPath, 'index.html'));
