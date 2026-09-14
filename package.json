@@ -10,7 +10,7 @@
     "start": "vite",
     "start:backend": "node backend/server.js",
     "test": "npm run test:ci",
-    "test:ci": "node backend/scripts/test-phase11-cors.js && node backend/scripts/test-phase11-security-ratelimit.js && node backend/scripts/test-phase11-concurrency.js && node backend/scripts/test-schema-integrity.js && node backend/scripts/test-phase6-cancellation-refund.js && node backend/scripts/test-phase7-payments.js && node backend/scripts/test-phase10-trading-reports.js && node backend/scripts/test-document-security.js"
+    "test:ci": "node backend/scripts/test-phase11-cors.js && node backend/scripts/test-phase11-security-ratelimit.js && node backend/scripts/test-phase11-concurrency.js && node backend/scripts/test-schema-integrity.js && node backend/scripts/test-phase6-cancellation-refund.js && node backend/scripts/test-phase7-payments.js && node backend/scripts/test-phase10-trading-reports.js && node backend/scripts/test-document-security.js && node backend/scripts/test-phase12-logistics-feedback.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",

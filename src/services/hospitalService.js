@@ -2080,6 +2080,27 @@ export const hospitalService = {
   // 6. STABLE LOGISTICS & TRACKING
   // ==========================================
   async getTrackingByTxn(txnId) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token && txnId) {
+        const response = await fetch(`${API_BASE_URL}/tracking/${encodeURIComponent(txnId.trim())}`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const json = await response.json().catch(() => null);
+          if (json?.success && json?.data) {
+            return json.data;
+          }
+        }
+      }
+    } catch (e) {
+      // fallback to offline / local storage
+    }
+
     await new Promise((r) => setTimeout(r, 200));
     const trackingList = getStoredItem(KEYS.TRACKING, []);
     if (!txnId) return trackingList[0] || null;
@@ -2087,6 +2108,27 @@ export const hospitalService = {
   },
 
   async getAllTracking() {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`${API_BASE_URL}/transfers`, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const json = await response.json().catch(() => null);
+          if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+            return json.data;
+          }
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+
     await new Promise((r) => setTimeout(r, 150));
     return getStoredItem(KEYS.TRACKING, []);
   },
@@ -2251,10 +2293,37 @@ export const hospitalService = {
   // 10. FEEDBACK
   // ==========================================
   async submitFeedback(feedbackData) {
-    await new Promise((r) => setTimeout(r, 200));
     const hospitalId = resolveHospitalId(feedbackData.hospitalId);
+    let serverFeedback = null;
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const response = await fetch(`${API_BASE_URL}/feedback`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            rating: Number(feedbackData.rating),
+            category: feedbackData.category || 'General Service',
+            feedbackText: feedbackData.feedbackText,
+          }),
+        });
+        if (response.ok) {
+          const json = await response.json().catch(() => null);
+          if (json?.success && json?.data) {
+            serverFeedback = json.data;
+          }
+        }
+      }
+    } catch (e) {
+      // fallback to offline
+    }
+
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
-    const newFb = {
+    const newFb = serverFeedback || {
       id: 'fb-' + Date.now(),
       hospitalId: hospitalId || 'hosp-1',
       hospitalName: feedbackData.hospitalName || 'Hospital Facility',
@@ -2271,6 +2340,32 @@ export const hospitalService = {
   },
 
   async getFeedbacks(hospitalIdParam) {
+    try {
+      const session = getStoredItem(KEYS.AUTH, null);
+      const token = session?.token;
+      if (token) {
+        const hospitalId = resolveHospitalId(hospitalIdParam);
+        let url = `${API_BASE_URL}/feedback`;
+        if (hospitalId && session?.user?.role === 'admin') {
+          url += `?hospitalId=${encodeURIComponent(hospitalId)}`;
+        }
+        const response = await fetch(url, {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+        });
+        if (response.ok) {
+          const json = await response.json().catch(() => null);
+          if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+            return json.data;
+          }
+        }
+      }
+    } catch (e) {
+      // fallback to local storage
+    }
+
     await new Promise((r) => setTimeout(r, 150));
     const hospitalId = resolveHospitalId(hospitalIdParam);
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);

@@ -14,6 +14,12 @@ const router = express.Router();
 router.post('/register', registrationLimiter, hospitalController.registerHospital);
 
 /**
+ * GET /api/hospitals
+ * Returns directory of approved/verified hospitals for network collaboration
+ */
+router.get('/', authenticateUser, hospitalController.getApprovedHospitals);
+
+/**
  * GET /api/hospitals/me
  * Returns current authenticated hospital's institutional profile
  */

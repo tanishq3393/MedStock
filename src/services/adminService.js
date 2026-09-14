@@ -875,37 +875,62 @@ export const adminService = {
   // 4. TRANSFERS & BIO-WASTE OVERSIGHT
   // ==========================================
   async getTransfers() {
+    try {
+      const response = await fetch(`${API_BASE}/transfers`, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const json = await response.json().catch(() => null);
+        if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+          return json.data;
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+
     await new Promise((r) => setTimeout(r, 150));
     return getStoredItem(KEYS.TRACKING, []);
   },
 
   async updateTransferStatus(transactionId, newStatus) {
-    await new Promise((r) => setTimeout(r, 250));
     assertAdminSession();
-    const trackingList = getStoredItem(KEYS.TRACKING, []);
-    const index = trackingList.findIndex((t) => t.transactionId === transactionId);
-    if (index === -1) throw new Error('Transfer record not found');
-
-    trackingList[index].status = newStatus;
-    if (trackingList[index].timeline) {
-      const match = trackingList[index].timeline.find((t) => t.step.toLowerCase().includes(newStatus.toLowerCase()));
-      if (match) match.completed = true;
+    try {
+      await fetch(`${API_BASE}/transfers/${encodeURIComponent(transactionId)}/status`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch (e) {
+      // offline fallback
     }
 
-    setStoredItem(KEYS.TRACKING, trackingList);
+    await new Promise((r) => setTimeout(r, 250));
+    const trackingList = getStoredItem(KEYS.TRACKING, []);
+    const index = trackingList.findIndex((t) => t.transactionId === transactionId || t.id === transactionId);
+    if (index !== -1) {
+      trackingList[index].status = newStatus;
+      if (trackingList[index].timeline) {
+        const match = trackingList[index].timeline.find((t) => t.step.toLowerCase().includes(newStatus.toLowerCase()));
+        if (match) match.completed = true;
+      }
+      setStoredItem(KEYS.TRACKING, trackingList);
 
-    auditService.logEvent({
-      action: 'SHIPMENT_STATUS_UPDATED',
-      entityType: 'TRANSFER',
-      entityId: trackingList[index].trackingNumber || transactionId,
-      hospitalId: trackingList[index].senderHospitalId || 'hosp-admin',
-      hospitalName: trackingList[index].senderHospital,
-      summary: `Transfer status updated to "${newStatus}" for consignment ${trackingList[index].trackingNumber || transactionId}.`,
-      resultingStatus: newStatus,
-      metadata: { transactionId, status: newStatus },
-    });
+      auditService.logEvent({
+        action: 'SHIPMENT_STATUS_UPDATED',
+        entityType: 'TRANSFER',
+        entityId: trackingList[index].trackingNumber || transactionId,
+        hospitalId: trackingList[index].senderHospitalId || 'hosp-admin',
+        hospitalName: trackingList[index].senderHospital,
+        summary: `Transfer status updated to "${newStatus}" for consignment ${trackingList[index].trackingNumber || transactionId}.`,
+        resultingStatus: newStatus,
+        metadata: { transactionId, status: newStatus },
+      });
 
-    return trackingList[index];
+      return trackingList[index];
+    }
+
+    return { transactionId, status: newStatus };
   },
 
   async getDisposals() {
@@ -950,6 +975,24 @@ export const adminService = {
   // 5. ADMIN FEEDBACK MODERATION
   // ==========================================
   async getFeedback(ratingFilter = null) {
+    try {
+      let url = `${API_BASE}/feedback`;
+      if (ratingFilter && ratingFilter !== 'all') {
+        url += `?rating=${encodeURIComponent(ratingFilter)}`;
+      }
+      const response = await fetch(url, {
+        headers: getAuthHeaders(),
+      });
+      if (response.ok) {
+        const json = await response.json().catch(() => null);
+        if (json?.success && Array.isArray(json?.data) && json.data.length > 0) {
+          return json.data;
+        }
+      }
+    } catch (e) {
+      // fallback
+    }
+
     await new Promise((r) => setTimeout(r, 150));
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
     if (!ratingFilter || ratingFilter === 'all') return feedbacks;
@@ -957,8 +1000,18 @@ export const adminService = {
   },
 
   async replyFeedback(id, replyText) {
-    await new Promise((r) => setTimeout(r, 250));
     assertAdminSession();
+    try {
+      await fetch(`${API_BASE}/feedback/${encodeURIComponent(id)}/reply`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ replyText }),
+      });
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 250));
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
     const index = feedbacks.findIndex((f) => f.id === id);
     if (index === -1) throw new Error('Feedback not found');
@@ -985,8 +1038,18 @@ export const adminService = {
   },
 
   async updateFeedbackStatus(id, newStatus) {
-    await new Promise((r) => setTimeout(r, 200));
     assertAdminSession();
+    try {
+      await fetch(`${API_BASE}/feedback/${encodeURIComponent(id)}/status`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ status: newStatus }),
+      });
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 200));
     const feedbacks = getStoredItem(KEYS.FEEDBACKS, []);
     const index = feedbacks.findIndex((f) => f.id === id);
     if (index === -1) throw new Error('Feedback record not found');

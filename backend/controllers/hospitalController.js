@@ -97,6 +97,21 @@ const hospitalController = {
     } catch (err) {
       next(err);
     }
+  },
+
+  /**
+   * GET /api/hospitals
+   * Returns directory of approved/verified hospitals for network collaboration
+   */
+  async getApprovedHospitals(req, res, next) {
+    try {
+      const { search, state, city } = req.query;
+      const result = await hospitalService.getApprovedHospitals({ search, state, city });
+      const data = Array.isArray(result) ? result : (result.hospitals || []);
+      return successResponse(res, data, 'Approved hospital directory retrieved');
+    } catch (err) {
+      next(err);
+    }
   }
 };
 

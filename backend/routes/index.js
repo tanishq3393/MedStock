@@ -16,6 +16,9 @@ const alertRoutes = require('./alertRoutes');
 const notificationRoutes = require('./notificationRoutes');
 const auditRoutes = require('./auditRoutes');
 const tradeRoutes = require('./tradeRoutes');
+const transferRoutes = require('./transferRoutes');
+const feedbackRoutes = require('./feedbackRoutes');
+const abdmRoutes = require('./abdmRoutes');
 
 const router = express.Router();
 
@@ -32,8 +35,12 @@ router.use('/requests', requestRoutes);
 router.use('/refunds', refundRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/trades', tradeRoutes);
+router.use('/transfers', transferRoutes);
+router.use('/tracking', transferRoutes);
+router.use('/feedback', feedbackRoutes);
 router.use('/alerts', alertRoutes);
 router.use('/notifications', notificationRoutes);
 router.use('/audit', auditRoutes);
+router.use('/abdm', abdmRoutes);
 
 module.exports = router;

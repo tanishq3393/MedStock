@@ -461,6 +461,10 @@ const verificationService = {
     }
 
     return { documentId, status: 'rejected', reason, document: updatedDoc };
+  },
+
+  async verifyHospital(hospitalId, adminUser) {
+    return this.approveHospital(hospitalId, adminUser);
   }
 };
 

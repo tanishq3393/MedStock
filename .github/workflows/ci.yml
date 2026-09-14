@@ -93,6 +93,9 @@ jobs:
       - name: Run Horizontal Scaling & Concurrency Tests (Row Locking, CAS)
         run: node backend/scripts/test-phase11-concurrency.js
 
+      - name: Run Logistics Telemetry & Institutional Feedback Tests (Transfers, Cold-Chain, ABDM)
+        run: node backend/scripts/test-phase12-logistics-feedback.js
+
   # ----------------------------------------------------------------------------
   # Job 3: Dockerfile Lint & Multi-Stage Validation
   # ----------------------------------------------------------------------------

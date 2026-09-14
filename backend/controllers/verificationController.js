@@ -5,7 +5,7 @@ const verificationController = {
   async approveHospital(req, res, next) {
     try {
       const { id } = req.params;
-      const result = await verificationService.verifyHospital(id, req.user);
+      const result = await verificationService.approveHospital(id, req.user);
       return successResponse(res, result, 'Hospital approved and granted operational privileges');
     } catch (err) {
       next(err);
