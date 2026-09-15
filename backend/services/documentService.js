@@ -78,12 +78,72 @@ const documentService = {
       throw valErr;
     }
 
-    // Require Supabase Admin client (fails loudly if unconfigured)
-    const supabase = getSupabaseAdmin();
-
     // 2. Filename Security & Server-Generated UUID Storage Path
     const docId = crypto.randomUUID();
     const storagePath = `${hospitalId}/${validated.storageFilename}`;
+    const nowIso = new Date().toISOString();
+
+    const coreDocRecord = {
+      id: docId,
+      hospital_id: hospitalId,
+      document_type: documentType,
+      original_filename: validated.originalFilename,
+      document_name: validated.originalFilename,
+      storage_path: storagePath,
+      file_path: storagePath,
+      mime_type: 'application/pdf',
+      file_size: validated.sizeDisplay,
+      file_size_bytes: validated.sizeBytes,
+      submission_status: 'submitted',
+      document_status: 'pending',
+      uploaded_by: uploadedBy,
+      uploaded_at: nowIso,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    let isReplacement = false;
+
+    // --------------------------------------------------------------------------
+    // TEST MODE: Self-contained in-memory registry for regression test suites
+    // --------------------------------------------------------------------------
+    if (process.env.NODE_ENV === 'test') {
+      const existingIdx = devDocumentRegistry.findIndex(
+        (d) => d.hospital_id === hospitalId && d.document_type === documentType && d.document_status !== 'superseded' && d.document_status !== 'rejected'
+      );
+      if (existingIdx !== -1) {
+        isReplacement = true;
+        devDocumentRegistry[existingIdx].document_status = 'superseded';
+        devDocumentRegistry[existingIdx].rejection_reason = 'Superseded by newer submission';
+      }
+
+      devDocumentRegistry.unshift(coreDocRecord);
+
+      const auditAction = isReplacement ? 'DOCUMENT_REPLACED' : 'DOCUMENT_UPLOADED';
+      await auditService.logEvent({
+        action: auditAction,
+        entityType: 'DOCUMENT',
+        entityId: docId,
+        actorRole: reqUser?.role || 'hospital',
+        hospitalId,
+        summary: `${isReplacement ? 'Replaced' : 'Uploaded'} statutory filing "${documentType}" (${validated.originalFilename}). Size: ${validated.sizeDisplay}. Pending verification.`,
+        resultingStatus: 'pending',
+        metadata: {
+          documentType,
+          fileSize: validated.sizeDisplay,
+          fileSizeBytes: validated.sizeBytes,
+          storagePath,
+          isReplacement,
+        },
+      }).catch(() => {});
+
+      return coreDocRecord;
+    }
+
+    // --------------------------------------------------------------------------
+    // PRODUCTION & DEVELOPMENT: Strict Supabase persistence with zero mock fallback
+    // --------------------------------------------------------------------------
+    const supabase = getSupabaseAdmin();
 
     // 3. Storage Security: Upload to private Supabase Storage bucket
     const { data: uploadData, error: uploadErr } = await supabase.storage
@@ -101,7 +161,6 @@ const documentService = {
     }
 
     // 4. Duplicate / Replacement Safety: Supersede existing document of same type if present
-    let isReplacement = false;
     try {
       const { data: existingDoc } = await supabase
         .from('hospital_documents')
@@ -123,27 +182,7 @@ const documentService = {
       // No existing record to supersede
     }
 
-    // 5. Construct Document Record
-    const nowIso = new Date().toISOString();
-    const coreDocRecord = {
-      id: docId,
-      hospital_id: hospitalId,
-      document_type: documentType,
-      original_filename: validated.originalFilename,
-      document_name: validated.originalFilename,
-      storage_path: storagePath,
-      file_path: storagePath,
-      mime_type: 'application/pdf',
-      file_size: validated.sizeDisplay,
-      file_size_bytes: validated.sizeBytes,
-      submission_status: 'submitted',
-      document_status: 'pending',
-      uploaded_by: uploadedBy,
-      uploaded_at: nowIso,
-      created_at: nowIso,
-      updated_at: nowIso,
-    };
-
+    // 5. Construct Extended Document Record & Persist Metadata
     const extendedDocRecord = {
       ...coreDocRecord,
       document_number: documentNumber || null,
@@ -177,7 +216,7 @@ const documentService = {
       throw err;
     }
 
-    // Maintain in-memory store for dev / tests
+    // Maintain in-memory store for reference
     devDocumentRegistry.unshift(coreDocRecord);
 
     // 6. Security Audit Event
@@ -218,30 +257,22 @@ const documentService = {
 
     // 1. Locate Authoritative Document Record
     let doc = null;
-    let supabase = null;
-    try {
-      supabase = getSupabaseAdmin();
-    } catch (e) {}
 
-    if (supabase) {
-      try {
-        const { data, error } = await supabase
-          .from('hospital_documents')
-          .select('*')
-          .eq('id', documentId)
-          .single();
-
-        if (!error && data) {
-          doc = data;
-        }
-      } catch (err) {
-        logger.warn('Failed to query document from Supabase:', err.message);
-      }
-    }
-
-    // Check dev registry fallback
-    if (!doc) {
+    if (process.env.NODE_ENV === 'test') {
       doc = devDocumentRegistry.find((d) => d.id === documentId || d.storage_path?.includes(documentId));
+    } else {
+      const supabase = getSupabaseAdmin();
+      const { data, error } = await supabase
+        .from('hospital_documents')
+        .select('*')
+        .eq('id', documentId)
+        .single();
+
+      if (error || !data) {
+        logger.warn('Failed to query document from Supabase:', error?.message);
+      } else {
+        doc = data;
+      }
     }
 
     if (!doc) {
@@ -279,29 +310,34 @@ const documentService = {
       throw err;
     }
 
-    // 3. Generate Short-Lived Signed URL from private bucket
+    // 3. Generate Short-Lived Signed URL
     const targetStoragePath = doc.storage_path || doc.file_path;
     let signedUrl = null;
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
-    if (supabase && targetStoragePath && !targetStoragePath.startsWith('/')) {
-      try {
+    if (process.env.NODE_ENV === 'test') {
+      // Test-mode deterministic signed URL simulation
+      const token = crypto.randomBytes(16).toString('hex');
+      signedUrl = `/api/documents/${documentId}/view?token=${token}&expires=${Date.now() + expiresInSeconds * 1000}`;
+    } else {
+      const supabase = getSupabaseAdmin();
+      if (targetStoragePath && !targetStoragePath.startsWith('/')) {
         const { data, error } = await supabase.storage
           .from(BUCKET_NAME)
           .createSignedUrl(targetStoragePath, expiresInSeconds);
 
         if (!error && data?.signedUrl) {
           signedUrl = data.signedUrl;
+        } else if (error) {
+          logger.error('Failed to generate Supabase signed URL:', error.message);
         }
-      } catch (err) {
-        logger.warn('Failed to generate Supabase signed URL:', err.message);
       }
-    }
 
-    if (!signedUrl) {
-      // Development safe tokenized signed URL simulation
-      const token = crypto.randomBytes(16).toString('hex');
-      signedUrl = `/api/documents/${documentId}/view?token=${token}&expires=${Date.now() + expiresInSeconds * 1000}`;
+      if (!signedUrl) {
+        const err = new Error('Failed to generate secure viewing signed URL from Supabase Storage.');
+        err.statusCode = 500;
+        throw err;
+      }
     }
 
     // 4. Audit Log Successful Authorized View
@@ -334,22 +370,34 @@ const documentService = {
    * Returns registered document by ID (internal utility)
    */
   async getDocumentById(documentId) {
-    try {
-      const supabase = getSupabaseAdmin();
-      const { data } = await supabase
-        .from('hospital_documents')
-        .select('*')
-        .eq('id', documentId)
-        .single();
-      if (data) return data;
-    } catch (e) {}
-    return devDocumentRegistry.find((d) => d.id === documentId) || null;
+    if (process.env.NODE_ENV === 'test') {
+      return devDocumentRegistry.find((d) => d.id === documentId) || null;
+    }
+
+    const supabase = getSupabaseAdmin();
+    const { data } = await supabase
+      .from('hospital_documents')
+      .select('*')
+      .eq('id', documentId)
+      .single();
+    return data || null;
   },
 
   /**
    * Deletes a registered document and removes storage object
    */
   async deleteDocument(documentId, hospitalId) {
+    if (process.env.NODE_ENV === 'test') {
+      const idx = devDocumentRegistry.findIndex((d) => (d.id === documentId || d.storage_path?.includes(documentId)) && d.hospital_id === hospitalId);
+      if (idx === -1) {
+        const err = new Error('Document not found or access denied.');
+        err.statusCode = 404;
+        throw err;
+      }
+      devDocumentRegistry.splice(idx, 1);
+      return { success: true, message: 'Document deleted successfully', documentId };
+    }
+
     const supabase = getSupabaseAdmin();
 
     const { data: doc, error: findErr } = await supabase
