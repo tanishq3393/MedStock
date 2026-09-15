@@ -33,6 +33,14 @@ export const rejectHospitalAction = createAsyncThunk('admin/rejectHospital', asy
   }
 });
 
+export const requireCorrectionAction = createAsyncThunk('admin/requireCorrection', async ({ hospitalId, reason }, { rejectWithValue }) => {
+  try {
+    return await adminService.requireCorrection(hospitalId, reason);
+  } catch (err) {
+    return rejectWithValue(err.message);
+  }
+});
+
 export const suspendHospitalAction = createAsyncThunk('admin/suspendHospital', async ({ hospitalId, reason }, { rejectWithValue }) => {
   try {
     return await adminService.suspendHospital(hospitalId, reason);
@@ -198,6 +206,13 @@ const adminSlice = createSlice({
         }
       })
       .addCase(rejectHospitalAction.fulfilled, (state, action) => {
+        const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
+        if (index !== -1) state.hospitals[index] = action.payload;
+        if (state.selectedHospital?.id === action.payload.id) {
+          state.selectedHospital = action.payload;
+        }
+      })
+      .addCase(requireCorrectionAction.fulfilled, (state, action) => {
         const index = state.hospitals.findIndex((h) => h.id === action.payload.id);
         if (index !== -1) state.hospitals[index] = action.payload;
         if (state.selectedHospital?.id === action.payload.id) {

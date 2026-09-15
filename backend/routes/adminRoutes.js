@@ -13,6 +13,7 @@ router.get('/hospitals/pending', adminController.getPendingHospitals);
 router.get('/hospitals/:id/verification', adminController.getHospitalVerificationDossier);
 router.patch('/hospitals/:id/approve', adminController.approveHospital);
 router.patch('/hospitals/:id/reject', requireBodyFields(['reason']), adminController.rejectHospital);
+router.patch('/hospitals/:id/require-correction', requireBodyFields(['reason']), adminController.requireCorrection);
 router.patch('/hospitals/:id/review-status', requireBodyFields(['status']), adminController.setReviewStatus);
 
 // Document-level verification

@@ -83,10 +83,28 @@ const checkConnection = async () => {
   }
 };
 
+/**
+ * Retrieves the server-side Supabase Admin client with Service Role privileges.
+ * Throws a descriptive configuration error if SUPABASE_SERVICE_ROLE_KEY is missing.
+ */
+const getSupabaseAdmin = () => {
+  if (!supabaseAdmin) {
+    const err = new Error(
+      'Database configuration error: SUPABASE_SERVICE_ROLE_KEY is required on the server to persist registration data with RLS bypass. Please configure SUPABASE_SERVICE_ROLE_KEY in backend/.env.'
+    );
+    err.statusCode = 500;
+    err.code = 'SUPABASE_ADMIN_UNCONFIGURED';
+    throw err;
+  }
+  return supabaseAdmin;
+};
+
 module.exports = {
   supabaseAnon,
   supabaseAdmin,
+  getSupabaseAdmin,
   isConfigured: environment.supabase.isConfigured,
   isServiceRoleConfigured: environment.supabase.isServiceRoleConfigured,
   checkConnection,
 };
+

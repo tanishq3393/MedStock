@@ -1,15 +1,37 @@
 const express = require('express');
+const router = express.Router();
 const hospitalController = require('../controllers/hospitalController');
 const { authenticateUser, requireAdmin, requireHospital, allowPendingHospital } = require('../middleware/auth');
 const { requireBodyFields } = require('../middleware/validator');
 const { registrationLimiter } = require('../middleware/rateLimiter');
 
-const router = express.Router();
+const multer = require('multer');
+const environment = require('../config/environment');
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: environment.documents?.maxSizeBytes || (5 * 1024 * 1024),
+  },
+});
 
 /**
- * POST /api/hospitals/register
- * Public registration endpoint for hospitals
- * Enforces mandatory fields, document checklist, duplicate detection, and PENDING_APPROVAL state.
+ * 4-Step Hospital Registration System Endpoints
+ */
+router.post('/registration/step-1', registrationLimiter, requireBodyFields(['name', 'registrationNo', 'email', 'phone']), hospitalController.saveStep1);
+router.post('/registration/step-2', registrationLimiter, requireBodyFields(['hospitalId', 'address', 'state', 'district', 'city', 'pincode']), hospitalController.saveStep2);
+router.post('/registration/upload-document', registrationLimiter, upload.single('file'), hospitalController.uploadRegistrationDocument);
+router.delete('/registration/documents/:documentId', hospitalController.deleteRegistrationDocument);
+router.get('/registration/documents', hospitalController.getRegistrationDocuments);
+router.get('/registration/documents/:documentId/view', hospitalController.getRegistrationDocumentViewUrl);
+router.get('/registration/documents/:documentId/signed-url', hospitalController.getRegistrationDocumentViewUrl);
+router.get('/registration/documents/:documentId/raw', hospitalController.streamRegistrationDocument);
+router.post('/registration/submit', registrationLimiter, requireBodyFields(['hospitalId', 'password', 'confirmPassword']), hospitalController.submitRegistration);
+router.get('/registration/status', hospitalController.getRegistrationStatus);
+router.post('/registration/resubmit', registrationLimiter, hospitalController.resubmitRegistration);
+
+/**
+ * POST /api/hospitals/register (legacy / direct fallback)
  */
 router.post('/register', registrationLimiter, hospitalController.registerHospital);
 

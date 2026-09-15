@@ -24,6 +24,7 @@ import {
   fetchHospitals, 
   verifyHospitalAction, 
   rejectHospitalAction,
+  requireCorrectionAction,
   setReviewStatusAction,
   updateDocumentReviewStatusAction
 } from '../../store/slices/adminSlice';
@@ -59,6 +60,11 @@ export const AdminVerification = () => {
   const [rejectReasonSelect, setRejectReasonSelect] = useState('Required document missing');
   const [otherExplanation, setOtherExplanation] = useState('');
   const [isRejecting, setIsRejecting] = useState(false);
+
+  // Require Correction Modal State
+  const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+  const [correctionReasonInput, setCorrectionReasonInput] = useState('');
+  const [isRequiringCorrection, setIsRequiringCorrection] = useState(false);
 
   useEffect(() => {
     dispatch(fetchHospitals());
@@ -212,6 +218,34 @@ export const AdminVerification = () => {
       toast.error('Failed to record rejection');
     } finally {
       setIsRejecting(false);
+    }
+  };
+
+  // Confirm Require Correction Flow
+  const handleConfirmCorrection = async (e) => {
+    if (e) e.preventDefault();
+    if (!activeReviewHospital) return;
+    if (!correctionReasonInput.trim()) {
+      toast.error('A specific correction reason is mandatory.');
+      return;
+    }
+
+    setIsRequiringCorrection(true);
+    try {
+      await dispatch(requireCorrectionAction({
+        hospitalId: activeReviewHospital.id,
+        reason: correctionReasonInput.trim(),
+      })).unwrap();
+      toast.success(`Correction request sent to ${activeReviewHospital.name}. Hospital notified via email.`);
+      setShowCorrectionModal(false);
+      setActiveReviewHospital(null);
+      setCorrectionReasonInput('');
+      setReviewNoteInput('');
+      dispatch(fetchHospitals());
+    } catch (err) {
+      toast.error(typeof err === 'string' ? err : 'Failed to record correction request');
+    } finally {
+      setIsRequiringCorrection(false);
     }
   };
 
@@ -510,7 +544,7 @@ export const AdminVerification = () => {
             <div className="space-y-2">
               <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5 text-primary-600" />
-                <span>A. Hospital Registration Information</span>
+                <span>A. Hospital Registration & Campus Information</span>
               </h4>
 
               <div className="p-4 bg-slate-50/70 rounded-2xl border border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 text-xs">
@@ -520,14 +554,26 @@ export const AdminVerification = () => {
                 </div>
                 <div>
                   <span className="text-[10px] text-slate-400 font-semibold uppercase block">Registration ID</span>
-                  <strong className="text-primary-800 font-mono">{activeReviewHospital.registrationNo || 'REG-PENDING'}</strong>
+                  <strong className="text-primary-800 font-mono">{activeReviewHospital.registrationNo || activeReviewHospital.registration_no || 'REG-PENDING'}</strong>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Authorized Person</span>
-                  <span className="text-slate-800 font-medium">{activeReviewHospital.authorizedPerson || 'Not provided'}</span>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Issuing Authority</span>
+                  <span className="text-slate-800 font-medium">{activeReviewHospital.issuingAuthority || activeReviewHospital.issuing_authority || 'State Health Authority'}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Official Email</span>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Organization Type</span>
+                  <span className="text-slate-800 font-medium">{activeReviewHospital.organizationType || activeReviewHospital.organization_type || 'Healthcare Institution'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Authorized Representative</span>
+                  <span className="text-slate-800 font-medium">{activeReviewHospital.authorizedPerson || activeReviewHospital.authorized_person || 'Not provided'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Designation</span>
+                  <span className="text-slate-800 font-medium">{activeReviewHospital.designation || 'Medical Administrator'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Official Work Email</span>
                   <span className="text-slate-800 font-mono">{activeReviewHospital.email || 'None'}</span>
                 </div>
                 <div>
@@ -535,17 +581,23 @@ export const AdminVerification = () => {
                   <span className="text-slate-800 font-mono">{activeReviewHospital.phone || 'None'}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Registration Date</span>
-                  <span className="text-slate-800 font-mono">{activeReviewHospital.registeredDate || '2024-01-15'}</span>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Registered Date</span>
+                  <span className="text-slate-800 font-mono">{activeReviewHospital.registeredDate || activeReviewHospital.created_at || '2024-01-15'}</span>
                 </div>
                 <div className="sm:col-span-2">
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Physical Address</span>
-                  <span className="text-slate-800">{activeReviewHospital.address || `${activeReviewHospital.city}, ${activeReviewHospital.state}`}</span>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Campus Street Address</span>
+                  <span className="text-slate-800 font-medium">{activeReviewHospital.address || `${activeReviewHospital.city}, ${activeReviewHospital.state}`}</span>
                 </div>
                 <div>
-                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Region / PIN</span>
-                  <span className="text-slate-800">{activeReviewHospital.city}, {activeReviewHospital.state} {activeReviewHospital.pincode || ''}</span>
+                  <span className="text-[10px] text-slate-400 font-semibold uppercase block">Region / Pincode</span>
+                  <span className="text-slate-800">{activeReviewHospital.city}, {activeReviewHospital.district ? `${activeReviewHospital.district}, ` : ''}{activeReviewHospital.state} {activeReviewHospital.pincode || ''}</span>
                 </div>
+                {(activeReviewHospital.receiving_gate || activeReviewHospital.receivingGate) && (
+                  <div className="sm:col-span-3 pt-1 border-t border-slate-200/60">
+                    <span className="text-[10px] text-teal-800 font-bold uppercase block">Pharmacy / Medicine Receiving Gate</span>
+                    <span className="text-slate-800 font-medium">{activeReviewHospital.receiving_gate || activeReviewHospital.receivingGate}</span>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -557,7 +609,7 @@ export const AdminVerification = () => {
                   <span>B. Submitted Statutory Documents Dossier</span>
                 </h4>
                 <span className="text-[11px] text-slate-400 font-mono">
-                  Inspect exact files submitted during signup
+                  Inspect exact files and metadata submitted during registration
                 </span>
               </div>
 
@@ -586,7 +638,7 @@ export const AdminVerification = () => {
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-0.5 min-w-0">
+                        <div className="space-y-1 min-w-0">
                           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block truncate">
                             {doc.documentType} {doc.required && <span className="text-rose-500">*Compulsory</span>}
                           </span>
@@ -594,9 +646,26 @@ export const AdminVerification = () => {
                             {doc.label}
                           </h5>
                           {doc.isSubmitted ? (
-                            <span className="text-[10px] text-slate-500 font-mono block truncate">
-                              File: {doc.documentName || doc.name} • {doc.size || '2.4 MB'}
-                            </span>
+                            <div className="space-y-0.5 text-[11px] text-slate-600">
+                              <span className="font-mono block truncate text-slate-500">
+                                File: {doc.documentName || doc.name} • {doc.fileSize || doc.size || '2.4 MB'}
+                              </span>
+                              {(doc.documentNumber || doc.document_number) && (
+                                <span className="font-mono block">
+                                  Cert/License No: <strong className="text-teal-800">{doc.documentNumber || doc.document_number}</strong>
+                                </span>
+                              )}
+                              {(doc.issuingAuthority || doc.issuing_authority) && (
+                                <span className="block text-slate-600">
+                                  Authority: <strong>{doc.issuingAuthority || doc.issuing_authority}</strong>
+                                </span>
+                              )}
+                              {(doc.issueDate || doc.issue_date) && (
+                                <span className="block text-slate-500">
+                                  Issue: {doc.issueDate || doc.issue_date} {doc.expiryDate || doc.expiry_date ? `| Expiry: ${doc.expiryDate || doc.expiry_date}` : ''}
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <span className="text-[10px] text-rose-600 font-medium block">
                               Required document not submitted by hospital
@@ -698,13 +767,23 @@ export const AdminVerification = () => {
               />
             </div>
 
-            {/* E. Distinct Approve / Reject Actions (Req 10, Req 11) */}
+            {/* E. Distinct Approve / Require Correction / Reject Actions (Req 10, Req 11) */}
             <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
               <div className="text-xs text-slate-500">
                 Decision for: <strong className="text-slate-800">{activeReviewHospital.name}</strong>
               </div>
 
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Distinct REQUIRE CORRECTION Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowCorrectionModal(true)}
+                  className="flex-1 sm:flex-initial inline-flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl border-2 border-amber-500 text-amber-800 hover:bg-amber-50 font-bold text-xs shadow-xs transition-all"
+                >
+                  <AlertTriangle className="w-4 h-4 text-amber-600" />
+                  <span>REQUIRE CORRECTION</span>
+                </button>
+
                 {/* Distinct REJECT HOSPITAL Button (Req 10, 11) */}
                 <button
                   type="button"
@@ -856,7 +935,69 @@ export const AdminVerification = () => {
       )}
 
       {/* ============================================================ */}
-      {/* 8. SAMPLE / PROTOTYPE DOCUMENT VIEWER MODAL (Req 9, Req 21) */}
+      {/* 8. CORRECTION CONFIRMATION MODAL                             */}
+      {/* ============================================================ */}
+      {showCorrectionModal && activeReviewHospital && (
+        <Modal
+          isOpen={showCorrectionModal}
+          onClose={() => {
+            setShowCorrectionModal(false);
+            setCorrectionReasonInput('');
+          }}
+          title="Require Application Corrections"
+          maxWidth="max-w-md"
+        >
+          <form onSubmit={handleConfirmCorrection} className="space-y-4 pt-1 text-xs">
+            <div className="p-3 bg-amber-50/70 rounded-xl border border-amber-200">
+              <span className="text-[10px] font-bold text-amber-800 uppercase tracking-wider block">Hospital Application</span>
+              <strong className="text-slate-900 text-sm block mt-0.5">{activeReviewHospital.name}</strong>
+              <span className="text-[11px] font-mono text-slate-500">Reg ID: {activeReviewHospital.registrationNo || activeReviewHospital.registration_no}</span>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 mb-1">
+                Specific Correction Instructions: <span className="text-rose-500">*</span>
+              </label>
+              <textarea
+                rows="4"
+                required
+                placeholder="Specify which statutory documents, licenses, or institutional fields require correction before approval..."
+                value={correctionReasonInput}
+                onChange={(e) => setCorrectionReasonInput(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-amber-500 font-medium"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                This correction instruction will be dispatched to the hospital's official email address and displayed upon their sign in.
+              </p>
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                disabled={isRequiringCorrection}
+                onClick={() => {
+                  setShowCorrectionModal(false);
+                  setCorrectionReasonInput('');
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isRequiringCorrection || !correctionReasonInput.trim()}
+                className="inline-flex items-center gap-1.5 px-5 py-2 rounded-xl text-xs font-bold text-white bg-amber-600 hover:bg-amber-700 shadow-md shadow-amber-600/20 transition-all disabled:opacity-50"
+              >
+                <AlertTriangle className="w-3.5 h-3.5" />
+                <span>{isRequiringCorrection ? 'Sending...' : 'Send Correction Request'}</span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      {/* ============================================================ */}
+      {/* 9. SAMPLE / PROTOTYPE DOCUMENT VIEWER MODAL (Req 9, Req 21) */}
       {/* ============================================================ */}
       {viewerDoc && (
         <DocumentViewerModal

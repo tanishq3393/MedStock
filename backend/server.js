@@ -143,7 +143,19 @@ app.use((err, req, res, next) => {
 // 6. Server Startup & Graceful Lifecycle
 let serverInstance = null;
 
+// Global process error safety guards
+process.on('uncaughtException', (err) => {
+  logger.error('CRITICAL: Uncaught Exception in MedEx backend process:', err?.stack || err?.message || err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('CRITICAL: Unhandled Promise Rejection in MedEx backend process:', reason?.stack || reason?.message || reason);
+});
+
 if (require.main === module) {
+  // Keep-alive reference to prevent premature event loop termination on Windows consoles
+  const keepAliveTimer = setInterval(() => {}, 60 * 60 * 1000);
+
   serverInstance = app.listen(environment.port, () => {
     logger.info('=======================================================');
     logger.info(`  MedEx Backend running on http://localhost:${environment.port}`);
@@ -156,11 +168,25 @@ if (require.main === module) {
     logger.info('=======================================================');
   });
 
+  serverInstance.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      logger.error(`[Server Startup Failed] Port ${environment.port} is already in use by another active process.`);
+      logger.error(`To free port ${environment.port} on Windows, run:`);
+      logger.error(`  netstat -ano | findstr :${environment.port}`);
+      logger.error(`  taskkill /F /PID <PID_FROM_ABOVE>`);
+    } else {
+      logger.error('[Server Error]', err.message);
+    }
+    clearInterval(keepAliveTimer);
+    process.exit(1);
+  });
+
   let isShuttingDown = false;
   const handleShutdown = (signal) => {
     if (isShuttingDown) return;
     isShuttingDown = true;
     logger.info(`Received ${signal}. Initiating graceful shutdown...`);
+    clearInterval(keepAliveTimer);
 
     // Safety timeout: force process exit after 10s if connections fail to drain
     const forceTimeout = setTimeout(() => {

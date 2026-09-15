@@ -344,6 +344,58 @@ export const adminService = {
     return hospital;
   },
 
+  async requireCorrection(hospitalId, reason) {
+    assertAdminSession();
+
+    // 1. Call real API
+    try {
+      const response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}/require-correction`, {
+        method: 'PATCH',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ reason }),
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok && json?.success) {
+        const hospital = json.data.hospital || json.data;
+        const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+        const idx = hospitals.findIndex((h) => h.id === hospitalId);
+        if (idx !== -1) {
+          hospitals[idx] = { ...hospitals[idx], status: 'requires_correction', rejectionReason: reason };
+          setStoredItem(KEYS.HOSPITALS, hospitals);
+        }
+        return hospital;
+      }
+    } catch (e) {
+      // fallback
+    }
+
+    await new Promise((r) => setTimeout(r, 300));
+    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
+    const index = hospitals.findIndex((h) => h.id === hospitalId);
+    if (index === -1) throw new Error('Hospital not found');
+
+    const hospital = hospitals[index];
+    hospital.status = 'requires_correction';
+    hospital.rejectionReason = reason;
+    hospital.isDemoSimulation = true;
+
+    setStoredItem(KEYS.HOSPITALS, hospitals);
+
+    auditService.logEvent({
+      action: 'HOSPITAL_CORRECTION_REQUIRED',
+      entityType: 'Hospitals',
+      entityId: hospital.id,
+      hospitalId: hospital.id,
+      hospitalName: hospital.name,
+      adminUser: 'Super Administrator',
+      summary: `Hospital registration corrections requested for ${hospital.name}. Reason: ${reason}`,
+      resultingStatus: 'requires_correction',
+      metadata: { reason },
+    });
+
+    return hospital;
+  },
+
   async setReviewStatus(hospitalId, status, note = '') {
     await new Promise((r) => setTimeout(r, 250));
     assertAdminSession();

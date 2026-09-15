@@ -2,6 +2,7 @@ const { randomUUID: uuidv4 } = require('crypto');
 const { supabaseAdmin, supabaseAnon, isConfigured } = require('../config/supabase');
 const authService = require('./authService');
 const auditService = require('./auditService');
+const mailerService = require('./mailerService');
 const logger = require('../utils/logger');
 
 const verificationService = {
@@ -18,7 +19,7 @@ const verificationService = {
         const { data, error } = await client
           .from('hospitals')
           .select('*, hospital_documents(*)')
-          .in('status', ['PENDING_APPROVAL', 'pending', 'under_review'])
+          .in('status', ['PENDING_APPROVAL', 'pending', 'under_review', 'pending_approval', 'requires_correction'])
           .order('created_at', { ascending: false });
 
         if (!error && data && data.length > 0) {
@@ -76,7 +77,7 @@ const verificationService = {
         const client = supabaseAdmin || supabaseAnon;
         const { data, error } = await client
           .from('hospitals')
-          .select('*, hospital_documents(*)')
+          .select('*, hospital_documents(*), hospital_campuses(*)')
           .eq('id', hospitalId)
           .single();
 
@@ -97,7 +98,12 @@ const verificationService = {
       throw err;
     }
 
-    const rawDocs = hospital.documents || hospital.hospital_documents || [];
+    let rawDocs = hospital.documents || hospital.hospital_documents || [];
+    if (!rawDocs || rawDocs.length === 0) {
+      const docService = require('./documentService');
+      const devDocs = docService.getDevDocuments ? docService.getDevDocuments(hospital.id) : (docService._devDocumentRegistry || []);
+      rawDocs = devDocs.filter((d) => d.hospital_id === hospital.id && d.document_status !== 'superseded');
+    }
 
     // Generate signed download URLs or safe access links for each submitted document
     const enrichedDocs = rawDocs.map((doc) => {
@@ -109,6 +115,11 @@ const verificationService = {
         id: doc.id,
         documentType: docType,
         document_type: docType,
+        documentNumber: doc.documentNumber || doc.document_number || null,
+        issuingAuthority: doc.issuingAuthority || doc.issuing_authority || null,
+        issueDate: doc.issueDate || doc.issue_date || null,
+        expiryDate: doc.expiryDate || doc.expiry_date || null,
+        customDocumentName: doc.customDocumentName || doc.custom_document_name || null,
         documentName: docName,
         document_name: docName,
         originalFilename: doc.originalFilename || doc.original_filename || docName,
@@ -127,17 +138,57 @@ const verificationService = {
       };
     });
 
+    let rawCampuses = hospital.hospital_campuses || hospital.campuses || [];
+    if (!Array.isArray(rawCampuses)) {
+      rawCampuses = (rawCampuses && typeof rawCampuses === 'object') ? [rawCampuses] : [];
+    }
+    if (!rawCampuses || rawCampuses.length === 0) {
+      const hService = require('./hospitalService');
+      const devCampuses = hService.getDevCampuses ? hService.getDevCampuses(hospital.id) : [];
+      if (devCampuses && devCampuses.length > 0) {
+        rawCampuses = devCampuses;
+      } else if (hospital.address) {
+        rawCampuses = [{
+          id: `campus-${hospital.id}`,
+          campus_name: 'Main Campus',
+          address: hospital.address,
+          state: hospital.state,
+          district: hospital.district,
+          city: hospital.city,
+          pincode: hospital.pincode,
+          receiving_gate: hospital.receiving_gate || hospital.receivingGate,
+        }];
+      }
+    }
+
+    const campuses = rawCampuses.map((c) => ({
+      id: c.id,
+      name: c.campus_name || c.name || 'Main Campus',
+      address: c.address || hospital.address,
+      state: c.state || hospital.state,
+      district: c.district || hospital.district,
+      city: c.city || hospital.city,
+      pincode: c.pincode || hospital.pincode,
+      receivingGate: c.receiving_gate || c.receivingGate || hospital.receiving_gate,
+      isMainCampus: c.is_main_campus !== false,
+    }));
+
     return {
       id: hospital.id,
       name: hospital.name,
       registrationNo: hospital.registrationNo || hospital.registration_no,
+      issuingAuthority: hospital.issuingAuthority || hospital.issuing_authority,
+      organizationType: hospital.organizationType || hospital.organization_type,
       authorizedPerson: hospital.authorizedPerson || hospital.authorized_person,
+      designation: hospital.designation,
       email: hospital.email,
       phone: hospital.phone,
       address: hospital.address,
       city: hospital.city,
+      district: hospital.district,
       state: hospital.state,
       pincode: hospital.pincode,
+      receivingGate: hospital.receiving_gate,
       status: hospital.status,
       registeredDate: hospital.registeredDate || hospital.registered_date || hospital.created_at,
       verifiedDate: hospital.verifiedDate || hospital.verified_date || hospital.approved_at,
@@ -145,6 +196,17 @@ const verificationService = {
       reviewNotes: hospital.reviewNote || hospital.review_notes,
       documentsCount: enrichedDocs.length,
       documents: enrichedDocs,
+      campuses: campuses.length > 0 ? campuses : [{
+        id: 'main-campus',
+        name: 'Main Campus',
+        address: hospital.address,
+        state: hospital.state,
+        district: hospital.district,
+        city: hospital.city,
+        pincode: hospital.pincode,
+        receivingGate: hospital.receiving_gate,
+        isMainCampus: true,
+      }],
     };
   },
 
@@ -186,7 +248,8 @@ const verificationService = {
           approved_at: nowIso,
           rejection_reason: null,
         };
-        if (adminUser.id) updatePayload.approved_by = adminUser.id;
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (adminUser.id && UUID_REGEX.test(adminUser.id)) updatePayload.approved_by = adminUser.id;
 
         const { data: updatedHosp, error: hospErr } = await supabaseAdmin
           .from('hospitals')
@@ -244,6 +307,14 @@ const verificationService = {
       },
     });
 
+    // Send real approval email notification to official hospital email
+    if (targetHosp?.email) {
+      mailerService.sendApprovalEmail({
+        to: targetHosp.email,
+        hospitalName: targetHosp.name,
+      }).catch((e) => logger.warn('Approval email send notice:', e.message));
+    }
+
     return {
       hospital: targetHosp,
       status: 'APPROVED',
@@ -292,7 +363,8 @@ const verificationService = {
           rejection_reason: cleanReason,
           rejected_at: nowIso,
         };
-        if (adminUser.id) updatePayload.rejected_by = adminUser.id;
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (adminUser.id && UUID_REGEX.test(adminUser.id)) updatePayload.rejected_by = adminUser.id;
 
         const { data: updatedHosp, error: hospErr } = await supabaseAdmin
           .from('hospitals')
@@ -355,6 +427,107 @@ const verificationService = {
       status: 'REJECTED',
       rejectionReason: cleanReason,
       message: `Hospital ${targetHosp.name} registration application rejected.`,
+    };
+  },
+
+  /**
+   * Requires correction for a hospital registration with administrative reason
+   */
+  async requireCorrection(hospitalId, reason, adminUser = { name: 'Super Administrator', id: null }) {
+    if (!reason || !reason.trim()) {
+      const err = new Error('Validation Error: A specific correction reason is mandatory.');
+      err.statusCode = 422;
+      throw err;
+    }
+
+    const cleanReason = reason.trim();
+    const devHospitals = authService.getDevHospitals();
+    const idx = devHospitals.findIndex((h) => h.id === hospitalId);
+
+    const nowIso = new Date().toISOString();
+    let targetHosp = null;
+
+    if (idx !== -1) {
+      devHospitals[idx].status = 'requires_correction';
+      devHospitals[idx].rejectionReason = cleanReason;
+      devHospitals[idx].reviewNote = cleanReason;
+      devHospitals[idx].rejected_at = nowIso;
+      devHospitals[idx].rejected_by = adminUser.id || 'admin-01';
+      targetHosp = devHospitals[idx];
+    }
+
+    if (isConfigured && supabaseAdmin) {
+      try {
+        const updatePayload = {
+          status: 'requires_correction',
+          rejection_reason: cleanReason,
+          review_notes: cleanReason,
+        };
+        const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (adminUser.id && UUID_REGEX.test(adminUser.id)) updatePayload.rejected_by = adminUser.id;
+
+        const { data: updatedHosp, error: hospErr } = await supabaseAdmin
+          .from('hospitals')
+          .update(updatePayload)
+          .eq('id', hospitalId)
+          .select()
+          .single();
+
+        if (!hospErr && updatedHosp) targetHosp = updatedHosp;
+
+        // Notification record for the hospital
+        await supabaseAdmin.from('notifications').insert([{
+          id: uuidv4(),
+          hospital_id: hospitalId,
+          notification_type: 'CORRECTION_REQUIRED',
+          type: 'warning',
+          title: 'Registration Corrections Required',
+          message: `Your hospital registration requires updates before approval: ${cleanReason}`,
+          link: '/hospital-register',
+          is_read: false,
+        }]);
+      } catch (err) {
+        logger.warn('Supabase update failed during requireCorrection:', err.message);
+      }
+    }
+
+    if (!targetHosp) {
+      const err = new Error('Hospital application not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // Statutory Audit Log
+    await auditService.logEvent({
+      action: 'HOSPITAL_CORRECTION_REQUIRED',
+      entityType: 'HOSPITAL',
+      entityId: hospitalId,
+      actorRole: 'admin',
+      hospitalId,
+      hospitalName: targetHosp.name,
+      summary: `Administrator ${adminUser.name} requested corrections for ${targetHosp.name}. Reason: ${cleanReason}`,
+      resultingStatus: 'requires_correction',
+      metadata: {
+        reason: cleanReason,
+        requestedAt: nowIso,
+        requestedBy: adminUser.name,
+      },
+    });
+
+    // Send real correction email notification to official hospital email
+    if (targetHosp?.email) {
+      mailerService.sendCorrectionEmail({
+        to: targetHosp.email,
+        hospitalName: targetHosp.name,
+        reason: cleanReason,
+      }).catch((e) => logger.warn('Correction email send notice:', e.message));
+    }
+
+    return {
+      hospital: targetHosp,
+      status: 'requires_correction',
+      reason: cleanReason,
+      message: `Hospital ${targetHosp.name} registration sent back for corrections.`,
     };
   },
 

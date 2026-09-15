@@ -2535,5 +2535,161 @@ export const hospitalService = {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(downloadUrl);
-  }
+  },
+
+  // ==========================================
+  // 4-STEP HOSPITAL REGISTRATION SYSTEM
+  // ==========================================
+  async sendEmailOtp(email) {
+    let res;
+    try {
+      res = await fetch(`${API_BASE_URL}/auth/send-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+    } catch (networkErr) {
+      throw new Error(`Unable to connect to backend service. Please verify that the MedEx backend server is running on port 5000: ${networkErr.message}`);
+    }
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const serverErrMsg = json?.error?.message 
+        || (typeof json?.error === 'string' ? json.error : null) 
+        || json?.message 
+        || (res.status === 500 || res.status === 504 ? `Backend server returned HTTP ${res.status}. Please check backend console logs.` : null)
+        || 'Failed to send OTP to email';
+      throw new Error(serverErrMsg);
+    }
+    return json?.data || json;
+  },
+
+  async verifyEmailOtp(email, otp) {
+    let res;
+    try {
+      res = await fetch(`${API_BASE_URL}/auth/verify-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, otp }),
+      });
+    } catch (networkErr) {
+      throw new Error(`Unable to connect to backend service. Please verify that the MedEx backend server is running on port 5000: ${networkErr.message}`);
+    }
+
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const serverErrMsg = json?.error?.message 
+        || (typeof json?.error === 'string' ? json.error : null) 
+        || json?.message 
+        || (res.status === 500 || res.status === 504 ? `Backend server returned HTTP ${res.status}. Please check backend console logs.` : null)
+        || 'Invalid or expired OTP';
+      throw new Error(serverErrMsg);
+    }
+    return json?.data || json;
+  },
+
+  async saveStep1(data) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/step-1`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'We could not save your registration. Please try again.');
+    }
+    return json?.data || json;
+  },
+
+  async saveStep2(data) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/step-2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'We could not save your registration. Please try again.');
+    }
+    return json?.data || json;
+  },
+
+  async uploadRegistrationDocument(formData) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/upload-document`, {
+      method: 'POST',
+      body: formData,
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'We could not upload your document. Please try again.');
+    }
+    return json?.data || json;
+  },
+
+  async deleteRegistrationDocument(hospitalId, documentId) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/documents/${encodeURIComponent(documentId)}?hospitalId=${encodeURIComponent(hospitalId)}`, {
+      method: 'DELETE',
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'Failed to delete document');
+    }
+    return json?.data || json;
+  },
+
+  async getRegistrationDocuments(hospitalId) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/documents?hospitalId=${encodeURIComponent(hospitalId)}`);
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'Failed to fetch uploaded documents');
+    }
+    return json?.data || [];
+  },
+
+  async getRegistrationDocumentViewUrl(hospitalId, documentId) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/documents/${encodeURIComponent(documentId)}/view?hospitalId=${encodeURIComponent(hospitalId)}`);
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'Failed to retrieve secure document viewing URL');
+    }
+    return json?.data || json;
+  },
+
+  async submitRegistration(hospitalId, { password, confirmPassword }) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hospitalId, password, confirmPassword }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      const err = new Error(json?.error?.message || json?.message || 'Failed to submit registration');
+      if (json?.error?.code) err.code = json.error.code;
+      if (json?.error?.missingDocuments) err.missingDocuments = json.error.missingDocuments;
+      throw err;
+    }
+    return json?.data || json;
+  },
+
+  async getRegistrationStatus(identifier) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/status?identifier=${encodeURIComponent(identifier)}`);
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'Failed to check registration status');
+    }
+    return json?.data || json;
+  },
+
+  async resubmitRegistration(hospitalId, payload = {}) {
+    const res = await fetch(`${API_BASE_URL}/hospitals/registration/resubmit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hospitalId, ...payload }),
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error(json?.error?.message || json?.message || 'Failed to resubmit application');
+    }
+    return json?.data || json;
+  },
 };

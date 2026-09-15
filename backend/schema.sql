@@ -73,15 +73,22 @@ CREATE TABLE IF NOT EXISTS hospitals (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255) NOT NULL,
   registration_no VARCHAR(100) UNIQUE NOT NULL,
+  issuing_authority VARCHAR(255),
+  organization_type VARCHAR(100),
   authorized_person VARCHAR(255) NOT NULL,
+  designation VARCHAR(100),
   email VARCHAR(255) UNIQUE NOT NULL,
   phone VARCHAR(50) NOT NULL,
+  email_verified BOOLEAN DEFAULT false,
+  email_verified_at TIMESTAMPTZ,
   address TEXT NOT NULL,
+  receiving_gate VARCHAR(255),
   city VARCHAR(100) NOT NULL,
+  district VARCHAR(100),
   state VARCHAR(100) NOT NULL,
   pincode VARCHAR(20) NOT NULL,
-  status VARCHAR(50) NOT NULL DEFAULT 'PENDING_APPROVAL' 
-    CHECK (status IN ('REGISTERED', 'PENDING_APPROVAL', 'ADMIN_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED', 'pending', 'under_review', 'verified', 'rejected', 'suspended', 'approved')),
+  status VARCHAR(50) NOT NULL DEFAULT 'draft' 
+    CHECK (status IN ('draft', 'pending_approval', 'approved', 'requires_correction', 'REGISTERED', 'PENDING_APPROVAL', 'ADMIN_REVIEW', 'APPROVED', 'REJECTED', 'SUSPENDED', 'pending', 'under_review', 'verified', 'rejected', 'suspended')),
   rejection_reason TEXT,
   review_notes TEXT,
   registered_date DATE NOT NULL DEFAULT CURRENT_DATE,
@@ -135,6 +142,62 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN null; END $$;
 
 -- ====================================================================
+-- ====================================================================
+-- ENTITY 2.5: HOSPITAL_CAMPUSES (MULTI-CAMPUS SUPPORT)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS hospital_campuses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
+  campus_name VARCHAR(255) NOT NULL DEFAULT 'Main Campus',
+  is_primary BOOLEAN NOT NULL DEFAULT true,
+  address TEXT NOT NULL,
+  state VARCHAR(100) NOT NULL,
+  district VARCHAR(100) NOT NULL,
+  city VARCHAR(100) NOT NULL,
+  pincode VARCHAR(20) NOT NULL,
+  receiving_gate VARCHAR(255),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_hospital_campuses_hospital_id UNIQUE (hospital_id)
+);
+
+-- Ensure unique constraint exists on hospital_id for ON CONFLICT (hospital_id) upserts,
+-- and safely handle existing databases where hospital_campuses was already created without the constraint.
+DO $$
+BEGIN
+  -- Deduplicate hospital_campuses keeping the latest updated record per hospital_id if any duplicates exist
+  DELETE FROM hospital_campuses a USING hospital_campuses b
+  WHERE a.hospital_id = b.hospital_id
+    AND (a.updated_at < b.updated_at OR (a.updated_at = b.updated_at AND a.ctid < b.ctid));
+
+  -- Drop legacy non-unique index if present to avoid redundant indexing once unique constraint is active
+  IF EXISTS (
+    SELECT 1 FROM pg_indexes 
+    WHERE tablename = 'hospital_campuses' 
+      AND indexname = 'idx_hospital_campuses_hospital_id'
+  ) AND NOT EXISTS (
+    SELECT 1 FROM pg_constraint 
+    WHERE conname = 'idx_hospital_campuses_hospital_id'
+  ) THEN
+    DROP INDEX IF EXISTS idx_hospital_campuses_hospital_id;
+  END IF;
+
+  -- Add unique constraint if not already present
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conrelid = 'hospital_campuses'::regclass
+      AND conname = 'uq_hospital_campuses_hospital_id'
+  ) THEN
+    ALTER TABLE hospital_campuses ADD CONSTRAINT uq_hospital_campuses_hospital_id UNIQUE (hospital_id);
+  END IF;
+EXCEPTION
+  WHEN duplicate_table OR duplicate_object THEN NULL;
+END $$;
+
+CREATE INDEX IF NOT EXISTS idx_hospital_campuses_city ON hospital_campuses(city);
+CREATE INDEX IF NOT EXISTS idx_hospital_campuses_state ON hospital_campuses(state);
+
+-- ====================================================================
 -- ENTITY 3: HOSPITAL_DOCUMENTS
 -- Statutory compliance dossier (Files kept private in Supabase Storage)
 -- ====================================================================
@@ -142,6 +205,11 @@ CREATE TABLE IF NOT EXISTS hospital_documents (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   hospital_id UUID NOT NULL REFERENCES hospitals(id) ON DELETE CASCADE,
   document_type VARCHAR(150) NOT NULL,
+  document_number VARCHAR(150),
+  issuing_authority VARCHAR(255),
+  issue_date DATE,
+  expiry_date DATE,
+  custom_document_name VARCHAR(255),
   original_filename VARCHAR(255) NOT NULL,
   document_name VARCHAR(255) NOT NULL,
   storage_path TEXT NOT NULL,
@@ -165,6 +233,23 @@ CREATE TABLE IF NOT EXISTS hospital_documents (
 CREATE INDEX IF NOT EXISTS idx_hospital_docs_hospital_id ON hospital_documents(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_hospital_docs_status ON hospital_documents(document_status);
 CREATE INDEX IF NOT EXISTS idx_hospital_docs_type ON hospital_documents(document_type);
+
+-- ====================================================================
+-- ENTITY 3.5: EMAIL_VERIFICATIONS (OTP LIFECYCLE)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS email_verifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  email VARCHAR(255) NOT NULL,
+  otp_hash VARCHAR(255) NOT NULL,
+  expires_at TIMESTAMPTZ NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  verified BOOLEAN NOT NULL DEFAULT false,
+  last_sent_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verifications_email ON email_verifications(email);
+CREATE INDEX IF NOT EXISTS idx_email_verifications_expires_at ON email_verifications(expires_at);
 
 -- ====================================================================
 -- ENTITY 4: MEDICINES (MASTER CLINICAL CATALOGUE)

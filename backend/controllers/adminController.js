@@ -64,6 +64,21 @@ const adminController = {
   },
 
   /**
+   * PATCH /api/admin/hospitals/:id/require-correction
+   * Requests application corrections with mandatory reason
+   */
+  async requireCorrection(req, res, next) {
+    try {
+      const { id } = req.params;
+      const { reason } = req.body;
+      const result = await verificationService.requireCorrection(id, reason, req.user);
+      return successResponse(res, result, result.message);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  /**
    * PATCH /api/admin/hospitals/:id/review-status
    * Updates intermediate review status and administrative internal note
    */

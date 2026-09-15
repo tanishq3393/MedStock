@@ -1,7 +1,7 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
-const { supabaseAdmin, isConfigured } = require('../config/supabase');
+const { supabaseAdmin, getSupabaseAdmin, isConfigured } = require('../config/supabase');
 const auditService = require('./auditService');
 const logger = require('../utils/logger');
 const environment = require('../config/environment');
@@ -26,6 +26,11 @@ const documentService = {
     hospitalId,
     documentType,
     documentName,
+    documentNumber = null,
+    issuingAuthority = null,
+    issueDate = null,
+    expiryDate = null,
+    customDocumentName = null,
     fileBuffer = null,
     mimeType = 'application/pdf',
     uploadedBy = 'Hospital Administrator',
@@ -73,101 +78,107 @@ const documentService = {
       throw valErr;
     }
 
+    // Require Supabase Admin client (fails loudly if unconfigured)
+    const supabase = getSupabaseAdmin();
+
     // 2. Filename Security & Server-Generated UUID Storage Path
     const docId = crypto.randomUUID();
     const storagePath = `${hospitalId}/${validated.storageFilename}`;
-    let documentUrl = storagePath;
 
     // 3. Storage Security: Upload to private Supabase Storage bucket
-    if (isConfigured && supabaseAdmin && validated.buffer) {
-      try {
-        const { error: uploadErr } = await supabaseAdmin.storage
-          .from(BUCKET_NAME)
-          .upload(storagePath, validated.buffer, {
-            contentType: 'application/pdf',
-            upsert: false,
-          });
+    const { data: uploadData, error: uploadErr } = await supabase.storage
+      .from(BUCKET_NAME)
+      .upload(storagePath, validated.buffer, {
+        contentType: 'application/pdf',
+        upsert: true,
+      });
 
-        if (uploadErr) {
-          logger.warn('Supabase storage upload error:', uploadErr.message);
-        }
-      } catch (err) {
-        logger.warn('Failed to upload to Supabase storage:', err.message);
-      }
-    } else if (validated.buffer) {
-      // Local development fallback: store in private uploads directory (never in public frontend)
-      const uploadDir = path.join(__dirname, '..', 'uploads', 'hospital-documents', hospitalId);
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      fs.writeFileSync(path.join(uploadDir, validated.storageFilename), validated.buffer);
-      documentUrl = storagePath;
+    if (uploadErr) {
+      logger.error('Supabase storage upload failed:', uploadErr.message);
+      const err = new Error(`Failed to upload document file to Supabase Storage: ${uploadErr.message}`);
+      err.statusCode = 500;
+      throw err;
     }
 
     // 4. Duplicate / Replacement Safety: Supersede existing document of same type if present
     let isReplacement = false;
-    if (isConfigured && supabaseAdmin) {
-      try {
-        const { data: existingDoc } = await supabaseAdmin
-          .from('hospital_documents')
-          .select('id, storage_path')
-          .eq('hospital_id', hospitalId)
-          .eq('document_type', documentType)
-          .eq('document_status', 'pending')
-          .single();
+    try {
+      const { data: existingDoc } = await supabase
+        .from('hospital_documents')
+        .select('id, storage_path')
+        .eq('hospital_id', hospitalId)
+        .eq('document_type', documentType)
+        .eq('document_status', 'pending')
+        .maybeSingle();
 
-        if (existingDoc) {
-          isReplacement = true;
-          // Supersede older record
-          await supabaseAdmin
-            .from('hospital_documents')
-            .update({ document_status: 'rejected', rejection_reason: 'Superseded by newer submission' })
-            .eq('id', existingDoc.id);
-        }
-      } catch (e) {
-        // No existing record to supersede
-      }
-    } else {
-      const existingIdx = devDocumentRegistry.findIndex(
-        (d) => d.hospital_id === hospitalId && d.document_type === documentType
-      );
-      if (existingIdx !== -1) {
+      if (existingDoc) {
         isReplacement = true;
-        devDocumentRegistry[existingIdx].document_status = 'superseded';
+        // Supersede older record
+        await supabase
+          .from('hospital_documents')
+          .update({ document_status: 'rejected', rejection_reason: 'Superseded by newer submission' })
+          .eq('id', existingDoc.id);
       }
+    } catch (e) {
+      // No existing record to supersede
     }
 
     // 5. Construct Document Record
-    const documentRecord = {
+    const nowIso = new Date().toISOString();
+    const coreDocRecord = {
       id: docId,
       hospital_id: hospitalId,
       document_type: documentType,
       original_filename: validated.originalFilename,
       document_name: validated.originalFilename,
       storage_path: storagePath,
-      file_path: documentUrl,
+      file_path: storagePath,
       mime_type: 'application/pdf',
       file_size: validated.sizeDisplay,
       file_size_bytes: validated.sizeBytes,
       submission_status: 'submitted',
       document_status: 'pending',
       uploaded_by: uploadedBy,
-      uploaded_at: new Date().toISOString(),
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      uploaded_at: nowIso,
+      created_at: nowIso,
+      updated_at: nowIso,
     };
 
-    // Persist metadata
-    if (isConfigured && supabaseAdmin) {
-      try {
-        await supabaseAdmin.from('hospital_documents').insert([documentRecord]);
-      } catch (err) {
-        logger.warn('Failed to save document metadata in Supabase:', err.message);
-      }
+    const extendedDocRecord = {
+      ...coreDocRecord,
+      document_number: documentNumber || null,
+      issuing_authority: issuingAuthority || null,
+      issue_date: (issueDate && issueDate !== 'N/A') ? issueDate : null,
+      expiry_date: (expiryDate && expiryDate !== 'N/A') ? expiryDate : null,
+      custom_document_name: customDocumentName || null,
+    };
+
+    // Persist metadata to Supabase hospital_documents table
+    let { error: insertErr } = await supabase
+      .from('hospital_documents')
+      .insert([extendedDocRecord]);
+
+    // If extended columns are not yet applied on remote database (PGRST204), retry with core columns
+    if (insertErr && (insertErr.code === 'PGRST204' || insertErr.message?.includes('column'))) {
+      logger.info('Retrying hospital_documents insert with core columns (extended columns pending migration in Supabase)...');
+      const retryResult = await supabase
+        .from('hospital_documents')
+        .insert([coreDocRecord]);
+      insertErr = retryResult.error;
+    }
+
+    if (insertErr) {
+      logger.error('Failed to save document metadata in Supabase:', insertErr.message);
+      // Clean up uploaded file to prevent orphan storage objects
+      await supabase.storage.from(BUCKET_NAME).remove([storagePath]).catch(() => {});
+      const err = new Error(`Database error saving document record: ${insertErr.message}`);
+      err.statusCode = 500;
+      err.code = insertErr.code || 'DB_WRITE_FAILED';
+      throw err;
     }
 
     // Maintain in-memory store for dev / tests
-    devDocumentRegistry.unshift(documentRecord);
+    devDocumentRegistry.unshift(coreDocRecord);
 
     // 6. Security Audit Event
     const auditAction = isReplacement ? 'DOCUMENT_REPLACED' : 'DOCUMENT_UPLOADED';
@@ -188,7 +199,7 @@ const documentService = {
       },
     });
 
-    return documentRecord;
+    return coreDocRecord;
   },
 
   /**
@@ -207,10 +218,14 @@ const documentService = {
 
     // 1. Locate Authoritative Document Record
     let doc = null;
+    let supabase = null;
+    try {
+      supabase = getSupabaseAdmin();
+    } catch (e) {}
 
-    if (isConfigured && supabaseAdmin) {
+    if (supabase) {
       try {
-        const { data, error } = await supabaseAdmin
+        const { data, error } = await supabase
           .from('hospital_documents')
           .select('*')
           .eq('id', documentId)
@@ -269,9 +284,9 @@ const documentService = {
     let signedUrl = null;
     const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
 
-    if (isConfigured && supabaseAdmin && targetStoragePath && !targetStoragePath.startsWith('/')) {
+    if (supabase && targetStoragePath && !targetStoragePath.startsWith('/')) {
       try {
-        const { data, error } = await supabaseAdmin.storage
+        const { data, error } = await supabase.storage
           .from(BUCKET_NAME)
           .createSignedUrl(targetStoragePath, expiresInSeconds);
 
@@ -319,15 +334,75 @@ const documentService = {
    * Returns registered document by ID (internal utility)
    */
   async getDocumentById(documentId) {
-    if (isConfigured && supabaseAdmin) {
-      const { data } = await supabaseAdmin
+    try {
+      const supabase = getSupabaseAdmin();
+      const { data } = await supabase
         .from('hospital_documents')
         .select('*')
         .eq('id', documentId)
         .single();
       if (data) return data;
-    }
+    } catch (e) {}
     return devDocumentRegistry.find((d) => d.id === documentId) || null;
+  },
+
+  /**
+   * Deletes a registered document and removes storage object
+   */
+  async deleteDocument(documentId, hospitalId) {
+    const supabase = getSupabaseAdmin();
+
+    const { data: doc, error: findErr } = await supabase
+      .from('hospital_documents')
+      .select('*')
+      .eq('id', documentId)
+      .eq('hospital_id', hospitalId)
+      .maybeSingle();
+
+    if (findErr) {
+      logger.error('Failed to query document before deletion:', findErr.message);
+      const err = new Error(`Database error querying document: ${findErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    if (!doc) {
+      const err = new Error('Document not found or access denied.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const { error: delErr } = await supabase
+      .from('hospital_documents')
+      .delete()
+      .eq('id', documentId);
+
+    if (delErr) {
+      logger.error('Failed to delete document from Supabase:', delErr.message);
+      const err = new Error(`Database error deleting document: ${delErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    if (doc.storage_path) {
+      await supabase.storage.from(BUCKET_NAME).remove([doc.storage_path]).catch((e) => {
+        logger.warn('Warning removing storage object on document delete:', e.message);
+      });
+    }
+
+    const idx = devDocumentRegistry.findIndex((d) => (d.id === documentId || d.storage_path?.includes(documentId)) && d.hospital_id === hospitalId);
+    if (idx !== -1) {
+      devDocumentRegistry.splice(idx, 1);
+    }
+
+    return { success: true, message: 'Document deleted successfully', documentId };
+  },
+
+  /**
+   * Helper to get documents from in-memory registry
+   */
+  getDevDocuments(hospitalId) {
+    return devDocumentRegistry.filter((d) => !hospitalId || d.hospital_id === hospitalId);
   },
 
   /**
@@ -335,7 +410,9 @@ const documentService = {
    */
   _clearDevRegistry() {
     devDocumentRegistry.length = 0;
-  }
+  },
+
+  _devDocumentRegistry: devDocumentRegistry,
 };
 
 module.exports = documentService;

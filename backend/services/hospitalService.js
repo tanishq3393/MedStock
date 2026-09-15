@@ -1,12 +1,1118 @@
 const { randomUUID: uuidv4 } = require('crypto');
-const { supabaseAdmin, supabaseAnon, isConfigured } = require('../config/supabase');
+const { supabaseAdmin, supabaseAnon, getSupabaseAdmin, isConfigured } = require('../config/supabase');
 const authService = require('./authService');
 const auditService = require('./auditService');
+const otpService = require('./otpService');
+const documentService = require('./documentService');
 const logger = require('../utils/logger');
+
+const devCampuses = [];
+
+const MANDATORY_REGISTRATION_DOCS = [
+  {
+    key: 'registration_cert',
+    label: 'Hospital / Clinical Establishment Registration Certificate',
+    match: (t) => {
+      const s = (t || '').toLowerCase();
+      return s.includes('registration') || s.includes('establishment') || s.includes('clinical');
+    }
+  },
+  {
+    key: 'drug_license',
+    label: 'Drug License / Medicine Handling Authorization',
+    match: (t) => {
+      const s = (t || '').toLowerCase();
+      return s.includes('drug') || s.includes('license') || s.includes('medicine handling') || s.includes('form 20') || s.includes('form 21') || s.includes('form20');
+    }
+  },
+  {
+    key: 'auth_letter',
+    label: 'Hospital Authorization / Authorized Representative Letter',
+    match: (t) => {
+      const s = (t || '').toLowerCase();
+      return s.includes('authorization') || s.includes('authorized') || s.includes('resolution') || s.includes('representative');
+    }
+  }
+];
+
+function validatePasswordRequirements(password) {
+  if (!password || typeof password !== 'string') {
+    return 'Password is required.';
+  }
+  if (password.length < 8) {
+    return 'Password must be at least 8 characters long.';
+  }
+  if (!/[A-Z]/.test(password)) {
+    return 'Password must contain at least 1 uppercase letter (A-Z).';
+  }
+  if (!/[a-z]/.test(password)) {
+    return 'Password must contain at least 1 lowercase letter (a-z).';
+  }
+  if (!/[0-9]/.test(password)) {
+    return 'Password must contain at least 1 number (0-9).';
+  }
+  if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+    return 'Password must contain at least 1 special character (! @ # $ % ...).';
+  }
+  const lower = password.toLowerCase();
+  if (['password', 'password123', 'admin123', '12345678', 'medex123'].includes(lower)) {
+    return 'Password is too common or easily guessed. Please choose a stronger password.';
+  }
+  return null;
+}
 
 const hospitalService = {
   /**
-   * Registers a new hospital application with validation and audit trail
+   * Step 1: Hospital Identity & Authority Details
+   * Requires verified email via OTP
+   */
+  async saveStep1(formData) {
+    const required = [
+      { key: 'name', label: 'Hospital / Healthcare Institution Name' },
+      { key: 'registrationNo', label: 'Hospital Registration Number' },
+      { key: 'issuingAuthority', label: 'Issuing Authority' },
+      { key: 'organizationType', label: 'Organization Type' },
+      { key: 'authorizedPerson', label: 'Authorized Representative Name' },
+      { key: 'designation', label: 'Designation' },
+      { key: 'email', label: 'Official Work Email' },
+      { key: 'phone', label: 'Official Contact Number' },
+    ];
+
+    const missing = required
+      .filter((r) => !formData[r.key] || !String(formData[r.key]).trim())
+      .map((r) => r.label);
+
+    if (missing.length > 0) {
+      const err = new Error(`Validation Error: Missing required fields: ${missing.join(', ')}`);
+      err.statusCode = 422;
+      err.missingFields = missing;
+      throw err;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const cleanEmail = formData.email.trim().toLowerCase();
+    if (!emailRegex.test(cleanEmail)) {
+      const err = new Error('Validation Error: Invalid official email address format.');
+      err.statusCode = 422;
+      throw err;
+    }
+
+    const cleanRegNo = formData.registrationNo.trim().toUpperCase();
+
+    // Verify that the email was verified with OTP
+    const isVerified = otpService.isEmailVerified(cleanEmail, formData.verificationToken);
+    if (!isVerified) {
+      const err = new Error('Email verification required: Please verify your official work email with the OTP before proceeding.');
+      err.statusCode = 400;
+      err.code = 'EMAIL_NOT_VERIFIED';
+      throw err;
+    }
+
+    // Ensure server has Supabase Admin client configured (fails loudly if unconfigured)
+    const supabase = getSupabaseAdmin();
+
+    // Check duplicate among APPROVED/ACTIVE hospitals directly in Supabase
+    const { data: existingRecords, error: dupCheckErr } = await supabase
+      .from('hospitals')
+      .select('id, name, status, email, registration_no')
+      .or(`email.eq.${cleanEmail},registration_no.eq.${cleanRegNo}`);
+
+    if (dupCheckErr) {
+      logger.error('Failed to query existing hospitals from Supabase:', dupCheckErr.message);
+      const err = new Error(`Database error checking registration: ${dupCheckErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    const existingApproved = existingRecords?.find((h) =>
+      ['APPROVED', 'approved', 'verified'].includes(h.status)
+    );
+    if (existingApproved) {
+      const err = new Error(`Duplicate Registration: An active hospital with email ${cleanEmail} or registration number ${cleanRegNo} is already registered.`);
+      err.statusCode = 409;
+      err.code = 'DUPLICATE_REGISTRATION';
+      throw err;
+    }
+
+    // Check existing draft / pending record in Supabase to reuse hospitalId
+    let hospitalId = formData.hospitalId;
+    const existingDraft = existingRecords?.find((h) =>
+      (hospitalId && h.id === hospitalId) ||
+      ['draft', 'REGISTERED', 'pending_approval', 'PENDING_APPROVAL', 'requires_correction'].includes(h.status)
+    );
+
+    if (existingDraft) {
+      hospitalId = existingDraft.id;
+    } else if (!hospitalId) {
+      hospitalId = uuidv4();
+    }
+
+    const nowIso = new Date().toISOString();
+    const hospitalData = {
+      id: hospitalId,
+      name: formData.name.trim(),
+      registrationNo: cleanRegNo,
+      registration_no: cleanRegNo,
+      issuingAuthority: formData.issuingAuthority.trim(),
+      issuing_authority: formData.issuingAuthority.trim(),
+      organizationType: formData.organizationType.trim(),
+      organization_type: formData.organizationType.trim(),
+      authorizedPerson: formData.authorizedPerson.trim(),
+      authorized_person: formData.authorizedPerson.trim(),
+      designation: formData.designation.trim(),
+      email: cleanEmail,
+      phone: formData.phone.trim(),
+      emailVerified: true,
+      email_verified: true,
+      emailVerifiedAt: nowIso,
+      email_verified_at: nowIso,
+      address: existingDraft?.address || '',
+      city: existingDraft?.city || '',
+      district: existingDraft?.district || '',
+      state: existingDraft?.state || '',
+      pincode: existingDraft?.pincode || '',
+      receivingGate: existingDraft?.receivingGate || '',
+      receiving_gate: existingDraft?.receiving_gate || '',
+      status: 'draft',
+      registeredDate: nowIso.split('T')[0],
+      registered_date: nowIso.split('T')[0],
+      documents: existingDraft?.documents || [],
+      updatedAt: nowIso,
+      updated_at: nowIso,
+    };
+
+    // Prepare primary core columns supported in PostgreSQL hospitals table
+    // Note: status 'REGISTERED' is compatible with existing hospitals_status_check constraint
+    const coreHospitalPayload = {
+      id: hospitalId,
+      name: hospitalData.name,
+      registration_no: hospitalData.registration_no,
+      authorized_person: hospitalData.authorized_person,
+      email: hospitalData.email,
+      phone: hospitalData.phone,
+      address: hospitalData.address || 'Pending Campus Entry',
+      city: hospitalData.city || 'Pending',
+      state: hospitalData.state || 'Pending',
+      pincode: hospitalData.pincode || '000000',
+      status: 'REGISTERED',
+      updated_at: nowIso,
+    };
+
+    // Full extended payload matching migration 20260915000001
+    const extendedHospitalPayload = {
+      ...coreHospitalPayload,
+      issuing_authority: hospitalData.issuing_authority,
+      organization_type: hospitalData.organization_type,
+      designation: hospitalData.designation,
+      email_verified: true,
+      email_verified_at: nowIso,
+    };
+
+    // Execute real write to Supabase hospitals table
+    let { error: upsertErr } = await supabase
+      .from('hospitals')
+      .upsert([extendedHospitalPayload], { onConflict: 'id' });
+
+    // If extended columns are not yet applied on remote database (PGRST204), retry with core columns
+    if (upsertErr && (upsertErr.code === 'PGRST204' || upsertErr.message?.includes('column'))) {
+      logger.info('Retrying hospitals upsert with core columns (extended columns pending migration in Supabase)...');
+      const retryResult = await supabase
+        .from('hospitals')
+        .upsert([coreHospitalPayload], { onConflict: 'id' });
+      upsertErr = retryResult.error;
+    }
+
+    if (upsertErr) {
+      logger.error('Supabase hospitals upsert failed:', upsertErr.message);
+      const err = new Error(`Database error saving hospital registration: ${upsertErr.message}`);
+      err.statusCode = 500;
+      err.code = upsertErr.code || 'DB_WRITE_FAILED';
+      throw err;
+    }
+
+    // Update in-memory registry cache only AFTER database persistence succeeds
+    const devHospitals = authService.getDevHospitals();
+    const devExistingIdx = devHospitals.findIndex((h) => h.id === hospitalId);
+    if (devExistingIdx !== -1) {
+      Object.assign(devHospitals[devExistingIdx], hospitalData);
+    } else {
+      devHospitals.unshift(hospitalData);
+    }
+
+    return {
+      hospitalId,
+      status: 'draft',
+      step: 1,
+      hospital: hospitalData,
+      message: 'Step 1 saved successfully. Step 2 unlocked.',
+    };
+  },
+
+  /**
+   * Step 2: Physical Campus & Receiving Gate
+   */
+  async saveStep2(formData) {
+    const { hospitalId, address, state, district, city, pincode, receivingGate } = formData;
+    if (!hospitalId) {
+      const err = new Error('Hospital ID is required. Please complete Step 1 first.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const required = [
+      { key: 'address', label: 'Hospital / Campus Address' },
+      { key: 'state', label: 'State' },
+      { key: 'district', label: 'District' },
+      { key: 'city', label: 'City' },
+      { key: 'pincode', label: 'Pincode' },
+    ];
+
+    const missing = required
+      .filter((r) => !formData[r.key] || !String(formData[r.key]).trim())
+      .map((r) => r.label);
+
+    if (missing.length > 0) {
+      const err = new Error(`Validation Error: Missing required campus fields: ${missing.join(', ')}`);
+      err.statusCode = 422;
+      err.missingFields = missing;
+      throw err;
+    }
+
+    // Validate Indian 6-digit Pincode
+    const cleanPin = String(pincode).trim();
+    if (!/^[1-9][0-9]{5}$/.test(cleanPin)) {
+      const err = new Error('Validation Error: Pincode must be a valid 6-digit Indian postal code.');
+      err.statusCode = 422;
+      throw err;
+    }
+
+    const cleanAddress = address.trim();
+    const cleanState = state.trim();
+    const cleanDistrict = district.trim();
+    const cleanCity = city.trim();
+    const cleanGate = receivingGate ? String(receivingGate).trim() : null;
+    const nowIso = new Date().toISOString();
+
+    // Ensure server has Supabase Admin client configured (fails loudly if unconfigured)
+    const supabase = getSupabaseAdmin();
+
+    // 1. Verify hospital exists in Supabase
+    const { data: existingHosp, error: hospFindErr } = await supabase
+      .from('hospitals')
+      .select('id, name')
+      .eq('id', hospitalId)
+      .maybeSingle();
+
+    if (hospFindErr) {
+      logger.error('Failed to verify hospital in Supabase:', hospFindErr.message);
+      const err = new Error(`Database error verifying hospital: ${hospFindErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    if (!existingHosp) {
+      const err = new Error(`Hospital with ID ${hospitalId} not found in database. Please complete Step 1 first.`);
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // 2. Persist campus address directly to hospitals table
+    const extendedHospUpdate = {
+      address: cleanAddress,
+      state: cleanState,
+      district: cleanDistrict,
+      city: cleanCity,
+      pincode: cleanPin,
+      receiving_gate: cleanGate,
+      updated_at: nowIso,
+    };
+
+    const coreHospUpdate = {
+      address: cleanAddress,
+      state: cleanState,
+      city: cleanCity,
+      pincode: cleanPin,
+      updated_at: nowIso,
+    };
+
+    let { error: hospUpdateErr } = await supabase
+      .from('hospitals')
+      .update(extendedHospUpdate)
+      .eq('id', hospitalId);
+
+    if (hospUpdateErr && (hospUpdateErr.code === 'PGRST204' || hospUpdateErr.message?.includes('column'))) {
+      logger.info('Retrying hospitals address update with core columns (district/receiving_gate pending migration in Supabase)...');
+      const retryResult = await supabase
+        .from('hospitals')
+        .update(coreHospUpdate)
+        .eq('id', hospitalId);
+      hospUpdateErr = retryResult.error;
+    }
+
+    if (hospUpdateErr) {
+      logger.error('Supabase hospitals update in saveStep2 failed:', hospUpdateErr.message);
+      const err = new Error(`Database error saving campus address: ${hospUpdateErr.message}`);
+      err.statusCode = 500;
+      err.code = hospUpdateErr.code || 'DB_WRITE_FAILED';
+      throw err;
+    }
+
+    // 3. Attempt to persist to dedicated hospital_campuses table if table exists
+    const campusRecord = {
+      id: uuidv4(),
+      hospital_id: hospitalId,
+      campus_name: 'Main Campus',
+      is_primary: true,
+      address: cleanAddress,
+      state: cleanState,
+      district: cleanDistrict,
+      city: cleanCity,
+      pincode: cleanPin,
+      receiving_gate: cleanGate,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+
+    let campusTablePersisted = false;
+    const { error: campusErr } = await supabase
+      .from('hospital_campuses')
+      .upsert([campusRecord], { onConflict: 'hospital_id' });
+
+    if (!campusErr) {
+      campusTablePersisted = true;
+    } else if (campusErr.code === 'PGRST205' || campusErr.message?.includes('schema cache')) {
+      logger.warn('hospital_campuses table does not exist in Supabase schema (PGRST205). Address was successfully persisted to hospitals table. Migration 20260915000001 must be run in Supabase SQL editor to create the dedicated hospital_campuses table.');
+    } else {
+      logger.error('Failed to write to hospital_campuses table:', campusErr.message);
+      const err = new Error(`Database error saving campus record: ${campusErr.message}`);
+      err.statusCode = 500;
+      err.code = campusErr.code || 'DB_WRITE_FAILED';
+      throw err;
+    }
+
+    // Update in-memory registry caches only AFTER database persistence succeeds
+    const devHospitals = authService.getDevHospitals();
+    const hospital = devHospitals.find((h) => h.id === hospitalId);
+    if (hospital) {
+      hospital.address = cleanAddress;
+      hospital.state = cleanState;
+      hospital.district = cleanDistrict;
+      hospital.city = cleanCity;
+      hospital.pincode = cleanPin;
+      hospital.receivingGate = cleanGate;
+      hospital.receiving_gate = cleanGate;
+      hospital.updatedAt = nowIso;
+      hospital.updated_at = nowIso;
+    }
+
+    const cIdx = devCampuses.findIndex((c) => c.hospital_id === hospitalId && c.is_primary);
+    if (cIdx !== -1) {
+      devCampuses[cIdx] = campusRecord;
+    } else {
+      devCampuses.push(campusRecord);
+    }
+
+    return {
+      hospitalId,
+      status: 'draft',
+      step: 2,
+      campus: campusRecord,
+      campusTablePersisted,
+      message: 'Campus details saved successfully. Step 3 unlocked.',
+    };
+  },
+
+  /**
+   * Helper to retrieve campuses for a hospital (internal / admin access)
+   */
+  getDevCampuses(hospitalId) {
+    return devCampuses.filter((c) => !hospitalId || c.hospital_id === hospitalId);
+  },
+
+  /**
+   * Step 3: Statutory Document Upload
+   */
+  async uploadRegistrationDocument({
+    hospitalId,
+    documentType,
+    documentNumber,
+    issuingAuthority,
+    issueDate,
+    expiryDate,
+    customDocumentName,
+    fileBuffer,
+    mimeType,
+    originalFilename,
+  }) {
+    if (!hospitalId) {
+      const err = new Error('Hospital ID is required for document attachment.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    return await documentService.uploadDocument({
+      hospitalId,
+      documentType,
+      documentName: originalFilename,
+      documentNumber,
+      issuingAuthority,
+      issueDate,
+      expiryDate,
+      customDocumentName,
+      fileBuffer,
+      mimeType,
+      uploadedBy: 'Hospital Administrator',
+    });
+  },
+
+  /**
+   * Step 3: Delete Document
+   */
+  async deleteRegistrationDocument(hospitalId, documentId) {
+    if (!hospitalId || !documentId) {
+      const err = new Error('Hospital ID and Document ID are required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    return await documentService.deleteDocument(documentId, hospitalId);
+  },
+
+  /**
+   * Step 3: Get Uploaded Documents
+   */
+  async getRegistrationDocuments(hospitalId) {
+    if (!hospitalId) return [];
+
+    const supabase = getSupabaseAdmin();
+    const { data: docs, error } = await supabase
+      .from('hospital_documents')
+      .select('*')
+      .eq('hospital_id', hospitalId)
+      .neq('document_status', 'superseded')
+      .neq('document_status', 'rejected')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      logger.error('Failed to query hospital documents in getRegistrationDocuments:', error.message);
+      const err = new Error(`Database error retrieving documents: ${error.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    return (docs || []).map((d) => ({
+      id: d.id,
+      hospitalId: d.hospital_id || d.hospitalId,
+      documentType: d.document_type || d.documentType,
+      documentNumber: d.document_number || d.documentNumber || '',
+      issuingAuthority: d.issuing_authority || d.issuingAuthority || '',
+      issueDate: d.issue_date || d.issueDate || '',
+      expiryDate: d.expiry_date || d.expiryDate || '',
+      customDocumentName: d.custom_document_name || d.customDocumentName || '',
+      documentName: d.document_name || d.documentName || d.original_filename,
+      originalFilename: d.original_filename || d.originalFilename || d.document_name,
+      storagePath: d.storage_path || d.storagePath,
+      fileSize: d.file_size || d.fileSize || '2.4 MB',
+      mimeType: d.mime_type || d.mimeType || 'application/pdf',
+      submissionStatus: d.submission_status || d.submissionStatus || 'submitted',
+      uploadedAt: d.uploaded_at || d.uploadedAt || new Date().toISOString(),
+    }));
+  },
+
+  /**
+   * Step 4: Final Submission
+   * Validates mandatory 3 statutory documents, validates password policy,
+   * creates initial hospital administrator account in Supabase Auth,
+   * updates hospital status to pending_approval.
+   */
+  async submitRegistration(hospitalId, { password, confirmPassword }) {
+    if (!hospitalId) {
+      const err = new Error('Hospital ID is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    // Query hospital authoritative record from Supabase
+    const { data: hospital, error: hospErr } = await supabase
+      .from('hospitals')
+      .select('*')
+      .eq('id', hospitalId)
+      .maybeSingle();
+
+    if (hospErr) {
+      logger.error('Failed to query hospital in submitRegistration:', hospErr.message);
+      const err = new Error(`Database error querying hospital: ${hospErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    if (!hospital) {
+      const err = new Error('Hospital registration application not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    // 1. Password policy enforcement
+    const pwdErr = validatePasswordRequirements(password);
+    if (pwdErr) {
+      const err = new Error(pwdErr);
+      err.statusCode = 422;
+      err.code = 'INVALID_PASSWORD_POLICY';
+      throw err;
+    }
+
+    if (password !== confirmPassword) {
+      const err = new Error('Validation Error: Passwords do not match.');
+      err.statusCode = 422;
+      err.code = 'PASSWORD_MISMATCH';
+      throw err;
+    }
+
+    // 2. Mandatory Statutory Documents Check
+    const uploadedDocs = await this.getRegistrationDocuments(hospitalId);
+    const submittedDocTypes = uploadedDocs.map((d) => d.documentType || '');
+
+    const missingMandatory = MANDATORY_REGISTRATION_DOCS.filter((reqDoc) => {
+      return !submittedDocTypes.some((subType) => reqDoc.match(subType));
+    });
+
+    if (missingMandatory.length > 0) {
+      const missingLabels = missingMandatory.map((m) => m.label).join(', ');
+      const err = new Error(`Application submission blocked: All mandatory statutory documents must be submitted. Missing: ${missingLabels}`);
+      err.statusCode = 400;
+      err.code = 'MANDATORY_DOCUMENTS_MISSING';
+      err.missingDocuments = missingMandatory.map((m) => m.label);
+      throw err;
+    }
+
+    const nowIso = new Date().toISOString();
+    const todayDate = nowIso.split('T')[0];
+
+    // 3. Supabase Auth Provisioning (Never store password in application DB!)
+    let authUserId = null;
+    const cleanEmail = hospital.email.toLowerCase();
+
+    try {
+      const { data: createdAuth, error: authErr } = await supabase.auth.admin.createUser({
+        email: cleanEmail,
+        password: password,
+        email_confirm: true,
+        user_metadata: {
+          name: hospital.authorized_person || hospital.authorizedPerson,
+          role: 'hospital',
+          hospital_id: hospitalId,
+        },
+      });
+
+      if (!authErr && createdAuth?.user) {
+        authUserId = createdAuth.user.id;
+      } else if (authErr) {
+        const { data: userList } = await supabase.auth.admin.listUsers();
+        const match = userList?.users?.find((u) => u.email.toLowerCase() === cleanEmail);
+        if (match) {
+          authUserId = match.id;
+          await supabase.auth.admin.updateUserById(match.id, {
+            password: password,
+            user_metadata: {
+              name: hospital.authorized_person || hospital.authorizedPerson,
+              role: 'hospital',
+              hospital_id: hospitalId,
+            },
+          });
+        }
+      }
+    } catch (authEx) {
+      logger.warn('Supabase Auth user creation warning:', authEx.message);
+    }
+
+    if (!authUserId) {
+      authUserId = uuidv4();
+    }
+
+    // 4. Create/update MedEx users profile (references auth.users, NO password column!)
+    try {
+      await supabase.from('users').upsert([{
+        id: authUserId,
+        email: cleanEmail,
+        name: hospital.authorized_person || hospital.authorizedPerson,
+        role: 'hospital',
+        hospital_id: hospitalId,
+        is_active: true,
+        updated_at: nowIso,
+      }], { onConflict: 'id' });
+    } catch (userErr) {
+      logger.warn('Supabase users profile upsert warning:', userErr.message);
+    }
+
+    // 5. Update hospital status to PENDING_APPROVAL in Supabase
+    const { error: statusUpdateErr } = await supabase.from('hospitals').update({
+      status: 'PENDING_APPROVAL',
+      registered_date: todayDate,
+      updated_at: nowIso,
+    }).eq('id', hospitalId);
+
+    if (statusUpdateErr) {
+      logger.error('Supabase hospital status update failed:', statusUpdateErr.message);
+      const err = new Error(`Database error updating registration status: ${statusUpdateErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    // Update in-memory registry
+    hospital.status = 'PENDING_APPROVAL';
+    hospital.registeredDate = todayDate;
+    hospital.registered_date = todayDate;
+    hospital.updatedAt = nowIso;
+    hospital.updated_at = nowIso;
+
+    // 6. Statutory Audit Log
+    await auditService.logEvent({
+      action: 'HOSPITAL_REGISTRATION_SUBMITTED',
+      entityType: 'HOSPITAL',
+      entityId: hospitalId,
+      actorRole: 'hospital',
+      hospitalId,
+      hospitalName: hospital.name,
+      summary: `Hospital registration submitted for ${hospital.name} (${hospital.registrationNo || hospital.registration_no}) with ${uploadedDocs.length} compliance documents. Status set to PENDING_APPROVAL.`,
+      resultingStatus: 'pending_approval',
+      metadata: {
+        registrationNo: hospital.registrationNo || hospital.registration_no,
+        submittedDocuments: uploadedDocs.length,
+      },
+    });
+
+    return {
+      hospital: {
+        id: hospital.id,
+        name: hospital.name,
+        registrationNo: hospital.registrationNo || hospital.registration_no,
+        authorizedPerson: hospital.authorizedPerson || hospital.authorized_person,
+        email: hospital.email,
+        phone: hospital.phone,
+        address: hospital.address,
+        receivingGate: hospital.receivingGate || hospital.receiving_gate,
+        city: hospital.city,
+        state: hospital.state,
+        district: hospital.district,
+        pincode: hospital.pincode,
+        status: 'pending_approval',
+        registeredDate: hospital.registeredDate,
+        documentsCount: uploadedDocs.length,
+      },
+      status: 'pending_approval',
+      message: 'Hospital registration submitted successfully. Your application is pending administrator approval.',
+    };
+  },
+
+  /**
+   * Get Registration Dossier & Status
+   */
+  async getRegistrationStatus(identifier) {
+    if (!identifier) {
+      const err = new Error('Identifier (hospitalId or email) is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const rawId = String(identifier).trim();
+    const clean = rawId.toLowerCase();
+    const supabase = getSupabaseAdmin();
+
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(rawId);
+    let query = supabase.from('hospitals').select('*, hospital_documents(*)');
+    if (isUuid) {
+      query = query.eq('id', rawId);
+    } else if (clean.includes('@')) {
+      query = query.eq('email', clean);
+    } else {
+      query = query.eq('registration_no', rawId);
+    }
+
+    const { data: hospital, error: hospErr } = await query.maybeSingle();
+
+    if (hospErr) {
+      logger.error('Failed to query hospital in getRegistrationStatus:', hospErr.message);
+      const err = new Error(`Database error querying hospital: ${hospErr.message}`);
+      err.statusCode = 500;
+      throw err;
+    }
+
+    if (!hospital) {
+      // Check dev in-memory fallback
+      const devHosp = authService.getDevHospitals().find((h) => 
+        (isUuid && h.id === rawId) || 
+        (h.email && h.email.toLowerCase() === clean) || 
+        ((h.registrationNo || h.registration_no) === rawId)
+      );
+
+      if (!devHosp) {
+        const err = new Error('Hospital registration record not found.');
+        err.statusCode = 404;
+        throw err;
+      }
+
+      const docs = await this.getRegistrationDocuments(devHosp.id);
+      let campuses = devCampuses.filter((c) => c.hospital_id === devHosp.id);
+      if (campuses.length === 0 && devHosp.address) {
+        campuses = [{
+          id: 'primary-campus',
+          hospitalId: devHosp.id,
+          hospital_id: devHosp.id,
+          campusName: devHosp.campusName || devHosp.campus_name || 'Main Campus',
+          campus_name: devHosp.campusName || devHosp.campus_name || 'Main Campus',
+          isPrimary: true,
+          is_primary: true,
+          address: devHosp.address,
+          state: devHosp.state,
+          district: devHosp.district || '',
+          city: devHosp.city,
+          pincode: devHosp.pincode,
+          receivingGate: devHosp.receiving_gate || devHosp.receivingGate || null,
+          receiving_gate: devHosp.receiving_gate || devHosp.receivingGate || null,
+        }];
+      }
+
+      return {
+        hospital: {
+          id: devHosp.id,
+          name: devHosp.name,
+          registrationNo: devHosp.registrationNo || devHosp.registration_no,
+          issuingAuthority: devHosp.issuingAuthority || devHosp.issuing_authority,
+          organizationType: devHosp.organizationType || devHosp.organization_type,
+          authorizedPerson: devHosp.authorizedPerson || devHosp.authorized_person,
+          designation: devHosp.designation,
+          email: devHosp.email,
+          phone: devHosp.phone,
+          address: devHosp.address,
+          receivingGate: devHosp.receivingGate || devHosp.receiving_gate,
+          state: devHosp.state,
+          district: devHosp.district,
+          city: devHosp.city,
+          pincode: devHosp.pincode,
+          status: devHosp.status,
+          rejectionReason: devHosp.rejectionReason || devHosp.rejection_reason,
+          registeredDate: devHosp.registeredDate || devHosp.registered_date,
+        },
+        status: devHosp.status,
+        campuses,
+        documents: docs,
+      };
+    }
+
+    const docs = await this.getRegistrationDocuments(hospital.id);
+
+    // Query real persisted campuses from Supabase hospital_campuses table
+    let campuses = [];
+    try {
+      const { data: dbCampuses, error: campErr } = await supabase
+        .from('hospital_campuses')
+        .select('*')
+        .eq('hospital_id', hospital.id);
+      if (!campErr && dbCampuses && dbCampuses.length > 0) {
+        campuses = dbCampuses.map((c) => ({
+          id: c.id,
+          hospitalId: c.hospital_id,
+          hospital_id: c.hospital_id,
+          campusName: c.campus_name || 'Main Campus',
+          campus_name: c.campus_name || 'Main Campus',
+          isPrimary: c.is_primary ?? true,
+          is_primary: c.is_primary ?? true,
+          address: c.address,
+          state: c.state,
+          district: c.district || '',
+          city: c.city,
+          pincode: c.pincode,
+          receivingGate: c.receiving_gate,
+          receiving_gate: c.receiving_gate,
+          createdAt: c.created_at,
+          updatedAt: c.updated_at,
+        }));
+      }
+    } catch (e) {
+      logger.warn('Failed to query hospital_campuses from Supabase:', e.message);
+    }
+
+    if (campuses.length === 0) {
+      const memoryCampuses = devCampuses.filter((c) => c.hospital_id === hospital.id);
+      if (memoryCampuses.length > 0) {
+        campuses = memoryCampuses.map((c) => ({
+          ...c,
+          campusName: c.campus_name || c.campusName || 'Main Campus',
+          receivingGate: c.receiving_gate || c.receivingGate,
+        }));
+      }
+    }
+
+    if (campuses.length === 0 && hospital.address) {
+      campuses = [{
+        id: 'primary-campus',
+        hospitalId: hospital.id,
+        hospital_id: hospital.id,
+        campusName: 'Main Campus',
+        campus_name: 'Main Campus',
+        isPrimary: true,
+        is_primary: true,
+        address: hospital.address,
+        state: hospital.state,
+        district: hospital.district || '',
+        city: hospital.city,
+        pincode: hospital.pincode,
+        receivingGate: hospital.receiving_gate || hospital.receivingGate || null,
+        receiving_gate: hospital.receiving_gate || hospital.receivingGate || null,
+      }];
+    }
+
+    return {
+      hospital: {
+        id: hospital.id,
+        name: hospital.name,
+        registrationNo: hospital.registrationNo || hospital.registration_no,
+        issuingAuthority: hospital.issuingAuthority || hospital.issuing_authority,
+        organizationType: hospital.organizationType || hospital.organization_type,
+        authorizedPerson: hospital.authorizedPerson || hospital.authorized_person,
+        designation: hospital.designation,
+        email: hospital.email,
+        phone: hospital.phone,
+        address: hospital.address,
+        receivingGate: hospital.receivingGate || hospital.receiving_gate,
+        state: hospital.state,
+        district: hospital.district,
+        city: hospital.city,
+        pincode: hospital.pincode,
+        status: hospital.status,
+        rejectionReason: hospital.rejectionReason || hospital.rejection_reason,
+        registeredDate: hospital.registeredDate || hospital.registered_date,
+      },
+      status: hospital.status,
+      campuses,
+      documents: docs,
+    };
+  },
+
+  /**
+   * Generates secure short-lived signed URL for viewing a registration document.
+   * Enforces strict institutional ownership (document must belong to hospitalId).
+   * Bucket remains private and service role key is never exposed.
+   */
+  async getRegistrationDocumentViewUrl(hospitalId, documentId, expiresInSeconds = 900) {
+    if (!hospitalId || !documentId) {
+      const err = new Error('Both hospitalId and documentId are required.');
+      err.statusCode = 400;
+      err.code = 'INVALID_PARAMETERS';
+      throw err;
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    // 1. Fetch document record
+    let doc = null;
+    try {
+      const { data, error } = await supabase
+        .from('hospital_documents')
+        .select('*')
+        .eq('id', documentId)
+        .maybeSingle();
+      if (!error && data) {
+        doc = data;
+      }
+    } catch (e) {
+      logger.warn('Failed to query hospital_documents from Supabase in getRegistrationDocumentViewUrl:', e.message);
+    }
+
+    if (!doc) {
+      const devDocs = documentService.getDevDocuments ? documentService.getDevDocuments(hospitalId) : [];
+      doc = devDocs.find((d) => d.id === documentId || d.storage_path?.includes(documentId));
+    }
+
+    if (!doc) {
+      const err = new Error('Statutory document not found.');
+      err.statusCode = 404;
+      err.code = 'DOCUMENT_NOT_FOUND';
+      throw err;
+    }
+
+    // 2. Institutional Ownership Verification (Strict: cross-hospital access strictly prohibited)
+    const docHospitalId = doc.hospital_id || doc.hospitalId;
+    if (docHospitalId !== hospitalId) {
+      logger.warn(`Security violation: Cross-hospital document access attempt on document ${documentId}. Expected owner: ${docHospitalId}, requester: ${hospitalId}`);
+      const err = new Error('Access restricted: You are not authorized to view this statutory document.');
+      err.statusCode = 403;
+      err.code = 'UNAUTHORIZED_DOCUMENT_ACCESS';
+      throw err;
+    }
+
+    // 3. Generate short-lived signed URL from private Supabase bucket
+    const targetStoragePath = doc.storage_path || doc.file_path;
+    let signedUrl = null;
+    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000).toISOString();
+
+    if (supabase && targetStoragePath && !targetStoragePath.startsWith('/')) {
+      try {
+        const { data: signedData, error: signErr } = await supabase.storage
+          .from('hospital-documents')
+          .createSignedUrl(targetStoragePath, expiresInSeconds);
+
+        if (!signErr && signedData?.signedUrl) {
+          signedUrl = signedData.signedUrl;
+        }
+      } catch (err) {
+        logger.warn('Failed to create Supabase signed URL:', err.message);
+      }
+    }
+
+    // Safe fallback tokenized streaming route if Supabase storage is offline or in local development
+    if (!signedUrl) {
+      signedUrl = `/api/hospitals/registration/documents/${encodeURIComponent(documentId)}/raw?hospitalId=${encodeURIComponent(hospitalId)}`;
+    }
+
+    return {
+      documentId: doc.id,
+      hospitalId: docHospitalId,
+      documentType: doc.document_type || doc.documentType,
+      documentName: doc.document_name || doc.original_filename || 'document.pdf',
+      signedUrl,
+      viewUrl: signedUrl,
+      expiresAt,
+    };
+  },
+
+  /**
+   * Helper to stream registration document inline with application/pdf header.
+   */
+  async getRegistrationDocumentBuffer(hospitalId, documentId) {
+    if (!hospitalId || !documentId) {
+      const err = new Error('Both hospitalId and documentId are required.');
+      err.statusCode = 400;
+      err.code = 'INVALID_PARAMETERS';
+      throw err;
+    }
+
+    const supabase = getSupabaseAdmin();
+
+    let doc = null;
+    try {
+      const { data, error } = await supabase
+        .from('hospital_documents')
+        .select('*')
+        .eq('id', documentId)
+        .maybeSingle();
+      if (!error && data) {
+        doc = data;
+      }
+    } catch (e) {}
+
+    if (!doc) {
+      const devDocs = documentService.getDevDocuments ? documentService.getDevDocuments(hospitalId) : [];
+      doc = devDocs.find((d) => d.id === documentId || d.storage_path?.includes(documentId));
+    }
+
+    if (!doc) {
+      const err = new Error('Statutory document not found.');
+      err.statusCode = 404;
+      err.code = 'DOCUMENT_NOT_FOUND';
+      throw err;
+    }
+
+    const docHospitalId = doc.hospital_id || doc.hospitalId;
+    if (docHospitalId !== hospitalId) {
+      const err = new Error('Access restricted: You are not authorized to view this statutory document.');
+      err.statusCode = 403;
+      err.code = 'UNAUTHORIZED_DOCUMENT_ACCESS';
+      throw err;
+    }
+
+    const targetStoragePath = doc.storage_path || doc.file_path;
+    let buffer = null;
+
+    if (supabase && targetStoragePath && !targetStoragePath.startsWith('/')) {
+      try {
+        const { data: blob, error: dlErr } = await supabase.storage
+          .from('hospital-documents')
+          .download(targetStoragePath);
+        if (!dlErr && blob) {
+          const arrayBuffer = await blob.arrayBuffer();
+          buffer = Buffer.from(arrayBuffer);
+        }
+      } catch (err) {
+        logger.warn('Failed to download document from Supabase storage:', err.message);
+      }
+    }
+
+    if (!buffer && doc.fileBuffer) {
+      buffer = doc.fileBuffer;
+    }
+
+    // If still no buffer (e.g. mock test record without storage blob), generate minimal valid PDF
+    if (!buffer) {
+      const pdfContent = `%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R >>\nendobj\n4 0 obj\n<< /Length 55 >>\nstream\nBT /F1 12 Tf 100 700 Td (${doc.document_type || 'MedEx Document'}) Tj ET\nendstream\nendobj\nxref\n0 5\n0000000000 65535 f \n0000000009 00000 n \n0000000058 00000 n \n0000000115 00000 n \n0000000214 00000 n \ntrailer\n<< /Size 5 /Root 1 0 R >>\nstartxref\n320\n%%EOF`;
+      buffer = Buffer.from(pdfContent);
+    }
+
+    return {
+      buffer,
+      mimeType: doc.mime_type || 'application/pdf',
+      filename: doc.original_filename || doc.document_name || 'document.pdf',
+    };
+  },
+
+  /**
+   * Resubmit Registration after correction
+   */
+  async resubmitRegistration(hospitalId, updateData = {}) {
+    if (!hospitalId) {
+      const err = new Error('Hospital ID is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const devHospitals = authService.getDevHospitals();
+    const hospital = devHospitals.find((h) => h.id === hospitalId);
+
+    if (!hospital) {
+      const err = new Error('Hospital registration application not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const nowIso = new Date().toISOString();
+    hospital.status = 'pending_approval';
+    hospital.rejectionReason = null;
+    hospital.updatedAt = nowIso;
+    hospital.updated_at = nowIso;
+
+    if (isConfigured && supabaseAdmin) {
+      try {
+        await supabaseAdmin.from('hospitals').update({
+          status: 'pending_approval',
+          rejection_reason: null,
+          updated_at: nowIso,
+        }).eq('id', hospitalId);
+      } catch (err) {
+        logger.warn('Supabase update warning in resubmitRegistration:', err.message);
+      }
+    }
+
+    await auditService.logEvent({
+      action: 'HOSPITAL_REGISTRATION_RESUBMITTED',
+      entityType: 'HOSPITAL',
+      entityId: hospitalId,
+      actorRole: 'hospital',
+      hospitalId,
+      hospitalName: hospital.name,
+      summary: `Hospital registration application resubmitted after correction by ${hospital.name}. Status updated to PENDING_APPROVAL.`,
+      resultingStatus: 'pending_approval',
+    });
+
+    return {
+      status: 'pending_approval',
+      message: 'Application resubmitted successfully. Pending administrator review.',
+    };
+  },
+
+  /**
+   * Registers a new hospital application with validation and audit trail (legacy/direct)
    */
   async registerHospital(formData, reqUser = null) {
     // 1. Mandatory Field Validation
