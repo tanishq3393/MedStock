@@ -35,6 +35,7 @@ export const LoginPage = () => {
   const [showUnverifiedBanner, setShowUnverifiedBanner] = useState(isUnverifiedParam);
 
   const [pendingApprovalHospital, setPendingApprovalHospital] = useState(null);
+  const [requiresCorrectionHospital, setRequiresCorrectionHospital] = useState(null);
   const [rejectedHospital, setRejectedHospital] = useState(null);
 
   const { isLoading, error } = useSelector((state) => state.auth);
@@ -49,6 +50,7 @@ export const LoginPage = () => {
     setActiveTab(tab);
     dispatch(clearAuthError());
     setPendingApprovalHospital(null);
+    setRequiresCorrectionHospital(null);
     setRejectedHospital(null);
     if (tab === 'admin') {
       setEmail('admin@medex.org');
@@ -61,6 +63,7 @@ export const LoginPage = () => {
 
   const handleQuickDemoFill = (roleType) => {
     setPendingApprovalHospital(null);
+    setRequiresCorrectionHospital(null);
     setRejectedHospital(null);
     if (roleType === 'admin') {
       setActiveTab('admin');
@@ -95,11 +98,24 @@ export const LoginPage = () => {
         const payload = resultAction.payload;
         if (payload?.code === 'PENDING_ADMIN_APPROVAL') {
           setPendingApprovalHospital(payload.hospital || { email });
+          setRequiresCorrectionHospital(null);
           setRejectedHospital(null);
+          return;
+        }
+        if (payload?.code === 'REQUIRES_CORRECTION') {
+          setRequiresCorrectionHospital(payload);
+          setPendingApprovalHospital(null);
+          setRejectedHospital(null);
+          return;
+        }
+        if (payload?.code === 'DRAFT_REGISTRATION') {
+          toast('Resuming incomplete registration...', { icon: '📝' });
+          navigate(`/hospital-register?hospitalId=${payload.hospital?.id || ''}`);
           return;
         }
         if (payload?.code === 'REGISTRATION_REJECTED') {
           setRejectedHospital(payload);
+          setRequiresCorrectionHospital(null);
           setPendingApprovalHospital(null);
           return;
         }
@@ -115,7 +131,7 @@ export const LoginPage = () => {
   if (pendingApprovalHospital) {
     return (
       <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
-        <div className="max-w-md w-full space-y-5 animate-fadeIn">
+        <div className="max-w-lg w-full space-y-5 animate-fadeIn">
           {/* Brand Header */}
           <div className="text-center space-y-2">
             <Link to="/" className="inline-flex items-center gap-2">
@@ -128,18 +144,18 @@ export const LoginPage = () => {
             </Link>
           </div>
 
-          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-xl space-y-6">
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200/80 shadow-2xl space-y-6">
             <div className="text-center space-y-3">
-              <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center mx-auto border border-amber-200 shadow-sm">
+              <div className="w-14 h-14 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200 flex items-center justify-center mx-auto shadow-sm">
                 <Clock className="w-7 h-7 stroke-[2.3] animate-pulse" />
               </div>
-              <h2 className="text-xl font-black text-slate-900 leading-snug">
-                Your hospital registration is pending admin approval.
-              </h2>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-900 border border-amber-200">
                 <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
-                Status: PENDING APPROVAL
-              </div>
+                Current status: Pending Admin Approval
+              </span>
+              <h2 className="text-xl font-black text-slate-900 leading-snug">
+                Hospital Registration Submitted Successfully
+              </h2>
             </div>
 
             {/* Hospital Details Box */}
@@ -154,20 +170,46 @@ export const LoginPage = () => {
                   <span className="font-mono font-bold text-teal-700">{pendingApprovalHospital.registrationNo}</span>
                 </div>
               )}
-              <div className="flex justify-between items-center py-1">
-                <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Account Email:</span>
+              <div className="flex justify-between items-center py-1 border-b border-slate-200">
+                <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Official Email:</span>
                 <span className="font-medium text-slate-700">{pendingApprovalHospital.email || email}</span>
+              </div>
+              <div className="flex justify-between items-center py-1">
+                <span className="text-slate-500 font-bold uppercase tracking-wider text-[10px]">Campus Location:</span>
+                <span className="font-medium text-slate-700 text-right">
+                  {pendingApprovalHospital.city ? `${pendingApprovalHospital.city}, ${pendingApprovalHospital.state || ''}` : 'Campus Registered'}
+                </span>
               </div>
             </div>
 
-            <div className="p-4 rounded-xl bg-amber-50/80 border border-amber-200 text-xs text-amber-950 space-y-1.5">
-              <div className="font-bold flex items-center gap-1.5 text-amber-900">
-                <ShieldAlert className="w-4 h-4 text-amber-600" />
-                <span>Verification In Progress</span>
+            {/* Registration Timeline */}
+            <div className="space-y-3 pt-1">
+              <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                Registration Timeline
+              </h4>
+              <div className="relative pl-5 space-y-4 before:absolute before:left-1.5 before:top-1.5 before:bottom-1.5 before:w-0.5 before:bg-slate-200 text-xs">
+                <div className="relative">
+                  <span className="absolute -left-5 top-0.5 w-3.5 h-3.5 rounded-full bg-teal-600 text-white flex items-center justify-center text-[9px] ring-4 ring-white">✓</span>
+                  <div>
+                    <h5 className="font-bold text-teal-950">Registration Submitted</h5>
+                    <p className="text-[11px] text-slate-500">Your registration and required documents have been received.</p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <span className="absolute -left-5 top-0.5 w-3.5 h-3.5 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] ring-4 ring-white animate-pulse">●</span>
+                  <div>
+                    <h5 className="font-bold text-amber-950">Admin Review</h5>
+                    <p className="text-[11px] text-slate-500">Your hospital registration is waiting for administrator approval.</p>
+                  </div>
+                </div>
+                <div className="relative">
+                  <span className="absolute -left-5 top-0.5 w-3.5 h-3.5 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center text-[9px] ring-4 ring-white">○</span>
+                  <div>
+                    <h5 className="font-bold text-slate-400">Hospital Portal Access</h5>
+                    <p className="text-[11px] text-slate-400">Available after approval.</p>
+                  </div>
+                </div>
               </div>
-              <p className="leading-relaxed text-[11px] text-amber-900/90">
-                Your registration has been submitted successfully and is currently being reviewed by an administrator. Please wait for approval before accessing the hospital portal.
-              </p>
             </div>
 
             <div className="pt-2">
@@ -180,7 +222,73 @@ export const LoginPage = () => {
                 className="w-full py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
               >
                 <ArrowLeft className="w-4 h-4" />
-                <span>Back to Login</span>
+                <span>Return to Login</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Dedicated Requires Correction View on Login
+  if (requiresCorrectionHospital) {
+    const hosp = requiresCorrectionHospital.hospital || {};
+    return (
+      <div className="min-h-[calc(100vh-8rem)] flex items-center justify-center p-4 sm:p-6 lg:p-8">
+        <div className="max-w-md w-full space-y-5 animate-fadeIn">
+          <div className="text-center space-y-2">
+            <Link to="/" className="inline-flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-teal-600 text-white flex items-center justify-center font-bold shadow-md shadow-teal-600/20">
+                <Pill className="w-5 h-5 rotate-45" />
+              </div>
+              <span className="text-2xl font-black text-slate-900 tracking-tight">
+                Med<span className="text-teal-600">Ex</span>
+              </span>
+            </Link>
+          </div>
+
+          <div className="bg-white p-6 sm:p-8 rounded-3xl border border-amber-300 shadow-xl space-y-6">
+            <div className="text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center mx-auto border border-amber-200 shadow-sm">
+                <AlertTriangle className="w-7 h-7 stroke-[2.3]" />
+              </div>
+              <h2 className="text-xl font-black text-slate-900 leading-snug">
+                Registration Corrections Required
+              </h2>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-100 text-amber-900 border border-amber-300">
+                Status: REQUIRES CORRECTION
+              </div>
+            </div>
+
+            <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-950 space-y-1.5">
+              <div className="font-bold text-amber-900">Administrator Notice / Required Corrections:</div>
+              <p className="leading-relaxed text-[11px] text-amber-950 font-medium bg-white/80 p-2.5 rounded-lg border border-amber-200/80">
+                {requiresCorrectionHospital.rejectionReason || 'Please update statutory documents or institutional information.'}
+              </p>
+            </div>
+
+            <div className="pt-2 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  navigate(`/hospital-register?hospitalId=${hosp.id || ''}&mode=correction`);
+                }}
+                className="w-full py-3 px-4 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition-all flex items-center justify-center gap-2"
+              >
+                <span>Complete / Update Registration</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setRequiresCorrectionHospital(null);
+                  dispatch(clearAuthError());
+                }}
+                className="w-full py-2.5 px-4 rounded-xl border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs transition"
+              >
+                Return to Login
               </button>
             </div>
           </div>

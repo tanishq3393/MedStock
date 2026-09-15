@@ -24,6 +24,8 @@
  * 17. Document upload endpoint rate limiting triggers HTTP 429 when flooded.
  */
 
+process.env.NODE_ENV = 'test';
+
 const express = require('express');
 const http = require('http');
 const axios = require('axios');

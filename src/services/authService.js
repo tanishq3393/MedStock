@@ -29,6 +29,19 @@ export const authService = {
           err.hospital = data.error.hospital;
           throw err;
         }
+        if (data.error.code === 'REQUIRES_CORRECTION') {
+          const err = new Error(data.error.message || 'Hospital registration requires correction.');
+          err.code = 'REQUIRES_CORRECTION';
+          err.rejectionReason = data.error.rejectionReason;
+          err.hospital = data.error.hospital;
+          throw err;
+        }
+        if (data.error.code === 'DRAFT_REGISTRATION') {
+          const err = new Error(data.error.message || 'Hospital registration is in draft state.');
+          err.code = 'DRAFT_REGISTRATION';
+          err.hospital = data.error.hospital;
+          throw err;
+        }
         if (data.error.code === 'REGISTRATION_REJECTED') {
           const err = new Error(data.error.message || 'Hospital registration was rejected.');
           err.code = 'REGISTRATION_REJECTED';
@@ -44,7 +57,7 @@ export const authService = {
         throw new Error(data.error.message || 'Login failed');
       }
     } catch (networkOrApiErr) {
-      if (['PENDING_ADMIN_APPROVAL', 'REGISTRATION_REJECTED', 'HOSPITAL_SUSPENDED'].includes(networkOrApiErr.code)) {
+      if (['PENDING_ADMIN_APPROVAL', 'REQUIRES_CORRECTION', 'DRAFT_REGISTRATION', 'REGISTRATION_REJECTED', 'HOSPITAL_SUSPENDED'].includes(networkOrApiErr.code)) {
         throw networkOrApiErr;
       }
       if (networkOrApiErr.message && !networkOrApiErr.message.includes('fetch') && !networkOrApiErr.message.includes('NetworkError') && !networkOrApiErr.message.includes('Failed to fetch')) {

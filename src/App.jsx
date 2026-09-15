@@ -119,6 +119,7 @@ export const App = () => {
               {/* Authentication & Security Routes */}
               <Route path="/login" element={<LoginPage />} />
               <Route path="/hospital-signup" element={<HospitalSignupPage />} />
+              <Route path="/hospital-register" element={<HospitalSignupPage />} />
               <Route path="/admin-signup" element={<AdminSignupPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />

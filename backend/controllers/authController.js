@@ -1,8 +1,30 @@
 const authService = require('../services/authService');
 const hospitalService = require('../services/hospitalService');
+const otpService = require('../services/otpService');
 const { successResponse } = require('../utils/apiResponse');
 
 const authController = {
+  async sendOtp(req, res, next) {
+    try {
+      const { email } = req.body;
+      const ip = req.ip || req.connection?.remoteAddress || 'unknown';
+      const result = await otpService.sendOtp(email, ip);
+      return successResponse(res, result, result.message, 200);
+    } catch (err) {
+      next(err);
+    }
+  },
+
+  async verifyOtp(req, res, next) {
+    try {
+      const { email, otp } = req.body;
+      const result = await otpService.verifyOtp(email, otp);
+      return successResponse(res, result, result.message, 200);
+    } catch (err) {
+      next(err);
+    }
+  },
+
   async login(req, res, next) {
     try {
       const { email, password, role } = req.body;

@@ -239,6 +239,40 @@ const authService = {
    */
   enforceHospitalStatus(hospital) {
     const status = (hospital.status || '').toLowerCase();
+    if (status === 'draft') {
+      const err = new Error('Your hospital registration is incomplete. Please complete registration.');
+      err.statusCode = 403;
+      err.code = 'DRAFT_REGISTRATION';
+      err.hospital = {
+        id: hospital.id,
+        name: hospital.name,
+        registrationNo: hospital.registrationNo || hospital.registration_no,
+        email: hospital.email,
+        status: hospital.status,
+        city: hospital.city,
+        state: hospital.state,
+      };
+      throw err;
+    }
+
+    if (status === 'requires_correction') {
+      const reason = hospital.rejectionReason || hospital.rejection_reason || 'Application requires correction before approval.';
+      const err = new Error(`Hospital registration requires correction. Reason: ${reason}`);
+      err.statusCode = 403;
+      err.code = 'REQUIRES_CORRECTION';
+      err.rejectionReason = reason;
+      err.hospital = {
+        id: hospital.id,
+        name: hospital.name,
+        registrationNo: hospital.registrationNo || hospital.registration_no,
+        email: hospital.email,
+        status: hospital.status,
+        city: hospital.city,
+        state: hospital.state,
+      };
+      throw err;
+    }
+
     if (status === 'pending' || status === 'under_review' || status === 'pending_approval') {
       const err = new Error('Your hospital registration is pending admin approval.');
       err.statusCode = 403;

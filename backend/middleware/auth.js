@@ -259,6 +259,33 @@ const requireHospital = (req, res, next) => {
 
   const rawStatus = (req.hospital?.status || '').toUpperCase();
 
+  if (rawStatus === 'DRAFT') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'DRAFT_REGISTRATION',
+        status: 'draft',
+        message: 'Your hospital registration is incomplete. Please complete registration before accessing operational services.',
+        hospital: req.hospital,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  if (rawStatus === 'REQUIRES_CORRECTION') {
+    return res.status(403).json({
+      success: false,
+      error: {
+        code: 'REQUIRES_CORRECTION',
+        status: 'requires_correction',
+        message: req.hospital?.rejectionReason || 'Hospital registration requires correction before it can be approved.',
+        rejectionReason: req.hospital?.rejectionReason,
+        hospital: req.hospital,
+      },
+      timestamp: new Date().toISOString(),
+    });
+  }
+
   if (rawStatus === 'PENDING_APPROVAL' || rawStatus === 'PENDING' || rawStatus === 'UNDER_REVIEW') {
     return res.status(403).json({
       success: false,

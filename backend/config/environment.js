@@ -1,5 +1,5 @@
 const path = require('path');
-require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
+require('dotenv').config({ path: path.resolve(__dirname, '../.env'), quiet: true });
 const { parseCorsOrigins } = require('./cors');
 
 const environment = {
@@ -25,7 +25,8 @@ const environment = {
     ),
     isServiceRoleConfigured: Boolean(
       process.env.SUPABASE_SERVICE_ROLE_KEY &&
-      !process.env.SUPABASE_SERVICE_ROLE_KEY.includes('your-supabase-service-role-key')
+      !process.env.SUPABASE_SERVICE_ROLE_KEY.includes('your-supabase-service-role-key') &&
+      !process.env.SUPABASE_SERVICE_ROLE_KEY.includes('YOUR_ACTUAL_KEY_HERE')
     ),
   },
 
@@ -49,6 +50,16 @@ const environment = {
       (process.env.PAYMENT_PROVIDER_KEY || process.env.RAZORPAY_KEY_ID) &&
       (process.env.PAYMENT_PROVIDER_SECRET || process.env.RAZORPAY_KEY_SECRET)
     )
+  },
+
+  mail: {
+    smtpHost: process.env.SMTP_HOST || '',
+    smtpPort: parseInt(process.env.SMTP_PORT, 10) || 587,
+    smtpUser: process.env.SMTP_USER || '',
+    smtpPass: process.env.SMTP_PASS || '',
+    smtpSecure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : (parseInt(process.env.SMTP_PORT, 10) === 465),
+    fromAddress: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"MedEx Central System" <verification@medex.org>',
+    isSmtpConfigured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
   },
 
   documents: {

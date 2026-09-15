@@ -16,6 +16,21 @@ export const loginUser = createAsyncThunk('auth/login', async (credentials, { re
         message: 'Your hospital registration is pending admin approval.',
       });
     }
+    if (err.code === 'REQUIRES_CORRECTION') {
+      return rejectWithValue({
+        code: 'REQUIRES_CORRECTION',
+        hospital: err.hospital,
+        rejectionReason: err.rejectionReason,
+        message: err.message || 'Hospital registration requires correction.',
+      });
+    }
+    if (err.code === 'DRAFT_REGISTRATION') {
+      return rejectWithValue({
+        code: 'DRAFT_REGISTRATION',
+        hospital: err.hospital,
+        message: 'Hospital registration is in draft state.',
+      });
+    }
     if (err.code === 'REGISTRATION_REJECTED') {
       return rejectWithValue({
         code: 'REGISTRATION_REJECTED',
