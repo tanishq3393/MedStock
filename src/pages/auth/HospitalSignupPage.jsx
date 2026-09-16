@@ -32,6 +32,7 @@ import {
 import PdfViewerModal from '../../components/common/PdfViewerModal';
 import RegistrationReviewModal from '../../components/common/RegistrationReviewModal';
 import { hospitalService } from '../../services/hospitalService';
+import { API_BASE_URL } from '../../config/api';
 import { INDIAN_STATES, getDistrictsForState, isValidIndianPincode } from '../../utils/indiaGeoData';
 import toast from 'react-hot-toast';
 
@@ -225,7 +226,11 @@ export const HospitalSignupPage = () => {
       }
 
       const res = await hospitalService.getRegistrationDocumentViewUrl(effectiveHospitalId, docId);
-      const url = res?.signedUrl || res?.viewUrl || res?.url;
+      let url = res?.viewUrl || res?.signedUrl || res?.url;
+      if (url && url.startsWith('/api') && typeof API_BASE_URL === 'string' && API_BASE_URL.startsWith('http')) {
+        const backendOrigin = new URL(API_BASE_URL).origin;
+        url = `${backendOrigin}${url}`;
+      }
       if (url) {
         setViewingUrl(url);
       } else {

@@ -20,8 +20,11 @@ if (environment.security && environment.security.trustProxy) {
 }
 
 // 1. Security & Core Middleware
+const frameAncestorsOrigins = ["'self'", ...(environment.cors?.origins || [])];
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  xFrameOptions: false,
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -31,6 +34,7 @@ app.use(helmet({
       imgSrc: ["'self'", "data:", "blob:", "https:"],
       connectSrc: ["'self'", "https:", "wss:"],
       frameSrc: ["'self'", "blob:", "https://*.supabase.co"],
+      frameAncestors: frameAncestorsOrigins,
       objectSrc: ["'self'", "blob:"],
     },
   },
