@@ -8,6 +8,7 @@
 const axios = require('axios');
 const app = require('../server');
 const otpService = require('../services/otpService');
+const environment = require('../config/environment');
 
 const PORT = process.env.PORT || 5001;
 const BASE_URL = `http://localhost:${PORT}/api`;
@@ -217,6 +218,40 @@ startxref
       verificationToken = mockSeedRes.data.data.verificationToken;
     } else {
       verificationToken = 'test-verification-token-mock-9988';
+    }
+  });
+
+  // 5a. Feature Flag Config Check
+  await testCase('5a. GET /api/hospitals/registration/config returns registration feature flags', async () => {
+    const res = await axios.get(`${BASE_URL}/hospitals/registration/config`);
+    if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
+    if (typeof res.data.data.emailVerificationRequired !== 'boolean') {
+      throw new Error('Expected emailVerificationRequired boolean in response');
+    }
+  });
+
+  // 5b. Step 1 allows direct submission without OTP when verification is skipped
+  await testCase('5b. Step 1 allows direct submission without verificationToken when verification is disabled', async () => {
+    const prevFlag = environment.features.emailVerificationRequired;
+    environment.features.emailVerificationRequired = false;
+
+    const res = await axios.post(`${BASE_URL}/hospitals/registration/step-1`, {
+      name: 'Max Healthcare Institute',
+      registrationNo: `REG-MAX-DIR-${timestamp}`,
+      issuingAuthority: 'Directorate General of Health Services (DGHS)',
+      organizationType: 'Super-Specialty Hospital',
+      authorizedPerson: 'Dr. Sandeep Buddhiraja',
+      designation: 'Medical Director',
+      email: `max.direct.${timestamp}@maxhealthcare.medex`,
+      phone: '+91 98110 55443',
+    });
+
+    environment.features.emailVerificationRequired = prevFlag;
+
+    if (res.status !== 200) throw new Error(`Expected 200, got ${res.status}`);
+    if (res.data.data.status !== 'draft') throw new Error(`Expected draft status, got ${res.data.data.status}`);
+    if (res.data.data.hospital.emailVerified !== false) {
+      throw new Error(`Expected emailVerified to be false when skipped, got ${res.data.data.hospital.emailVerified}`);
     }
   });
 

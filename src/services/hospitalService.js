@@ -2588,6 +2588,21 @@ export const hospitalService = {
     return json?.data || json;
   },
 
+  async getRegistrationConfig() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/hospitals/registration/config`);
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.data) {
+        return json.data;
+      }
+    } catch (e) {
+      console.warn('Could not fetch registration config, using defaults:', e.message);
+    }
+    return {
+      emailVerificationRequired: import.meta.env.VITE_EMAIL_VERIFICATION_REQUIRED === 'true',
+    };
+  },
+
   async saveStep1(data) {
     const res = await fetch(`${API_BASE_URL}/hospitals/registration/step-1`, {
       method: 'POST',

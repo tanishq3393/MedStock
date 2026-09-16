@@ -1,5 +1,6 @@
 const { randomUUID: uuidv4 } = require('crypto');
 const { supabaseAdmin, supabaseAnon, getSupabaseAdmin, isConfigured } = require('../config/supabase');
+const environment = require('../config/environment');
 const authService = require('./authService');
 const auditService = require('./auditService');
 const otpService = require('./otpService');
@@ -99,9 +100,15 @@ const hospitalService = {
 
     const cleanRegNo = formData.registrationNo.trim().toUpperCase();
 
-    // Verify that the email was verified with OTP
-    const isVerified = otpService.isEmailVerified(cleanEmail, formData.verificationToken);
-    if (!isVerified) {
+    // Verify that the email was verified with OTP (if feature flag is enabled)
+    const isEmailVerificationRequired = Boolean(environment.features?.emailVerificationRequired);
+    const hasValidToken = Boolean(formData.verificationToken && otpService.isEmailVerified(cleanEmail, formData.verificationToken));
+    const isEmailVerified = hasValidToken;
+    const emailVerificationStatus = isEmailVerified
+      ? 'VERIFIED'
+      : (isEmailVerificationRequired ? 'UNVERIFIED' : 'TEMPORARILY_SKIPPED');
+
+    if (isEmailVerificationRequired && !isEmailVerified) {
       const err = new Error('Email verification required: Please verify your official work email with the OTP before proceeding.');
       err.statusCode = 400;
       err.code = 'EMAIL_NOT_VERIFIED';
@@ -162,10 +169,12 @@ const hospitalService = {
       designation: formData.designation.trim(),
       email: cleanEmail,
       phone: formData.phone.trim(),
-      emailVerified: true,
-      email_verified: true,
-      emailVerifiedAt: nowIso,
-      email_verified_at: nowIso,
+      emailVerified: isEmailVerified,
+      email_verified: isEmailVerified,
+      emailVerifiedAt: isEmailVerified ? nowIso : null,
+      email_verified_at: isEmailVerified ? nowIso : null,
+      emailVerificationStatus,
+      email_verification_status: emailVerificationStatus,
       address: existingDraft?.address || '',
       city: existingDraft?.city || '',
       district: existingDraft?.district || '',
@@ -204,8 +213,8 @@ const hospitalService = {
       issuing_authority: hospitalData.issuing_authority,
       organization_type: hospitalData.organization_type,
       designation: hospitalData.designation,
-      email_verified: true,
-      email_verified_at: nowIso,
+      email_verified: isEmailVerified,
+      email_verified_at: isEmailVerified ? nowIso : null,
     };
 
     // Execute real write to Supabase hospitals table

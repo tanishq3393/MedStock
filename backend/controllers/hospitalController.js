@@ -1,7 +1,18 @@
 const hospitalService = require('../services/hospitalService');
+const environment = require('../config/environment');
 const { successResponse } = require('../utils/apiResponse');
 
 const hospitalController = {
+  /**
+   * GET /api/hospitals/registration/config
+   * Returns registration feature flags (e.g. email verification requirement)
+   */
+  getRegistrationConfig(req, res) {
+    return successResponse(res, {
+      emailVerificationRequired: Boolean(environment.features?.emailVerificationRequired),
+    }, 'Registration configuration retrieved');
+  },
+
   /**
    * POST /api/hospitals/registration/step-1
    */

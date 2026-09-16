@@ -95,6 +95,10 @@ const environment = {
       },
     },
   },
+
+  features: {
+    emailVerificationRequired: process.env.EMAIL_VERIFICATION_REQUIRED === 'true',
+  },
 };
 
 module.exports = environment;

@@ -5,6 +5,7 @@ import {
   MapPin,
   FileText,
   CheckCircle2,
+  AlertCircle,
   ExternalLink,
   ShieldCheck,
 } from 'lucide-react';
@@ -26,7 +27,7 @@ export const RegistrationReviewModal = ({
   hospitalData = {},
   campusData = {},
   documents = [],
-  emailVerified = true,
+  emailVerified = false,
   onViewDocument,
   title = 'Hospital Registration Form Review',
 }) => {
@@ -55,7 +56,8 @@ export const RegistrationReviewModal = ({
     receivingGate: campusData.receivingGate || campusData.receiving_gate || '',
   };
 
-  const isVerified = emailVerified || hospitalData.emailVerified || hospitalData.email_verified;
+  const isVerified = (emailVerified && hospitalData.emailVerified !== false && hospitalData.email_verified !== false) || hospitalData.emailVerified === true || hospitalData.email_verified === true;
+  const isSkipped = !isVerified && (hospitalData.email_verification_status === 'TEMPORARILY_SKIPPED' || hospitalData.emailVerificationStatus === 'TEMPORARILY_SKIPPED');
 
   return (
     <div
@@ -110,6 +112,11 @@ export const RegistrationReviewModal = ({
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
                   <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                   Email Verified ✓
+                </span>
+              ) : isSkipped ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-800 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                  <AlertCircle className="w-3 h-3 text-amber-600" />
+                  OTP Verification Paused
                 </span>
               ) : (
                 <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">

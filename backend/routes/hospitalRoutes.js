@@ -18,6 +18,7 @@ const upload = multer({
 /**
  * 4-Step Hospital Registration System Endpoints
  */
+router.get('/registration/config', hospitalController.getRegistrationConfig);
 router.post('/registration/step-1', registrationLimiter, requireBodyFields(['name', 'registrationNo', 'email', 'phone']), hospitalController.saveStep1);
 router.post('/registration/step-2', registrationLimiter, requireBodyFields(['hospitalId', 'address', 'state', 'district', 'city', 'pincode']), hospitalController.saveStep2);
 router.post('/registration/upload-document', registrationLimiter, upload.single('file'), hospitalController.uploadRegistrationDocument);

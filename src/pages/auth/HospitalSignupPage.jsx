@@ -140,6 +140,9 @@ export const HospitalSignupPage = () => {
   });
 
   // Email OTP state
+  const [emailVerificationRequired, setEmailVerificationRequired] = useState(
+    import.meta.env.VITE_EMAIL_VERIFICATION_REQUIRED === 'true'
+  );
   const [otpSent, setOtpSent] = useState(false);
   const [otpInput, setOtpInput] = useState('');
   const [emailVerified, setEmailVerified] = useState(false);
@@ -247,6 +250,13 @@ export const HospitalSignupPage = () => {
   useEffect(() => {
     document.title = 'MedEx | Institutional Hospital Registration';
 
+    // Fetch dynamic registration feature config (e.g. email verification requirement)
+    hospitalService.getRegistrationConfig().then((cfg) => {
+      if (cfg && typeof cfg.emailVerificationRequired === 'boolean') {
+        setEmailVerificationRequired(cfg.emailVerificationRequired);
+      }
+    });
+
     const savedHospitalId =
       paramHospitalId ||
       sessionStorage.getItem('medex_reg_hospital_id') ||
@@ -303,7 +313,7 @@ export const HospitalSignupPage = () => {
           setCorrectionReason(h.rejectionReason || h.rejection_reason || 'Administrative correction requested.');
         }
 
-        if (h.name && h.registration_no && (h.email_verified || h.emailVerified)) {
+        if (h.name && (h.registration_no || h.registrationNo) && (!emailVerificationRequired || h.email_verified || h.emailVerified)) {
           setCompletedSteps((prev) => ({ ...prev, 1: true }));
         }
         if (h.address && h.state && h.city && h.pincode) {
@@ -397,7 +407,12 @@ export const HospitalSignupPage = () => {
       return toast.error('Please provide a valid 10-digit official contact number.');
     }
 
-    if (!emailVerified) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(identityData.email.trim())) {
+      return toast.error('Please enter a valid official work email address.');
+    }
+
+    if (emailVerificationRequired && !emailVerified) {
       return toast.error('Email verification required. Please verify your work email with OTP.');
     }
 
@@ -406,7 +421,7 @@ export const HospitalSignupPage = () => {
       const payload = {
         ...identityData,
         hospitalId,
-        verificationToken,
+        verificationToken: emailVerificationRequired ? verificationToken : undefined,
       };
 
       const result = await hospitalService.saveStep1(payload);
@@ -806,7 +821,7 @@ export const HospitalSignupPage = () => {
           hospitalData={reviewHosp.name ? reviewHosp : identityData}
           campusData={reviewCampus.address ? reviewCampus : campusData}
           documents={reviewDocs}
-          emailVerified={true}
+          emailVerified={Boolean(reviewHosp.email_verified || reviewHosp.emailVerified)}
           onViewDocument={handleViewDocument}
           title="Hospital Registration Form Review"
         />
@@ -1050,19 +1065,34 @@ export const HospitalSignupPage = () => {
                     <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
                       Official Work Email & Verification <span className="text-rose-500">*</span>
                     </label>
-                    {emailVerified && (
+                    {emailVerificationRequired && emailVerified && (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-extrabold bg-teal-100 text-teal-800 border border-teal-300">
                         <CheckCircle2 className="w-3.5 h-3.5 text-teal-600" />
                         Email Verified ✓
                       </span>
                     )}
+                    {!emailVerificationRequired && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
+                        <AlertCircle className="w-3 h-3 text-amber-600" />
+                        OTP Verification Paused
+                      </span>
+                    )}
                   </div>
+
+                  {!emailVerificationRequired && (
+                    <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/80 text-[11px] text-amber-900 flex items-start gap-2">
+                      <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <span className="font-bold">Email OTP Verification is temporarily disabled:</span> You may proceed directly with your official work email address. Institutional credentials and statutory documents will still be audited by Administration prior to activation.
+                      </div>
+                    </div>
+                  )}
 
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <input
                       type="email"
                       required
-                      disabled={emailVerified}
+                      disabled={emailVerificationRequired && emailVerified}
                       value={identityData.email}
                       onChange={(e) => {
                         setIdentityData({ ...identityData, email: e.target.value });
@@ -1070,11 +1100,11 @@ export const HospitalSignupPage = () => {
                       }}
                       placeholder="e.g. pharmacy@apollohospitals.com"
                       className={`flex-1 px-3.5 py-2.5 rounded-xl border text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500/20 focus:border-teal-600 transition ${
-                        emailVerified ? 'bg-slate-50 border-slate-200' : 'border-slate-300'
+                        emailVerificationRequired && emailVerified ? 'bg-slate-50 border-slate-200' : 'border-slate-300'
                       }`}
                     />
 
-                    {!emailVerified && (
+                    {emailVerificationRequired && !emailVerified && (
                       <button
                         type="button"
                         disabled={otpLoading || resendCooldown > 0 || !identityData.email}
@@ -1093,7 +1123,7 @@ export const HospitalSignupPage = () => {
                       </button>
                     )}
 
-                    {emailVerified && (
+                    {emailVerificationRequired && emailVerified && (
                       <button
                         type="button"
                         onClick={() => {
@@ -1109,8 +1139,8 @@ export const HospitalSignupPage = () => {
                     )}
                   </div>
 
-                  {/* OTP Challenge Input Box */}
-                  {!emailVerified && otpSent && (
+                  {/* OTP Challenge Input Box (Only when verification is required) */}
+                  {emailVerificationRequired && !emailVerified && otpSent && (
                     <div className="p-4 rounded-2xl bg-teal-50/70 border border-teal-200/80 space-y-3 animate-fadeIn">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-teal-950 flex items-center gap-1.5">
@@ -1150,7 +1180,7 @@ export const HospitalSignupPage = () => {
               <div className="pt-6 border-t border-slate-100 flex justify-end">
                 <button
                   type="submit"
-                  disabled={isSubmitting || !emailVerified}
+                  disabled={isSubmitting || (emailVerificationRequired && !emailVerified)}
                   className="px-6 py-3 rounded-xl bg-teal-600 hover:bg-teal-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-xs shadow-md shadow-teal-600/20 transition flex items-center gap-2"
                 >
                   {isSubmitting ? (
@@ -1861,10 +1891,14 @@ export const HospitalSignupPage = () => {
       <RegistrationReviewModal
         isOpen={reviewModalOpen}
         onClose={() => setReviewModalOpen(false)}
-        hospitalData={identityData}
+        hospitalData={{
+          ...identityData,
+          emailVerificationStatus: emailVerificationRequired ? (emailVerified ? 'VERIFIED' : 'PENDING') : 'TEMPORARILY_SKIPPED',
+          email_verification_status: emailVerificationRequired ? (emailVerified ? 'VERIFIED' : 'PENDING') : 'TEMPORARILY_SKIPPED',
+        }}
         campusData={campusData}
         documents={uploadedDocuments}
-        emailVerified={emailVerified}
+        emailVerified={emailVerificationRequired ? emailVerified : false}
         onViewDocument={handleViewDocument}
         title="Hospital Registration Form Review"
       />

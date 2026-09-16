@@ -183,6 +183,8 @@ const verificationService = {
       designation: hospital.designation,
       email: hospital.email,
       phone: hospital.phone,
+      emailVerified: Boolean(hospital.email_verified || hospital.emailVerified),
+      emailVerificationStatus: hospital.email_verification_status || hospital.emailVerificationStatus || (hospital.email_verified ? 'VERIFIED' : 'TEMPORARILY_SKIPPED'),
       address: hospital.address,
       city: hospital.city,
       district: hospital.district,

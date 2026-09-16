@@ -60,6 +60,7 @@ All production settings must be configured in the container runtime environment 
 | `PAYMENT_PROVIDER_SECRET` | **Yes** | Razorpay Key Secret | `xxxxxxxxxxxxxxxxxxxxxxxx` |
 | `PAYMENT_WEBHOOK_SECRET` | **Yes** | Secret configured in Razorpay Webhook dashboard | `xxxxxxxxxxxxxxxxxxxxxxxx` |
 | `MAX_DOCUMENT_SIZE_MB` | No | Max PDF verification document size (default: 5MB) | `5` |
+| `EMAIL_VERIFICATION_REQUIRED` | No | Feature flag: set to `false` to bypass email OTP requirement ($0 setup) | `false` |
 | `SMTP_HOST` | **Yes** (for OTP/email delivery) | Outbound SMTP relay host (SendGrid, Brevo, AWS SES, Gmail) | `smtp.gmail.com` |
 | `SMTP_PORT` | **Yes** (for OTP/email delivery) | SMTP service port (587 for TLS/STARTTLS, 465 for SSL) | `587` |
 | `SMTP_USER` | **Yes** (for OTP/email delivery) | SMTP authentication username or API identity | `notifications@yourdomain.com` |

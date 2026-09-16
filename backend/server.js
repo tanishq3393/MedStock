@@ -72,6 +72,9 @@ app.get('/api/health', async (req, res) => {
     mail: {
       configured: environment.mail.isSmtpConfigured,
       mode: environment.mail.isSmtpConfigured ? 'production_smtp' : (environment.isProduction ? 'unconfigured_error' : 'development_ethereal_sandbox')
+    },
+    features: {
+      emailVerificationRequired: environment.features.emailVerificationRequired,
     }
   });
 });
