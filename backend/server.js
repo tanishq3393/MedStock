@@ -22,6 +22,18 @@ if (environment.security && environment.security.trustProxy) {
 // 1. Security & Core Middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com", "data:"],
+      imgSrc: ["'self'", "data:", "blob:", "https:"],
+      connectSrc: ["'self'", "https:", "wss:"],
+      frameSrc: ["'self'", "blob:", "https://*.supabase.co"],
+      objectSrc: ["'self'", "blob:"],
+    },
+  },
 }));
 
 app.use(cors(createCorsOptions()));

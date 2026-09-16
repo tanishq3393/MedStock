@@ -971,9 +971,11 @@ const hospitalService = {
       }
     }
 
+    const rawStreamUrl = `/api/hospitals/registration/documents/${encodeURIComponent(documentId)}/raw?hospitalId=${encodeURIComponent(hospitalId)}`;
+
     // Safe fallback tokenized streaming route if Supabase storage is offline or in local development
     if (!signedUrl) {
-      signedUrl = `/api/hospitals/registration/documents/${encodeURIComponent(documentId)}/raw?hospitalId=${encodeURIComponent(hospitalId)}`;
+      signedUrl = rawStreamUrl;
     }
 
     return {
@@ -982,7 +984,7 @@ const hospitalService = {
       documentType: doc.document_type || doc.documentType,
       documentName: doc.document_name || doc.original_filename || 'document.pdf',
       signedUrl,
-      viewUrl: signedUrl,
+      viewUrl: rawStreamUrl,
       expiresAt,
     };
   },
