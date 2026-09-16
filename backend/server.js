@@ -68,6 +68,10 @@ app.get('/api/health', async (req, res) => {
       provider: environment.payment.provider,
       configured: environment.payment.isConfigured,
       mode: environment.payment.provider === 'razorpay' ? 'production_gateway' : 'mock_development_adapter'
+    },
+    mail: {
+      configured: environment.mail.isSmtpConfigured,
+      mode: environment.mail.isSmtpConfigured ? 'production_smtp' : (environment.isProduction ? 'unconfigured_error' : 'development_ethereal_sandbox')
     }
   });
 });

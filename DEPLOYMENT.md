@@ -60,6 +60,12 @@ All production settings must be configured in the container runtime environment 
 | `PAYMENT_PROVIDER_SECRET` | **Yes** | Razorpay Key Secret | `xxxxxxxxxxxxxxxxxxxxxxxx` |
 | `PAYMENT_WEBHOOK_SECRET` | **Yes** | Secret configured in Razorpay Webhook dashboard | `xxxxxxxxxxxxxxxxxxxxxxxx` |
 | `MAX_DOCUMENT_SIZE_MB` | No | Max PDF verification document size (default: 5MB) | `5` |
+| `SMTP_HOST` | **Yes** (for OTP/email delivery) | Outbound SMTP relay host (SendGrid, Brevo, AWS SES, Gmail) | `smtp.gmail.com` |
+| `SMTP_PORT` | **Yes** (for OTP/email delivery) | SMTP service port (587 for TLS/STARTTLS, 465 for SSL) | `587` |
+| `SMTP_USER` | **Yes** (for OTP/email delivery) | SMTP authentication username or API identity | `notifications@yourdomain.com` |
+| `SMTP_PASS` | **Yes** (for OTP/email delivery) | SMTP authentication password or API secret | `xxxxxxxxxxxxxxxx` |
+| `SMTP_SECURE` | No | Set to `true` for port 465 (SSL), or `false` for port 587 (TLS) | `false` |
+| `SMTP_FROM` | No | Validated sender header matching verified provider domain | `"MedEx System" <no-reply@yourdomain.com>` |
 | `ABDM_CLIENT_ID` | No | National Health Authority ABDM Client ID | `abdm_client_xxxxxxxx` |
 | `ABDM_CLIENT_SECRET` | No | ABDM Gateway secret | `abdm_secret_xxxxxxxx` |
 

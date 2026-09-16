@@ -53,12 +53,12 @@ const environment = {
   },
 
   mail: {
-    smtpHost: process.env.SMTP_HOST || '',
+    smtpHost: (process.env.SMTP_HOST || '').trim(),
     smtpPort: parseInt(process.env.SMTP_PORT, 10) || 587,
-    smtpUser: process.env.SMTP_USER || '',
-    smtpPass: process.env.SMTP_PASS || '',
+    smtpUser: (process.env.SMTP_USER || '').trim(),
+    smtpPass: (process.env.SMTP_PASS || '').trim(),
     smtpSecure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : (parseInt(process.env.SMTP_PORT, 10) === 465),
-    fromAddress: process.env.SMTP_FROM || process.env.EMAIL_FROM || '"MedEx Central System" <verification@medex.org>',
+    fromAddress: process.env.SMTP_FROM || process.env.EMAIL_FROM || (process.env.SMTP_USER ? `"MedEx Central System" <${process.env.SMTP_USER.trim()}>` : '"MedEx Central System" <verification@medex.org>'),
     isSmtpConfigured: Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS),
   },
 

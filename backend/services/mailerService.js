@@ -14,9 +14,13 @@ let etherealAccount = null;
 async function getTransporter() {
   if (cachedTransporter) return cachedTransporter;
 
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPass = process.env.SMTP_PASS;
+  const smtpHost = (process.env.SMTP_HOST || '').trim();
+  const smtpUser = (process.env.SMTP_USER || '').trim();
+  let smtpPass = (process.env.SMTP_PASS || '').trim();
+  // If Google App Password was copied with visual spaces (e.g. "abcd efgh ijkl mnop"), strip them
+  if (smtpHost.includes('gmail') && smtpPass.includes(' ')) {
+    smtpPass = smtpPass.replace(/\s+/g, '');
+  }
   const smtpPort = parseInt(process.env.SMTP_PORT, 10) || 587;
   const smtpSecure = process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : smtpPort === 465;
 
@@ -29,9 +33,19 @@ async function getTransporter() {
         user: smtpUser,
         pass: smtpPass,
       },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
     });
     logger.info(`Configured custom SMTP transporter for ${smtpHost}:${smtpPort} (secure: ${smtpSecure})`);
     return cachedTransporter;
+  }
+
+  // Production safety: Real email delivery in production requires configured SMTP credentials
+  if (process.env.NODE_ENV === 'production') {
+    const errorMsg = 'Production email delivery requires valid SMTP configuration. Missing SMTP_HOST, SMTP_USER, or SMTP_PASS in deployment environment variables.';
+    logger.error(`[Mailer] ${errorMsg}`);
+    throw new Error(errorMsg);
   }
 
   // Development / Test mode fallback using Nodemailer test account (Ethereal)
@@ -64,7 +78,10 @@ const mailerService = {
    * Sends real email OTP for official work email verification
    */
   async sendOtpEmail({ to, otp, expiresInMinutes = 10 }) {
-    const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || '"MedEx Central System" <verification@medex.org>';
+    const defaultFrom = process.env.SMTP_USER
+      ? `"MedEx Central System" <${process.env.SMTP_USER}>`
+      : '"MedEx Central System" <verification@medex.org>';
+    const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || defaultFrom;
 
     const mailOptions = {
       from: fromAddress,
@@ -144,7 +161,10 @@ const mailerService = {
   async sendApprovalEmail({ to, hospitalName, loginUrl = 'http://localhost:5173/login' }) {
     try {
       const transporter = await getTransporter();
-      const fromAddress = process.env.EMAIL_FROM || '"MedEx Administration" <admin@medex.org>';
+      const defaultFrom = process.env.SMTP_USER
+        ? `"MedEx Administration" <${process.env.SMTP_USER}>`
+        : '"MedEx Administration" <admin@medex.org>';
+      const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || defaultFrom;
 
       const mailOptions = {
         from: fromAddress,
@@ -211,7 +231,10 @@ const mailerService = {
   async sendCorrectionEmail({ to, hospitalName, reason, resubmitUrl = 'http://localhost:5173/hospital-signup' }) {
     try {
       const transporter = await getTransporter();
-      const fromAddress = process.env.EMAIL_FROM || '"MedEx Administration" <admin@medex.org>';
+      const defaultFrom = process.env.SMTP_USER
+        ? `"MedEx Administration" <${process.env.SMTP_USER}>`
+        : '"MedEx Administration" <admin@medex.org>';
+      const fromAddress = process.env.SMTP_FROM || process.env.EMAIL_FROM || defaultFrom;
 
       const mailOptions = {
         from: fromAddress,
