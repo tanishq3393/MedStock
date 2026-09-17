@@ -54,6 +54,9 @@ COPY --from=backend-deps --chown=node:node /app/backend/node_modules /app/backen
 # Copy backend application source files
 COPY --chown=node:node backend/server.js /app/backend/
 COPY --chown=node:node backend/package.json /app/backend/
+COPY --chown=node:node backend/admin/ /app/backend/admin/
+COPY --chown=node:node backend/hospital/ /app/backend/hospital/
+COPY --chown=node:node backend/shared/ /app/backend/shared/
 COPY --chown=node:node backend/config/ /app/backend/config/
 COPY --chown=node:node backend/controllers/ /app/backend/controllers/
 COPY --chown=node:node backend/middleware/ /app/backend/middleware/
