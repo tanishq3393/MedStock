@@ -138,10 +138,24 @@ export const initializeStorage = () => {
     localStorage.setItem('sms_master_medicines_version', MASTER_DATASET_VERSION);
   }
 
-  // 2. Medicines: initialize or merge missing & ensure complete medical inventory fields
+  // 2. Medicines: initialize or migrate with INITIAL_MEDICINES
+  const MEDICINES_DATASET_VERSION = 'medex_v3_demo_medicines';
+  const storedMedVersion = localStorage.getItem('sms_medicines_dataset_version');
   const storedMedicines = localStorage.getItem(KEYS.MEDICINES);
-  if (!storedMedicines) {
-    localStorage.setItem(KEYS.MEDICINES, JSON.stringify(INITIAL_MEDICINES));
+
+  if (!storedMedicines || storedMedVersion !== MEDICINES_DATASET_VERSION) {
+    let userCreatedMedicines = [];
+    if (storedMedicines) {
+      try {
+        const parsed = JSON.parse(storedMedicines);
+        const seedIds = new Set(INITIAL_MEDICINES.map((m) => m.id));
+        userCreatedMedicines = parsed.filter((m) => !seedIds.has(m.id));
+      } catch (e) {
+        userCreatedMedicines = [];
+      }
+    }
+    localStorage.setItem(KEYS.MEDICINES, JSON.stringify([...INITIAL_MEDICINES, ...userCreatedMedicines]));
+    localStorage.setItem('sms_medicines_dataset_version', MEDICINES_DATASET_VERSION);
   } else {
     try {
       let parsed = JSON.parse(storedMedicines);
@@ -424,12 +438,23 @@ export const initializeStorage = () => {
     localStorage.setItem(KEYS.TRACKING, JSON.stringify(INITIAL_TRACKING));
   } else {
     try {
-      const parsedTracking = JSON.parse(storedTracking);
+      let parsedTracking = JSON.parse(storedTracking);
       const existingTxnIds = new Set(parsedTracking.map((t) => t.transactionId));
       const missingTracking = INITIAL_TRACKING.filter((t) => !existingTxnIds.has(t.transactionId));
-      if (missingTracking.length > 0) {
-        localStorage.setItem(KEYS.TRACKING, JSON.stringify([...parsedTracking, ...missingTracking]));
-      }
+      // Backfill missing senderHospitalId / receiverHospitalId on existing records
+      parsedTracking = parsedTracking.map((t) => {
+        const match = INITIAL_TRACKING.find((init) => init.transactionId === t.transactionId);
+        if (match) {
+          return {
+            ...t,
+            senderHospitalId: t.senderHospitalId || match.senderHospitalId,
+            receiverHospitalId: t.receiverHospitalId || match.receiverHospitalId,
+          };
+        }
+        return t;
+      });
+
+      localStorage.setItem(KEYS.TRACKING, JSON.stringify([...parsedTracking, ...missingTracking]));
     } catch (e) {
       console.error('Failed to migrate tracking', e);
     }

@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
 import { Toaster, toast } from 'react-hot-toast';
 import { logoutUser } from './store/slices/authSlice';
@@ -11,7 +11,10 @@ import AdminLayout from './layouts/AdminLayout';
 
 // Critical Initial Pages (Static for instant first render)
 import LandingPage from './pages/LandingPage';
-import LoginPage from './pages/auth/LoginPage';
+
+// Dedicated Auth Pages
+const HospitalLoginPage = lazy(() => import('./pages/auth/HospitalLoginPage'));
+const AdminLoginPage = lazy(() => import('./pages/auth/AdminLoginPage'));
 
 // Secondary Auth Pages (Lazy)
 const HospitalSignupPage = lazy(() => import('./pages/auth/HospitalSignupPage'));
@@ -60,6 +63,14 @@ const AdminManagement = lazy(() => import('./pages/admin/AdminManagement'));
 import ProtectedRoute from './components/common/ProtectedRoute';
 import ErrorBoundary from './components/common/ErrorBoundary';
 import RouteLoadingFallback from './components/common/RouteLoadingFallback';
+
+// Backwards-compatible Login Route Resolver
+const LoginRedirect = () => {
+  const [searchParams] = useSearchParams();
+  const role = searchParams.get('role');
+  const target = role === 'admin' ? '/admin-login' : '/hospital-login';
+  return <Navigate to={target} replace />;
+};
 
 export const App = () => {
   const dispatch = useDispatch();
@@ -116,11 +127,14 @@ export const App = () => {
               <Route path="/terms" element={<TermsPage />} />
               <Route path="/cookie-preferences" element={<CookiePreferencesPage />} />
 
-              {/* Authentication & Security Routes */}
-              <Route path="/login" element={<LoginPage />} />
+              {/* Dedicated Authentication & Security Routes */}
+              <Route path="/hospital-login" element={<HospitalLoginPage />} />
+              <Route path="/admin-login" element={<AdminLoginPage />} />
+              <Route path="/login" element={<LoginRedirect />} />
               <Route path="/hospital-signup" element={<HospitalSignupPage />} />
               <Route path="/hospital-register" element={<HospitalSignupPage />} />
               <Route path="/admin-signup" element={<AdminSignupPage />} />
+              <Route path="/admin-register" element={<AdminSignupPage />} />
               <Route path="/forgot-password" element={<ForgotPasswordPage />} />
               <Route path="/reset-password" element={<ResetPasswordPage />} />
               <Route path="/verify-email" element={<EmailVerificationPage />} />

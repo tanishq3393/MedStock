@@ -103,11 +103,19 @@ export const Footer = () => {
                 </Link>
               </li>
               <li>
-                <Link 
-                  to="/login" 
+                <Link
+                  to="/hospital-login"
                   className="hover:text-white transition-colors"
                 >
-                  Institutional Login
+                  Hospital Login
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/admin-login"
+                  className="hover:text-white transition-colors"
+                >
+                  Admin Login
                 </Link>
               </li>
               <li>

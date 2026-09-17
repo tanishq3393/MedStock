@@ -12,6 +12,8 @@ export const ResetPasswordPage = () => {
   }, []);
 
   const emailParam = searchParams.get('email') || 'pharmacy@hospital.org';
+  const roleParam = searchParams.get('role');
+  const backLoginPath = roleParam === 'admin' ? '/admin-login' : '/hospital-login';
 
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -228,7 +230,7 @@ export const ResetPasswordPage = () => {
               </div>
 
               <Link
-                to="/login"
+                to={backLoginPath}
                 className="w-full py-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-teal-600/20 transition-all"
               >
                 <span>Go to Login</span>
@@ -239,7 +241,7 @@ export const ResetPasswordPage = () => {
 
           <div className="pt-2 border-t border-slate-100 text-center">
             <Link
-              to="/login"
+              to={backLoginPath}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 hover:text-teal-800"
             >
               <ArrowLeft className="w-3.5 h-3.5" />

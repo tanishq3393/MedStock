@@ -1,5 +1,5 @@
 import { getStoredItem, setStoredItem, KEYS } from './storage.js';
-import { ADMIN_ANALYTICS } from './mockData.js';
+import { ADMIN_ANALYTICS, INITIAL_HOSPITALS } from './mockData.js';
 import { auditService } from './auditService.js';
 import { calculateMedicineExpiry } from '../utils/expiryUtils.js';
 
@@ -110,8 +110,14 @@ export const adminService = {
       cancelled: requests.filter((r) => r.status === 'rejected' || r.status === 'cancelled').length,
     };
 
-    const verifiedHospitalsCount = hospitals.filter((h) => h.status === 'verified' || h.status === 'approved' || h.status === 'APPROVED').length;
-    const pendingHospitalsCount = hospitals.filter((h) => h.status === 'pending' || h.status === 'under_review' || h.status === 'PENDING_APPROVAL').length;
+    const verifiedHospitalsCount = hospitals.filter((h) => {
+      const s = (h.status || '').toLowerCase();
+      return s === 'verified' || s === 'approved';
+    }).length;
+    const pendingHospitalsCount = hospitals.filter((h) => {
+      const s = (h.status || '').toLowerCase();
+      return ['pending', 'pending_approval', 'under_review', 'requires_correction', 'registered', 'draft', 'documents_missing'].includes(s);
+    }).length;
 
     // 8 Required Summary Cards
     const summaryCards = {
@@ -196,45 +202,99 @@ export const adminService = {
   // 2. HOSPITAL MANAGEMENT & VERIFICATION (ABDM Integration-Ready Architecture)
   // ==========================================
   async getHospitals(filterStatus = null) {
-    // 1. Try real API
+    let apiHospitals = [];
+
+    // 1. Fetch real Supabase hospitals from backend
     try {
-      let endpoint = `${API_BASE}/admin/hospitals`;
-      if (filterStatus === 'pending' || filterStatus === 'under_review') {
-        endpoint = `${API_BASE}/admin/hospitals/pending`;
+      const authHeaders = getAuthHeaders();
+      const sFilter = (filterStatus || '').toLowerCase();
+
+      let fetchApproved = true;
+      let fetchPending = true;
+
+      if (sFilter === 'pending' || sFilter === 'under_review' || sFilter === 'registered') {
+        fetchApproved = false;
+      } else if (sFilter === 'approved' || sFilter === 'verified') {
+        fetchPending = false;
       }
 
-      const response = await fetch(endpoint, {
-        headers: getAuthHeaders(),
-      });
+      const requests = [];
+      if (fetchApproved) {
+        requests.push(
+          fetch(`${API_BASE}/admin/hospitals`, { headers: authHeaders })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json) => {
+              if (json?.success && json?.data) {
+                return Array.isArray(json.data) ? json.data : (json.data.hospitals || []);
+              }
+              return [];
+            })
+            .catch(() => [])
+        );
+      }
+      if (fetchPending) {
+        requests.push(
+          fetch(`${API_BASE}/admin/hospitals/pending`, { headers: authHeaders })
+            .then((res) => (res.ok ? res.json() : null))
+            .then((json) => {
+              if (json?.success && json?.data) {
+                return Array.isArray(json.data) ? json.data : (json.data.hospitals || []);
+              }
+              return [];
+            })
+            .catch(() => [])
+        );
+      }
 
-      const json = await response.json().catch(() => null);
-      if (response.ok && json?.success && json?.data) {
-        const list = Array.isArray(json.data) ? json.data : (json.data.hospitals || []);
-        if (list.length > 0) {
-          // Merge into local cache
-          const localHospitals = getStoredItem(KEYS.HOSPITALS, []);
-          const merged = [...localHospitals];
-          list.forEach((item) => {
-            const idx = merged.findIndex((h) => h.id === item.id);
-            if (idx !== -1) merged[idx] = { ...merged[idx], ...item };
-            else merged.unshift(item);
-          });
-          setStoredItem(KEYS.HOSPITALS, merged);
-          return list;
+      const results = await Promise.all(requests);
+      results.forEach((list) => {
+        if (Array.isArray(list)) {
+          apiHospitals.push(...list);
         }
-      }
+      });
     } catch (e) {
-      // offline fallback
+      // offline fallback handled below
     }
 
-    await new Promise((r) => setTimeout(r, 200));
-    const hospitals = getStoredItem(KEYS.HOSPITALS, []);
-    if (!filterStatus || filterStatus === 'all') return hospitals;
-    return hospitals.filter((h) => {
+    // 2. Retrieve existing demo hospitals (from local storage / mockData)
+    const demoHospitals = getStoredItem(KEYS.HOSPITALS, INITIAL_HOSPITALS || []);
+
+    // 3. Merge: REAL SUPABASE HOSPITALS + EXISTING DEMO HOSPITAL DATA
+    // Avoid duplicate hospitals when the same hospital exists in both sources.
+    // Prefer real Supabase data when a matching hospital ID or registration number exists.
+    const combinedList = [...apiHospitals];
+    const seenIds = new Set(apiHospitals.map((h) => String(h.id || '').toLowerCase()));
+    const seenEmails = new Set(apiHospitals.map((h) => String(h.email || '').toLowerCase()));
+    const seenRegNos = new Set(apiHospitals.map((h) => String(h.registration_no || h.registrationNo || '').toLowerCase()));
+
+    demoHospitals.forEach((demoHosp) => {
+      const demoId = String(demoHosp.id || '').toLowerCase();
+      const demoEmail = String(demoHosp.email || '').toLowerCase();
+      const demoReg = String(demoHosp.registrationNo || demoHosp.registration_no || '').toLowerCase();
+
+      if (!seenIds.has(demoId) && !seenEmails.has(demoEmail) && (!demoReg || !seenRegNos.has(demoReg))) {
+        combinedList.push(demoHosp);
+        seenIds.add(demoId);
+        if (demoEmail) seenEmails.add(demoEmail);
+        if (demoReg) seenRegNos.add(demoReg);
+      }
+    });
+
+    // Update local storage cache with unified list
+    setStoredItem(KEYS.HOSPITALS, combinedList);
+
+    // If a specific status filter was passed, filter the combined dataset
+    if (!filterStatus || filterStatus === 'all') {
+      return combinedList;
+    }
+
+    return combinedList.filter((h) => {
       const s = (h.status || '').toLowerCase();
       const f = filterStatus.toLowerCase();
       if (f === 'verified' || f === 'approved') return s === 'verified' || s === 'approved';
-      if (f === 'pending') return s === 'pending' || s === 'pending_approval';
+      if (f === 'pending') return ['pending', 'pending_approval', 'registered', 'draft', 'under_review', 'documents_missing', 'requires_correction'].includes(s);
+      if (f === 'under_review') return s === 'under_review' || s === 'admin_review';
+      if (f === 'rejected') return s === 'rejected';
       return s === f;
     });
   },
@@ -579,9 +639,14 @@ export const adminService = {
 
   async getHospitalDetails(hospitalId) {
     try {
-      const response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}/verification`, {
+      let response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}/verification`, {
         headers: getAuthHeaders(),
       });
+      if (!response.ok && response.status === 404) {
+        response = await fetch(`${API_BASE}/admin/hospitals/${hospitalId}`, {
+          headers: getAuthHeaders(),
+        });
+      }
       const json = await response.json().catch(() => null);
       if (response.ok && json?.success && json?.data) {
         return json.data;

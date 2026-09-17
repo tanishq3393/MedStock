@@ -1,24 +1,29 @@
 const express = require('express');
 
-const authRoutes = require('./authRoutes');
-const userRoutes = require('./userRoutes');
-const hospitalRoutes = require('./hospitalRoutes');
-const adminRoutes = require('./adminRoutes');
-const verificationRoutes = require('./verificationRoutes');
-const documentRoutes = require('./documentRoutes');
-const medicineRoutes = require('./medicineRoutes');
-const inventoryRoutes = require('./inventoryRoutes');
-const marketplaceRoutes = require('./marketplaceRoutes');
-const requestRoutes = require('./requestRoutes');
-const refundRoutes = require('./refundRoutes');
-const paymentRoutes = require('./paymentRoutes');
-const alertRoutes = require('./alertRoutes');
-const notificationRoutes = require('./notificationRoutes');
-const auditRoutes = require('./auditRoutes');
-const tradeRoutes = require('./tradeRoutes');
-const transferRoutes = require('./transferRoutes');
-const feedbackRoutes = require('./feedbackRoutes');
-const abdmRoutes = require('./abdmRoutes');
+// Shared Routes
+const authRoutes = require('../shared/routes/authRoutes');
+const userRoutes = require('../shared/routes/userRoutes');
+const documentRoutes = require('../shared/routes/documentRoutes');
+const medicineRoutes = require('../shared/routes/medicineRoutes');
+const refundRoutes = require('../shared/routes/refundRoutes');
+const paymentRoutes = require('../shared/routes/paymentRoutes');
+const alertRoutes = require('../shared/routes/alertRoutes');
+const notificationRoutes = require('../shared/routes/notificationRoutes');
+const auditRoutes = require('../shared/routes/auditRoutes');
+const tradeRoutes = require('../shared/routes/tradeRoutes');
+const transferRoutes = require('../shared/routes/transferRoutes');
+const feedbackRoutes = require('../shared/routes/feedbackRoutes');
+const abdmRoutes = require('../shared/routes/abdmRoutes');
+
+// Hospital Routes
+const hospitalRoutes = require('../hospital/routes/hospitalRoutes');
+const inventoryRoutes = require('../hospital/routes/inventoryRoutes');
+const marketplaceRoutes = require('../hospital/routes/marketplaceRoutes');
+const requestRoutes = require('../hospital/routes/requestRoutes');
+
+// Admin Routes
+const adminRoutes = require('../admin/routes/adminRoutes');
+const verificationRoutes = require('../admin/routes/verificationRoutes');
 
 const router = express.Router();
 

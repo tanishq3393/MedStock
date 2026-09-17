@@ -132,6 +132,66 @@ CREATE INDEX IF NOT EXISTS idx_users_hospital_id ON users(hospital_id);
 CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 
+ALTER TABLE users ADD COLUMN IF NOT EXISTS username VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS designation VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS regulatory_authority VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS employee_id VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ;
+
+-- ====================================================================
+-- ENTITY 2B: ADMIN PROFILES (REGULATORY SUPERVISORY IDENTITIES)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS admin_profiles (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  username VARCHAR(100) UNIQUE NOT NULL,
+  legal_name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) UNIQUE NOT NULL,
+  phone VARCHAR(50) NOT NULL,
+  regulatory_authority VARCHAR(255) NOT NULL,
+  department VARCHAR(255) NOT NULL,
+  designation VARCHAR(100) NOT NULL,
+  employee_id VARCHAR(100) NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'active'
+    CHECK (status IN ('active', 'pending', 'suspended', 'revoked')),
+  email_verified BOOLEAN NOT NULL DEFAULT false,
+  email_verified_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_username ON admin_profiles(username);
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_email ON admin_profiles(email);
+CREATE INDEX IF NOT EXISTS idx_admin_profiles_user_id ON admin_profiles(user_id);
+
+-- ====================================================================
+-- ENTITY 2C: ADMIN STATUTORY DOCUMENTS (AUTHORIZATION LETTERS)
+-- ====================================================================
+CREATE TABLE IF NOT EXISTS admin_documents (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  admin_id UUID REFERENCES admin_profiles(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  document_type VARCHAR(100) NOT NULL DEFAULT 'AUTHORIZATION_LETTER',
+  document_name VARCHAR(255) NOT NULL,
+  original_filename VARCHAR(255) NOT NULL,
+  file_path TEXT NOT NULL,
+  storage_path TEXT NOT NULL,
+  file_size VARCHAR(50),
+  file_size_bytes BIGINT,
+  mime_type VARCHAR(100) NOT NULL DEFAULT 'application/pdf',
+  document_status VARCHAR(50) NOT NULL DEFAULT 'verified'
+    CHECK (document_status IN ('pending', 'verified', 'rejected', 'superseded')),
+  uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_documents_admin_id ON admin_documents(admin_id);
+CREATE INDEX IF NOT EXISTS idx_admin_documents_user_id ON admin_documents(user_id);
+CREATE INDEX IF NOT EXISTS idx_admin_documents_document_type ON admin_documents(document_type);
+
+
 -- Link hospital approved_by / rejected_by back to users
 DO $$ BEGIN
   ALTER TABLE hospitals ADD CONSTRAINT fk_hospitals_approved_by FOREIGN KEY (approved_by) REFERENCES users(id) ON DELETE SET NULL;

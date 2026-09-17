@@ -73,7 +73,10 @@ export const authService = {
 
     if (role === 'admin') {
       const emailLower = (email || '').toLowerCase().trim();
-      if ((emailLower === 'admin@medex.org' || emailLower === 'admin@smartmedishare.org') && password === 'Admin@123') {
+      if ((emailLower === 'admin@medex.org' || emailLower === 'admin@smartmedishare.org')) {
+        if (password !== 'Admin@123') {
+          throw new Error('Invalid Admin credentials. Use admin@medex.org / Admin@123');
+        }
         const user = {
           id: 'admin-01',
           name: 'Super Administrator',
@@ -85,7 +88,7 @@ export const authService = {
         const token = 'mock_jwt_token_admin_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
         authResult = { user, token };
-      } else if (emailLower.includes('admin') || (password && password.length >= 6)) {
+      } else if (emailLower.includes('admin') && password && password.length >= 6) {
         const user = {
           id: 'admin-demo',
           name: 'Platform Ops Admin',
@@ -103,6 +106,12 @@ export const authService = {
     } else {
       // Hospital role
       const emailLower = (email || '').toLowerCase().trim();
+
+      // Explicit password check for demo hospital accounts
+      if ((emailLower === 'apollo.mumbai@medex.org' || emailLower === 'fortis.gurgaon@medex.org') && password !== 'Hospital@123') {
+        throw new Error('Invalid credentials. Use Hospital@123');
+      }
+
       const matched = hospitals.find((h) => {
         const hEmail = (h.email || '').toLowerCase().trim();
         return hEmail === emailLower ||
@@ -158,6 +167,7 @@ export const authService = {
           city: matched.city,
           state: matched.state,
           phone: matched.phone,
+          hospitalId: matched.id,
         };
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
@@ -182,6 +192,7 @@ export const authService = {
           city: defaultHosp.city,
           state: defaultHosp.state,
           phone: defaultHosp.phone,
+          hospitalId: defaultHosp.id,
         };
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });
@@ -205,6 +216,7 @@ export const authService = {
           city: fortisHosp.city,
           state: fortisHosp.state,
           phone: fortisHosp.phone,
+          hospitalId: fortisHosp.id,
         };
         const token = 'mock_jwt_token_hospital_' + Date.now();
         setStoredItem(KEYS.AUTH, { user, token });

@@ -129,7 +129,7 @@ export const LandingPage = () => {
               </Link>
 
               <Link
-                to="/login"
+                to="/hospital-login"
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-7 py-3.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-bold text-sm border border-slate-300 shadow-sm transition-all hover:border-slate-400"
               >
                 <Activity className="w-4 h-4 text-teal-600" />
@@ -187,7 +187,7 @@ export const LandingPage = () => {
               Live Inter-Hospital Surplus Batches (Mumbai Metro Cluster)
             </h3>
           </div>
-          <Link to="/login" className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1">
+          <Link to="/hospital-login" className="text-xs font-bold text-teal-700 hover:text-teal-800 flex items-center gap-1">
             View Marketplace <ArrowRight className="w-3 h-3" />
           </Link>
         </div>
@@ -321,7 +321,7 @@ export const LandingPage = () => {
                 Onboard Your Hospital Now
               </Link>
               <Link
-                to="/login"
+                to="/hospital-login"
                 className="px-6 py-3.5 rounded-xl bg-white/10 hover:bg-white/20 text-white font-bold text-xs border border-white/20 transition-all"
               >
                 Open Pharmacy Portal

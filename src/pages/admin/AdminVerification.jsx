@@ -33,6 +33,7 @@ import Modal from '../../components/common/Modal';
 import DocumentViewerModal from '../../components/common/DocumentViewerModal';
 import LoadingSpinner from '../../components/common/LoadingSpinner';
 import { getStoredItem, getHospitalDocumentChecklist, MANDATORY_DOCUMENTS, KEYS } from '../../services/storage';
+import { adminService } from '../../services/adminService';
 import toast from 'react-hot-toast';
 
 export const AdminVerification = () => {
@@ -106,28 +107,43 @@ export const AdminVerification = () => {
     }
   }, [hospitals, searchParams, location.state]);
 
+  const isPendingStatus = (status) => {
+    const s = (status || '').toLowerCase();
+    return ['pending', 'pending_approval', 'registered', 'draft', 'documents_missing', 'requires_correction'].includes(s);
+  };
+  const isUnderReviewStatus = (status) => {
+    const s = (status || '').toLowerCase();
+    return s === 'under_review' || s === 'admin_review' || s === 'review';
+  };
+  const isApprovedStatus = (status) => {
+    const s = (status || '').toLowerCase();
+    return s === 'verified' || s === 'approved';
+  };
+  const isRejectedStatus = (status) => {
+    const s = (status || '').toLowerCase();
+    return s === 'rejected';
+  };
+
   // Summary Metrics (Req 18: Prioritize Pending Reviews)
-  const pendingCount = hospitals.filter((h) => 
-    h.status === 'pending' || h.status === 'pending_approval' || h.status === 'documents_missing'
-  ).length;
-  const underReviewCount = hospitals.filter((h) => h.status === 'under_review').length;
-  const approvedCount = hospitals.filter((h) => h.status === 'verified' || h.status === 'approved').length;
-  const rejectedCount = hospitals.filter((h) => h.status === 'rejected').length;
+  const pendingCount = hospitals.filter((h) => isPendingStatus(h.status)).length;
+  const underReviewCount = hospitals.filter((h) => isUnderReviewStatus(h.status)).length;
+  const approvedCount = hospitals.filter((h) => isApprovedStatus(h.status)).length;
+  const rejectedCount = hospitals.filter((h) => isRejectedStatus(h.status)).length;
 
   // Filtered Hospitals for Current Queue (Req 7, Req 19)
   const tabHospitals = useMemo(() => {
     return hospitals.filter((h) => {
       if (activeTab === 'pending') {
-        return h.status === 'pending' || h.status === 'pending_approval' || h.status === 'documents_missing';
+        return isPendingStatus(h.status);
       }
       if (activeTab === 'under_review') {
-        return h.status === 'under_review';
+        return isUnderReviewStatus(h.status);
       }
       if (activeTab === 'verified') {
-        return h.status === 'verified' || h.status === 'approved';
+        return isApprovedStatus(h.status);
       }
       if (activeTab === 'rejected') {
-        return h.status === 'rejected';
+        return isRejectedStatus(h.status);
       }
       return true; // 'all'
     });
@@ -149,9 +165,17 @@ export const AdminVerification = () => {
   }, [tabHospitals, searchTerm]);
 
   // Open Detailed Review Modal (Req 8)
-  const handleOpenReview = (hospital) => {
+  const handleOpenReview = async (hospital) => {
     setActiveReviewHospital(hospital);
     setReviewNoteInput(hospital.reviewNote || '');
+    try {
+      const fullDossier = await adminService.getHospitalDetails(hospital.id);
+      if (fullDossier && fullDossier.id === hospital.id) {
+        setActiveReviewHospital((prev) => (prev?.id === hospital.id ? { ...prev, ...fullDossier } : prev));
+      }
+    } catch (err) {
+      // Keep existing data
+    }
   };
 
   // Document Status Toggle / Update Handler (Req 9)

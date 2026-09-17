@@ -13,7 +13,7 @@ export const NotFoundPage = () => {
 
   // Intelligently route dashboard based on current role
   const getDashboardPath = () => {
-    if (!isAuthenticated) return '/login';
+    if (!isAuthenticated) return '/hospital-login';
     if (role === 'admin') return '/admin/dashboard';
     return '/hospital/dashboard';
   };

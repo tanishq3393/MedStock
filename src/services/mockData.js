@@ -2729,7 +2729,7 @@ export const INITIAL_MASTER_MEDICINES = [
   }
 ];
 
-export const INITIAL_MEDICINES = [
+const RAW_INITIAL_MEDICINES = [
   // Realistic Reference Scenario: Dolo 650 Multi-Batch Records in Apollo Hospital
   {
     id: 'inv-dolo-hosp1-abc123',
@@ -4434,6 +4434,30 @@ export const INITIAL_MEDICINES = [
   }
 ];
 
+export const INITIAL_MEDICINES = RAW_INITIAL_MEDICINES.map((m) => {
+  const brand = m.brandName || m.medicineName || m.name || '';
+  const generic = m.genericName || '';
+  const batch = m.batchNo || m.batchNumber || '';
+  const qty = Number(m.quantity) || 0;
+  return {
+    ...m,
+    brandName: brand,
+    medicineName: m.medicineName || brand,
+    name: m.name || brand,
+    genericName: generic,
+    batchNo: batch,
+    batchNumber: m.batchNumber || batch,
+    quantity: qty,
+    totalQuantity: m.totalQuantity !== undefined ? Number(m.totalQuantity) : qty,
+    totalStock: m.totalStock !== undefined ? Number(m.totalStock) : qty,
+    availableQuantity: m.availableQuantity !== undefined ? Number(m.availableQuantity) : qty,
+    availableStock: m.availableStock !== undefined ? Number(m.availableStock) : qty,
+    reservedQuantity: m.reservedQuantity !== undefined ? Number(m.reservedQuantity) : 0,
+    reservedStock: m.reservedStock !== undefined ? Number(m.reservedStock) : 0,
+    status: m.status || 'active',
+  };
+});
+
 export const INITIAL_REQUESTS = [
   // ==========================================
   // FINALIZED WORKFLOW DEMO REQUESTS (1 TO 8)
@@ -5312,7 +5336,9 @@ export const INITIAL_TRACKING = [
     transactionId: 'TXN-773120',
     trackingNumber: 'SMS-EXP-88912',
     senderHospital: 'Max Super Speciality Hospital (Delhi)',
+    senderHospitalId: 'hosp-3',
     receiverHospital: 'Apollo Hospital (Mumbai)',
+    receiverHospitalId: 'hosp-1',
     medicineName: 'Enoxaparin Sodium 40mg',
     quantity: 50,
     status: 'In Transit',
@@ -5340,7 +5366,9 @@ export const INITIAL_TRACKING = [
     transactionId: 'TXN-984210',
     trackingNumber: 'SMS-EXP-99210',
     senderHospital: 'Fortis Memorial Research Institute',
+    senderHospitalId: 'hosp-2',
     receiverHospital: 'Apollo Hospital',
+    receiverHospitalId: 'hosp-1',
     medicineName: 'Meropenem Injection 1g IV',
     quantity: 20,
     status: 'Ordered',
@@ -5368,7 +5396,9 @@ export const INITIAL_TRACKING = [
     transactionId: 'TXN-770412',
     trackingNumber: 'SMS-EXP-77041',
     senderHospital: 'Tata Memorial Centre (Parel, Mumbai)',
+    senderHospitalId: 'hosp-4',
     receiverHospital: 'Apollo Hospital (Belapur, Navi Mumbai)',
+    receiverHospitalId: 'hosp-1',
     medicineName: 'Rituximab (Ristova) 500mg',
     quantity: 4,
     status: 'In Transit',
@@ -5396,7 +5426,9 @@ export const INITIAL_TRACKING = [
     transactionId: 'TXN-663190',
     trackingNumber: 'SMS-EXP-66319',
     senderHospital: 'Lilavati Hospital & Research Centre (Bandra)',
+    senderHospitalId: 'hosp-5',
     receiverHospital: 'Apollo Hospital (Navi Mumbai)',
+    receiverHospitalId: 'hosp-1',
     medicineName: 'Streptokinase 1,500,000 IU',
     quantity: 12,
     status: 'In Transit',
@@ -5424,7 +5456,9 @@ export const INITIAL_TRACKING = [
     transactionId: 'TXN-331902',
     trackingNumber: 'SMS-EXP-33190',
     senderHospital: 'Tata Memorial Centre (Mumbai)',
+    senderHospitalId: 'hosp-4',
     receiverHospital: 'Fortis Memorial Research Institute (Gurgaon)',
+    receiverHospitalId: 'hosp-2',
     medicineName: 'Bevacizumab (Avastin) 400mg',
     quantity: 3,
     status: 'Delivered',
@@ -5446,6 +5480,36 @@ export const INITIAL_TRACKING = [
       origin: [19.0034, 72.8427], // Mumbai
       current: [28.4595, 77.0266], // Gurgaon
       destination: [28.4595, 77.0266],
+    }
+  },
+  {
+    transactionId: 'TXN-552101',
+    trackingNumber: 'SMS-EXP-55210',
+    senderHospital: 'Fortis Memorial Research Institute (Gurgaon)',
+    senderHospitalId: 'hosp-2',
+    receiverHospital: 'Max Super Speciality Hospital (Delhi)',
+    receiverHospitalId: 'hosp-3',
+    medicineName: 'Dolo 650 Tablets (Strip of 15)',
+    quantity: 100,
+    status: 'In Transit',
+    currentLocation: 'Gurgaon-Delhi Expressway Toll Plaza',
+    destination: 'Max Super Speciality Hospital Pharmacy Dock',
+    eta: 'Today, 03:30 PM (Est. 35 mins)',
+    courierName: 'Delhi-NCR MedExpress Courier',
+    courierContact: '+91 98119 44321',
+    vehicleNo: 'DL-01-AB-1234',
+    temperature: '22.0°C (Ambient Controlled)',
+    timeline: [
+      { step: 'Order Placed & Verified', date: '2024-08-28 12:00', completed: true, details: 'Approved by Fortis Procurement.' },
+      { step: 'Payment Processed via Escrow', date: '2024-08-28 12:30', completed: true, details: 'Ref: pay_Dol55210aK1, ₹3,000 settled.' },
+      { step: 'Dispatched from Gurgaon Central', date: '2024-08-28 14:00', completed: true, details: 'En-route to Saket, New Delhi.' },
+      { step: 'In Transit', date: '2024-08-28 14:45', completed: true, details: 'Toll plaza checkpoint.' },
+      { step: 'Delivered', date: 'Pending', completed: false, details: 'Awaiting dock arrival.' },
+    ],
+    coordinates: {
+      origin: [28.4595, 77.0266], // Gurgaon
+      current: [28.5000, 77.1000],
+      destination: [28.5273, 77.2155], // Delhi
     }
   }
 ];

@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Mail, ArrowLeft, ArrowRight, Loader2, Pill, CheckCircle2, ShieldAlert, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export const ForgotPasswordPage = () => {
+  const [searchParams] = useSearchParams();
+  const role = searchParams.get('role');
+  const backLoginPath = role === 'admin' ? '/admin-login' : '/hospital-login';
+
   useEffect(() => {
     document.title = 'MedEx | Forgot Password';
   }, []);
@@ -150,7 +154,7 @@ export const ForgotPasswordPage = () => {
               </div>
 
               <Link
-                to={`/reset-password?email=${encodeURIComponent(email)}`}
+                to={`/reset-password?email=${encodeURIComponent(email)}&role=${role || 'hospital'}`}
                 className="w-full py-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
               >
                 <span>Proceed to Reset Password</span>
@@ -162,7 +166,7 @@ export const ForgotPasswordPage = () => {
 
           <div className="pt-2 border-t border-slate-100 text-center">
             <Link
-              to="/login"
+              to={backLoginPath}
               className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 hover:text-teal-800"
             >
               <ArrowLeft className="w-3.5 h-3.5" />

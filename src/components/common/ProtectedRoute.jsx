@@ -36,7 +36,8 @@ export const ProtectedRoute = ({ children, allowedRole }) => {
   }, [isSessionCorrupted, dispatch]);
 
   if (isSessionCorrupted || !isAuthenticated || !user) {
-    return <Navigate to="/login" state={{ from: location }} replace />;
+    const loginTarget = allowedRole === 'admin' ? '/admin-login' : '/hospital-login';
+    return <Navigate to={loginTarget} state={{ from: location }} replace />;
   }
 
   // 2. Role-Based Access Control check
