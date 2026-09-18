@@ -41,9 +41,58 @@ export const AdminVerification = () => {
   const navigate = useNavigate();
   const { hospitals, isLoading } = useSelector((state) => state.admin);
 
+  const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const processedRef = useRef(false);
+
   // Tabs: 'pending' (default) | 'under_review' | 'verified' | 'rejected' | 'all'
-  const [activeTab, setActiveTab] = useState('pending');
+  const getInitialTab = () => {
+    const rawStatus = (searchParams.get('status') || searchParams.get('tab') || '').toLowerCase();
+    if (['approved', 'verified'].includes(rawStatus)) return 'verified';
+    if (rawStatus === 'rejected') return 'rejected';
+    if (rawStatus === 'under_review') return 'under_review';
+    if (rawStatus === 'all') return 'all';
+    return 'pending';
+  };
+
+  const [activeTab, setActiveTab] = useState(getInitialTab);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Synchronize activeTab when browser back/forward or external URL navigation occurs
+  useEffect(() => {
+    const rawStatus = (searchParams.get('status') || searchParams.get('tab') || '').toLowerCase();
+    if (!rawStatus) {
+      if (!searchParams.get('hospitalId')) {
+        setActiveTab('pending');
+      }
+      return;
+    }
+    if (['pending', 'pending_approval'].includes(rawStatus)) {
+      setActiveTab('pending');
+    } else if (['approved', 'verified'].includes(rawStatus)) {
+      setActiveTab('verified');
+    } else if (rawStatus === 'rejected') {
+      setActiveTab('rejected');
+    } else if (rawStatus === 'under_review') {
+      setActiveTab('under_review');
+    } else if (rawStatus === 'all') {
+      setActiveTab('all');
+    }
+  }, [searchParams]);
+
+  // Unified tab change handler supporting both cards and tab buttons with history sync
+  const handleTabChange = (newTab) => {
+    setActiveTab(newTab);
+    try {
+      const next = new URLSearchParams(searchParams);
+      const paramValue = newTab === 'verified' ? 'approved' : newTab;
+      next.set('status', paramValue);
+      next.delete('tab');
+      setSearchParams(next);
+    } catch (e) {
+      console.warn('Failed to update URL search parameters:', e);
+    }
+  };
 
   // Review Modal State (Req 8)
   const [activeReviewHospital, setActiveReviewHospital] = useState(null);
@@ -70,10 +119,6 @@ export const AdminVerification = () => {
   useEffect(() => {
     dispatch(fetchHospitals());
   }, [dispatch]);
-
-  const [searchParams, setSearchParams] = useSearchParams();
-  const location = useLocation();
-  const processedRef = useRef(false);
 
   // Keep activeReviewHospital synchronized with updated Redux state
   useEffect(() => {
@@ -312,19 +357,39 @@ export const AdminVerification = () => {
       </div>
 
       {/* 2. SUMMARY METRIC CARDS (Req 18: Prioritizes Pending Reviews) */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" role="region" aria-label="Verification Summary KPI Cards">
         
         {/* Prioritized Card: Pending Reviews */}
-        <div className="bg-white p-5 rounded-2xl border-2 border-amber-300 bg-gradient-to-br from-amber-50/40 via-white to-white shadow-sm hover:shadow-md transition-all relative overflow-hidden">
+        <button
+          type="button"
+          onClick={() => handleTabChange('pending')}
+          aria-pressed={activeTab === 'pending'}
+          aria-label={`Filter by Pending Reviews: ${pendingCount} applications`}
+          className={`text-left w-full cursor-pointer select-none p-5 rounded-2xl transition-all relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 group ${
+            activeTab === 'pending'
+              ? 'bg-gradient-to-br from-amber-100/70 via-amber-50/40 to-white border-2 border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+              : 'bg-white border-2 border-amber-300/80 bg-gradient-to-br from-amber-50/20 via-white to-white shadow-sm hover:border-amber-400 hover:shadow-md'
+          }`}
+        >
           <div className="absolute top-0 right-0 w-24 h-24 bg-amber-400/10 rounded-full blur-xl pointer-events-none" />
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-bold text-amber-800 uppercase tracking-wider">Pending Reviews</span>
-              <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-200 text-amber-950 uppercase tracking-wider animate-pulse">
-                Action Needed
-              </span>
+              {activeTab === 'pending' ? (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-600 text-white uppercase tracking-wider">
+                  Active Filter
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-amber-200 text-amber-950 uppercase tracking-wider animate-pulse">
+                  Action Needed
+                </span>
+              )}
             </div>
-            <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-200">
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+              activeTab === 'pending'
+                ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                : 'bg-amber-100 text-amber-700 border-amber-200 group-hover:bg-amber-200'
+            }`}>
               <Clock className="w-4 h-4 stroke-[2.5]" />
             </div>
           </div>
@@ -332,31 +397,81 @@ export const AdminVerification = () => {
           <p className="text-[11px] text-amber-800 font-semibold mt-0.5">
             Applications waiting for admin approval or rejection
           </p>
-        </div>
+        </button>
 
         {/* Card 2: Approved */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all">
+        <button
+          type="button"
+          onClick={() => handleTabChange('verified')}
+          aria-pressed={activeTab === 'verified'}
+          aria-label={`Filter by Approved: ${approvedCount} hospitals`}
+          className={`text-left w-full cursor-pointer select-none p-5 rounded-2xl transition-all relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-2 group ${
+            activeTab === 'verified'
+              ? 'bg-gradient-to-br from-emerald-50/70 via-white to-white border-2 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+              : 'bg-white border border-slate-200/80 shadow-sm hover:border-emerald-300 hover:shadow-md hover:bg-emerald-50/10'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Approved</span>
-            <div className="w-9 h-9 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center border border-emerald-100">
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                activeTab === 'verified' ? 'text-emerald-800' : 'text-slate-400 group-hover:text-slate-600'
+              }`}>
+                Approved
+              </span>
+              {activeTab === 'verified' && (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-emerald-600 text-white uppercase tracking-wider">
+                  Active Filter
+                </span>
+              )}
+            </div>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+              activeTab === 'verified'
+                ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                : 'bg-emerald-50 text-emerald-700 border-emerald-100 group-hover:bg-emerald-100'
+            }`}>
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-emerald-700 font-mono mt-2">{approvedCount}</div>
           <p className="text-[11px] text-slate-500 mt-0.5">Accredited with portal trading privileges</p>
-        </div>
+        </button>
 
         {/* Card 3: Rejected */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm hover:shadow-md transition-all">
+        <button
+          type="button"
+          onClick={() => handleTabChange('rejected')}
+          aria-pressed={activeTab === 'rejected'}
+          aria-label={`Filter by Rejected: ${rejectedCount} applications`}
+          className={`text-left w-full cursor-pointer select-none p-5 rounded-2xl transition-all relative overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 focus-visible:ring-offset-2 group ${
+            activeTab === 'rejected'
+              ? 'bg-gradient-to-br from-rose-50/70 via-white to-white border-2 border-rose-500 ring-2 ring-rose-500/20 shadow-md'
+              : 'bg-white border border-slate-200/80 shadow-sm hover:border-rose-300 hover:shadow-md hover:bg-rose-50/10'
+          }`}
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Rejected</span>
-            <div className="w-9 h-9 rounded-xl bg-rose-50 text-rose-700 flex items-center justify-center border border-rose-100">
+            <div className="flex items-center gap-2">
+              <span className={`text-[11px] font-bold uppercase tracking-wider transition-colors ${
+                activeTab === 'rejected' ? 'text-rose-800' : 'text-slate-400 group-hover:text-slate-600'
+              }`}>
+                Rejected
+              </span>
+              {activeTab === 'rejected' && (
+                <span className="px-2 py-0.5 rounded-full text-[9px] font-mono font-bold bg-rose-600 text-white uppercase tracking-wider">
+                  Active Filter
+                </span>
+              )}
+            </div>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center border transition-colors ${
+              activeTab === 'rejected'
+                ? 'bg-rose-600 text-white border-rose-700 shadow-sm'
+                : 'bg-rose-50 text-rose-700 border-rose-100 group-hover:bg-rose-100'
+            }`}>
               <X className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black text-rose-700 font-mono mt-2">{rejectedCount}</div>
           <p className="text-[11px] text-slate-500 mt-0.5">Declined access with recorded compliance reason</p>
-        </div>
+        </button>
 
       </div>
 
@@ -364,10 +479,13 @@ export const AdminVerification = () => {
       <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
         
         {/* Queue Filter Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5">
+        <div className="flex flex-wrap items-center gap-1.5" role="tablist" aria-label="Verification Queue Filters">
           <button
-            onClick={() => setActiveTab('pending')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'pending'}
+            onClick={() => handleTabChange('pending')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 ${
               activeTab === 'pending'
                 ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
@@ -378,8 +496,11 @@ export const AdminVerification = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('under_review')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'under_review'}
+            onClick={() => handleTabChange('under_review')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
               activeTab === 'under_review'
                 ? 'bg-cyan-600 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
@@ -389,8 +510,11 @@ export const AdminVerification = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('verified')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'verified'}
+            onClick={() => handleTabChange('verified')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
               activeTab === 'verified'
                 ? 'bg-emerald-600 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
@@ -400,8 +524,11 @@ export const AdminVerification = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('rejected')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'rejected'}
+            onClick={() => handleTabChange('rejected')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500 ${
               activeTab === 'rejected'
                 ? 'bg-rose-600 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
@@ -411,8 +538,11 @@ export const AdminVerification = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('all')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'all'}
+            onClick={() => handleTabChange('all')}
+            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 ${
               activeTab === 'all'
                 ? 'bg-primary-700 text-white shadow-sm'
                 : 'bg-slate-100 text-slate-600 hover:bg-slate-200/70'
@@ -424,14 +554,32 @@ export const AdminVerification = () => {
 
         {/* Search Bar for Verification Queue (Req 19) */}
         <div className="relative w-full sm:w-72">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
           <input
             type="text"
-            placeholder="Search pending applications..."
+            placeholder={
+              activeTab === 'pending'
+                ? 'Search pending applications...'
+                : activeTab === 'verified'
+                ? 'Search approved hospitals...'
+                : activeTab === 'rejected'
+                ? 'Search rejected applications...'
+                : 'Search applications...'
+            }
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-9 pr-3 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
+            className="w-full pl-9 pr-8 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-teal-500 font-medium"
           />
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => setSearchTerm('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 rounded focus:outline-none focus-visible:ring-1 focus-visible:ring-teal-500"
+              aria-label="Clear search"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          )}
         </div>
 
       </div>
@@ -522,8 +670,23 @@ export const AdminVerification = () => {
         ) : (
           <div className="px-6 py-14 text-center text-slate-400">
             <FileCheck2 className="w-10 h-10 mx-auto mb-2 opacity-40" />
-            <p className="font-bold text-slate-700 text-sm">No applications in the {activeTab} queue</p>
-            <p className="text-xs text-slate-400 mt-1">Select a different tab or clear your search query.</p>
+            <p className="font-bold text-slate-700 text-sm">
+              {searchTerm
+                ? `No applications matching "${searchTerm}" in the ${activeTab === 'verified' ? 'approved' : activeTab} queue`
+                : `No applications in the ${activeTab === 'verified' ? 'approved' : activeTab} queue`}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              {searchTerm ? 'Try clearing your search query or using different keywords.' : 'Select a different tab or check other categories.'}
+            </p>
+            {searchTerm && (
+              <button
+                type="button"
+                onClick={() => setSearchTerm('')}
+                className="mt-3 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold transition-colors"
+              >
+                Clear search query
+              </button>
+            )}
           </div>
         )}
       </div>
